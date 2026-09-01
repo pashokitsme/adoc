@@ -1,28 +1,125 @@
-// provider.ts — объявление провайдера armtek для SDK.
-//
-// Готовы вход, выход и whoami; поиск, бренды, предложения, отзывы, корзина и
-// гараж делаются следующим заходом — карта их эндпоинтов уже снята и лежит в
-// docs/armtek-api.md. Контракт требует три метода поиска, поэтому они здесь
-// заглушками: соврать пустой выдачей хуже, чем честно сказать «пока нет».
+// provider.ts — armtek.ru как провайдер контракта. Сайтоспецифика живёт в
+// api.ts (запросы), auth.ts (токены), map.ts (перевод в типы контракта) и
+// brand.ts (выбор бренда); здесь только склейка.
 
-import { ProviderError, defineProvider } from "../../sdk/index.ts"
+import { ProviderError, articleKey, brandKey, defineProvider } from "../../sdk/index.ts"
+import type { Ctx } from "../../sdk/define.ts"
+import * as api from "./api.ts"
 import { mapHttpError } from "./api.ts"
-import { login, whoami, type Account } from "./auth.ts"
+import { accessToken, decodeClaims, login, readToken, whoami, type Account } from "./auth.ts"
+import * as brand from "./brand.ts"
+import { commands } from "./commands.ts"
+import { isRef, refOfCartItem, toBasket, toBrandHits, toCars, toOffers, toProducts, toReviews, writeItem, type ArmtekRef } from "./map.ts"
 
-const notYet = (what: string): never => {
-	throw new ProviderError("internal", `armtek: ${what} ещё не реализован`)
+/** Точка выдачи и организация аккаунта; без входа — умолчания фронта. */
+const place = (ctx: Ctx<Account>): brand.Place => ({
+	vkorg: ctx.account?.vkorg ?? api.DEFAULT_VKORG,
+	vstel: ctx.account?.vstel ?? api.DEFAULT_VSTEL,
+})
+
+/** Сырая корзина плюс токен: три из четырёх операций начинаются одинаково. */
+async function cart(ctx: Ctx<Account>): Promise<{ token: string; vkorg: string; vstel: string; raw: api.RawCart }> {
+	const token = await accessToken(ctx)
+	const p = place(ctx)
+	const a = ctx.account
+	const raw = await api.cartState(token, { ...p, category: a?.category, segment: a?.segment })
+	return { token, ...p, raw }
 }
 
-export const armtek = defineProvider<Account, []>({
+export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "basket"]>({
 	id: "armtek",
 	name: "Armtek",
 	site: "https://armtek.ru",
-	capabilities: [],
+	capabilities: ["reviews", "garage", "analogs", "basket"],
+	valueFlags: ["body"],
 	mapError: mapHttpError,
 
 	login,
 	whoami,
-	search: async () => notYet("поиск по названию"),
-	brands: async () => notYet("список брендов"),
-	offers: async () => notYet("список предложений"),
+
+	// Поиск по названию: та же ручка, что и по артикулу, но выдачу берём
+	// формой list — иначе сервер сам решит, отдать список или карточки.
+	search: async (ctx, text) => {
+		const r = await api.search({ query: text, queryType: 1, page: ctx.page, typeView: "list", ...place(ctx) }, await readToken(ctx))
+		return {
+			items: toProducts(r.articlesData ?? []).slice(0, ctx.limit),
+			total: r.pagination?.totalCount,
+			extra: { page: r.pagination?.currentPage, perPage: r.pagination?.perPage, pageCount: r.pagination?.pageCount },
+		}
+	},
+
+	brands: async (ctx, article) => ({
+		items: toBrandHits(await brand.exactSearch(article, await readToken(ctx), place(ctx))),
+	}),
+
+	offers: async (ctx, article, brandName, { analogs }) => {
+		const token = await readToken(ctx)
+		const p = place(ctx)
+		const { row } = await brand.resolve(article, brandName, token, p)
+		const want = { article, brand: row.BRAND }
+		if (!analogs) return { items: toOffers([row], want, p.vstel) }
+
+		// queryType 1 отдаёт точные строки вместе с аналогами, но страницами по
+		// 36: на дальних страницах точной строки уже нет, и без этой проверки
+		// `--analogs` терял бы оригинал.
+		const all = await api.search({ query: article, queryType: 1, page: ctx.page, typeView: "list", ...p }, token)
+		const rows = all.articlesData ?? []
+		const hasExact = rows.some(a => articleKey(a.PIN) === articleKey(article) && brandKey(a.BRAND) === brandKey(row.BRAND))
+		return { items: toOffers(hasExact ? rows : [row, ...rows], want, p.vstel) }
+	},
+
+	reviews: async (ctx, article, brandName) => {
+		const token = await readToken(ctx)
+		const { row } = await brand.resolve(article, brandName, token, place(ctx))
+		const [list, stats] = await Promise.all([
+			api.reviewsByArtId(row.ARTID, token, { page: ctx.page, limit: ctx.limit }),
+			// оценки — отдельная ручка; без неё лента всё ещё имеет смысл
+			api.reviewRating(row.ARTID, token).catch(() => [] as api.RawReviewRating[]),
+		])
+		return toReviews(list, stats[0])
+	},
+
+	garageExport: async ctx => {
+		const token = await accessToken(ctx)
+		const clientId = ctx.account?.clientId ?? decodeClaims(token)?.data?.clientId
+		if (!clientId) throw new ProviderError("auth", "в токене нет clientId — войди заново")
+		const g = await api.garageList(token, clientId, place(ctx).vkorg)
+		return { cars: toCars(g.transportList) }
+	},
+
+	basket: {
+		list: async ctx => {
+			const c = await cart(ctx)
+			return toBasket(c.raw, c.vstel)
+		},
+
+		add: async (ctx, ref, qty) => {
+			if (!isRef(ref)) throw new ProviderError("bad_args", "--ref не похож на предложение armtek: нужен ref из выдачи offers")
+			const c = await cart(ctx)
+			await api.cartAdd(c.token, c.vkorg, [writeItem(ref as ArmtekRef, qty)])
+			return toBasket(await api.cartState(c.token, { vkorg: c.vkorg, vstel: c.vstel, category: ctx.account?.category, segment: ctx.account?.segment }), c.vstel)
+		},
+
+		// POST по существующему posnr сайт отбивает четырёхсотым, поэтому смена
+		// количества — только PUT, и тело для него собирается из того, что уже
+		// лежит в корзине: цену и склад менять нельзя.
+		set: async (ctx, itemId, qty) => {
+			const c = await cart(ctx)
+			const posnr = Number(itemId)
+			const item = c.raw.items?.find(i => i.posnr === posnr)
+			if (!item) throw new ProviderError("notfound", `в корзине нет позиции ${itemId}`)
+			await api.cartUpdate(c.token, c.vkorg, [writeItem(refOfCartItem(item, c.vstel), qty, posnr)])
+			return toBasket(await api.cartState(c.token, { vkorg: c.vkorg, vstel: c.vstel, category: ctx.account?.category, segment: ctx.account?.segment }), c.vstel)
+		},
+
+		remove: async (ctx, itemId) => {
+			const c = await cart(ctx)
+			const posnr = Number(itemId)
+			if (!c.raw.items?.some(i => i.posnr === posnr)) throw new ProviderError("notfound", `в корзине нет позиции ${itemId}`)
+			await api.cartDelete(c.token, c.vkorg, [posnr])
+			return toBasket(await api.cartState(c.token, { vkorg: c.vkorg, vstel: c.vstel, category: ctx.account?.category, segment: ctx.account?.segment }), c.vstel)
+		},
+	},
+
+	commands,
 })
