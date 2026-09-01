@@ -82,7 +82,7 @@ link() { # link <source> <target>
 }
 
 run mkdir -p "$BIN"
-link "$REPO/main.ts" "$TOOL"
+link "$REPO/src/main.ts" "$TOOL"
 
 if [ "$WITH_SKILL" = 1 ]; then
 	run mkdir -p "$SKILLS_DIR"

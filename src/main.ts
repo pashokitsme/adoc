@@ -11,7 +11,7 @@
 //   info <артикул> [brandId]    Карточка: рейтинг, гистограмма оценок, наличие
 //   reviews <артикул> [brandId] Отзывы и выжимка нейросети
 //
-// Требует входа:
+// Требует авторизации:
 //   prices <артикул> [brandId]  Предложения продавцов: цена, срок, количество
 //   analogs <артикул> [brandId] Аналоги
 //   basket                      Корзина
@@ -26,7 +26,7 @@
 //   skill                       Куда установлен скилл для агента
 //   skill install               Связать скилл с ~/.claude/skills
 //
-//   login                       Войти (см. ниже)
+//   login                       Авторизоваться (см. ниже)
 //   logout                      Забыть токен
 //   whoami                      Показать, есть ли живой токен
 //
@@ -46,14 +46,14 @@
 // артикулу и возьмёт единственного. Когда их несколько — покажет список и
 // попросит уточнить, потому что цены и отзывы у них разные.
 //
-// Вход. `adoc login` спрашивает телефон или email и пароль прямо в терминале;
+// Авторизация. `adoc login` спрашивает телефон или email и пароль прямо в терминале;
 // пароль вводится без эха, никуда не записывается и уходит единственным
 // запросом на login.autodoc.ru (grant_type=password). Аргументом его передать
 // нельзя намеренно — иначе он осел бы в истории шелла и в `ps`.
 //
-// `adoc login --paste` — запасной путь без пароля: войди на autodoc.ru в
-// браузере, выполни в консоли `copy(JSON.stringify(sessionStorage))` и вставь
-// буфер. Тул вытащит оттуда access и refresh токены.
+// `adoc login --paste` — запасной путь без пароля: в консоли браузера на
+// autodoc.ru с открытой сессией `copy(JSON.stringify(sessionStorage))`, буфер
+// вставляется в приглашение. Тул вытащит оттуда access и refresh токены.
 //
 // PKCE в туле нет намеренно: SPA отвергает чужой колбэк с
 // `could not find matching config for state` и код наружу не отдаёт. Проверка
@@ -319,7 +319,7 @@ function accountFields(c: auth.Claims | null, t: auth.Tokens): [string, string][
 async function cmdSkill(sub?: string): Promise<void> {
 	// каталог скилла лежит рядом с main.ts — и в git-клоне, и в глобальной
 	// установке bun, так что симлинк на него переживает обновление пакета
-	const src = fileURLToPath(new URL("skills/adoc", import.meta.url))
+	const src = fileURLToPath(new URL("../skills/adoc", import.meta.url))
 	const dst = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "skills", "adoc")
 
 	if (sub !== "install") {

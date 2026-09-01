@@ -5,9 +5,12 @@
 	"type": "module",
 	"description": "Command-line client for the undocumented autodoc.ru web API",
 	"bin": {
-		"adoc": "./main.ts"
+		"adoc": "./src/main.ts"
 	},
 	"devDependencies": {
 		"@types/bun": "latest"
+	},
+	"engines": {
+		"bun": ">=1.0.0"
 	}
 }
