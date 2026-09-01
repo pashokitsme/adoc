@@ -18,16 +18,17 @@ API за ним рабочий, просто недокументированн�
 
 ```sh
 bun install -g github:pashokitsme/adoc
-adoc skill install
+gh skill install pashokitsme/adoc adoc
 ```
 
-Вторая команда ставит рядом скилл для агента — после неё Claude Code сам знает,
-когда звать `adoc`, и не пытается открыть сайт браузером. Установку можно
-поручить агенту целиком:
+Вторая команда ставит скилл для агента — после неё Claude Code сам знает, когда
+звать `adoc`, и не пытается открыть сайт браузером. Она не обязательна и умеет
+не только Claude Code: список агентов — в `gh skill install --help`, обновление
+— `gh skill update --all`. Установку можно поручить агенту целиком:
 
 > Установка https://github.com/pashokitsme/adoc через `bun install -g`, затем
-> `adoc skill install`. Проверка: `adoc part n90954802` печатает таблицу с
-> производителем VAG.
+> скилл через `gh skill install`. Проверка: `adoc part n90954802` печатает
+> таблицу с производителем VAG.
 
 Обновление — `bun remove -g adoc` и установка заново: повторный `bun install -g`
 берёт git-пакет из кэша и новый коммит не подхватывает даже с `--force`.
@@ -49,7 +50,6 @@ adoc skill install
 | `garage` | машины; `parts <id>` — подборка под них | да |
 | `basket` · `favorites` · `orders` · `profile` | | да |
 | `get <путь> [k=v]` | любой эндпоинт из карты API | `--auth` |
-| `skill install` | связать скилл с `~/.claude/skills` | |
 
 Один артикул бывает у нескольких производителей — тогда `adoc` покажет список и
 выйдет с кодом 2; `brandId` передаётся вторым аргументом. `--json` отдаёт сырой
