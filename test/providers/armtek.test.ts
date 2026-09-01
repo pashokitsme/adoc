@@ -77,9 +77,13 @@ describe("карточка клиента", () => {
 		expect(displayOf({}, "79990000000").name).toBe("79990000000")
 	})
 
-	test("точка выдачи и сбытовая организация берутся из карточки", async () => {
+	test("точка выдачи, организация и коды клиента берутся из карточки", async () => {
 		const c = (await fixture("client.json")).data as ClientData
-		expect(placeOf(c)).toEqual({ vkorg: "4000", vstel: "ME86" })
+		expect(placeOf(c)).toEqual({ vkorg: "4000", vstel: "ME86", clientId: "<clientId>", category: "KR", segment: "51" })
+	})
+
+	test("в пустой карточке нечего перезаписывать", () => {
+		expect(placeOf({})).toEqual({})
 	})
 })
 
