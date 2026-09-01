@@ -1,0 +1,7 @@
+{"items":[
+ {"id":"7","title":"Аналоги N90954802","goods":[
+  {"article":"wht005437","displayArticle":"WHT 005 437","name":"Болт колёсный","manufacturer":{"name":"VAG","id":657},"minimalPrice":512,"minimalDeliveryDays":2,"imageUrl":"https://images.autodoc.ru/goods/657/wht005437/m.webp","rating":{"average":4.7,"quantity":12},"isOriginal":false,
+   "items":[{"price":512,"quantity":30,"deliveryDays":2,"deliveryDate":"2026-09-04T00:00:00","supplier":{"name":"Дилер","description":"Склад дилера"},"directionToManufacturerId":544130,"minimalQuantity":1,"partnerId":6727,"priceType":2,"hash":"H4","id":2670855870}]},
+  {"article":"6900105","displayArticle":"690-01-05","name":"Болт крепления","manufacturer":{"name":"FEBI","id":4021},"minimalPrice":289,"minimalDeliveryDays":5,"rating":{"average":4.2,"quantity":8},"isOriginal":false,
+   "items":[{"price":289,"quantity":8,"deliveryDays":5,"deliveryDate":"2026-09-09T00:00:00","supplier":{"name":"MEX","description":"Оптовый склад"},"directionToManufacturerId":1,"minimalQuantity":2,"partnerId":2,"priceType":2,"hash":"H5","id":2670855871}]}]}
+]}
