@@ -41,7 +41,7 @@ armtek.ru), показывает цены, сроки, наличие, оцен�
 ## Имя
 
 Имя тулзы решается позже. Пока везде `adoc`. Имя должно жить в одном месте:
-константа `TOOL` в `src/shared/tool.ts` (префикс провайдеров, имя каталога
+константа `TOOL` в `src/sdk/config.ts` (префикс провайдеров, имя каталога
 конфига, имя переменной окружения) и поле `bin` в `package.json`. Переименование
 — один коммит.
 
@@ -72,20 +72,22 @@ src/
     part.ts               поиск по партномеру: склейка brands, fan-out offers, слияние
     search.ts             поиск по названию: fan-out search, склейка товаров
     reviews.ts            fan-out reviews
-    accounts.ts           accounts/<provider>.json: список, удаление, запись после login
+    accounts.ts           accounts/<provider>.json: список и удаление; пишет файл сам провайдер
     garage.ts             garage.json
     basket.ts             мультикорзина: fan-out basket, add по номеру из last-part.json
   sdk/                    SDK провайдера, см. раздел «SDK провайдера»
     index.ts              defineProvider, runProvider, ProviderError — публичная поверхность
     contract.ts           типы контракта v1: Product, BrandHit, Offer, Reviews, Car, коды ошибок
     run.ts                argv → диспетчер → JSON или рендер → exit-код
-    cli.ts                разбор argv, флаги контракта, readLine/readSecret, die
+    cli.ts                разбор argv, флаги контракта, hasTTY, readLine/readSecret
     render.ts             текущий render.ts + стандартные таблицы для типов контракта
     account.ts            accountStore(id): чтение/запись accounts/<id>.json, 600
     config.ts             каталог конфига, ADOC_CONFIG_DIR, константа TOOL
     http.ts               fetch с таймаутом, разбор JSON, HttpError → ProviderError("http")
+    errors.ts             ProviderError, exitCode, errorBody
+    keys.ts               articleKey/brandKey — нормализация артикула и бренда
   providers/
-    autodoc/{main,api,auth,provider}.ts
+    autodoc/{main,api,auth,brand,commands,map,provider}.ts
     armtek/{main,api,auth,provider}.ts
 docs/
   contract.md             контракт провайдера — единственный источник правды
@@ -145,12 +147,12 @@ export const armtek = defineProvider({
   // контракт — обязательные методы, типы из sdk/contract.ts
   login:   async (ctx) => { /* ctx.prompt, ctx.secret → Account */ },
   whoami:  async (ctx) => { /* ctx.account → Display | null */ },
-  search:  async (ctx, text, { page, limit }) => ({ items: Product[] }),
+  search:  async (ctx, text) => ({ items: Product[] }),   // страница и лимит — в ctx
   brands:  async (ctx, article) => ({ items: BrandHit[] }),
   offers:  async (ctx, article, brand, { analogs }) => ({ items: Offer[] }),
 
   // необязательные, включаются по capabilities (проверяется типами)
-  reviews:      async (ctx, article, brand, { page, limit }) => Reviews,
+  reviews:      async (ctx, article, brand) => Reviews,
   garageExport: async (ctx) => ({ cars: Car[] }),
 
   // свои команды: adoc armtek stores, adoc armtek vstel …
@@ -163,22 +165,23 @@ export const armtek = defineProvider({
 
 `ctx` — контекст вызова: `ctx.account` (типизированный аккаунт провайдера,
 уже прочитанный из `accounts/<id>.json`), `ctx.saveAccount()` (запись с 600,
-для refresh-токенов), `ctx.json` (просили ли JSON), `ctx.flags`, `ctx.prompt()`
+для refresh-токенов), `ctx.json` (просили ли JSON), `ctx.flags`, `ctx.page`, `ctx.limit`, `ctx.prompt()`
 и `ctx.secret()` (tty-ввод, `secret` без эха), `ctx.warn()` (в stderr).
 
 SDK делает за провайдера:
 
 - Разбор argv по заранее известным командам и ключам контракта (`--json`,
-  `--brand`, `--page`, `--limit`, `--analogs`) плюс объявленные провайдером
-  флаги своих команд.
+  `--brand`, `--page`, `--limit`, `--analogs`, `--qty`, `--ref`) плюс
+  объявленные провайдером флаги своих команд (`valueFlags`).
 - `describe` — собирается из объявления: id, name, site, capabilities и список
   команд (контрактные + свои) с `usage`/`about`/`auth`.
 - `--json`: сериализует возвращённый объект, гарантирует один объект в stdout.
   Без `--json`: рендерит стандартной таблицей для типа контракта (Product,
   BrandHit, Offer, Reviews, Car) или `render()` своей команды.
 - Ошибки: провайдер бросает `ProviderError(code, message)`, SDK превращает в
-  `{error}` и exit-код; любой другой `Error` — `code: "http"` или `"internal"`
-  с текстом. `ambiguous` — exit 2 с `items`.
+  `{error}` и exit-код. Порядок разбора: `ProviderError` как есть → `mapError`
+  провайдера → `HttpError` из `sdk/http.ts` в `http` → всё прочее в `internal`.
+  `ambiguous` — exit 2 с `items`.
 - `login` без tty — `{error: {code: "tty"}}` до вызова провайдера.
 - Файл аккаунта: чтение до вызова, `ctx.saveAccount()` после; провайдер не
   знает про пути и права.
@@ -203,16 +206,19 @@ SDK делает за провайдера:
 своём формате, из JSON.
 
 Все команды контракта принимают `--json`. Флаги контракта: `--json`,
-`--brand <имя>`, `--page <n>`, `--limit <n>`, `--analogs`.
+`--brand <имя>`, `--page <n>`, `--limit <n>`, `--analogs`, `--qty <n>`,
+`--ref <json>`. Флаг со значением — `--flag value` или `--flag=value`:
+разбор забирает следующий токен как есть.
 
 ### Обязательные команды
 
 | команда | ответ |
 |---|---|
 | `describe` | `{contract: 1, id, name, site, capabilities: string[], commands: Command[]}` |
-| `login` | `{account: object, display: Display}` — диалог через tty |
+| `login` | `{account: object, display: Display}` — диалог через tty; в `--json` печатает токены |
+| `logout` | `{ok: true, had: boolean}` — SDK даёт его всем провайдерам |
 | `whoami` | `{ok: boolean, display?: Display}` |
-| `search <текст> [--page --limit]` | `{items: Product[], total?: number}` — поиск по названию |
+| `search <текст> [--page --limit]` | `{items: Product[], total?: number, extra?: object}` — поиск по названию |
 | `brands <артикул>` | `{items: BrandHit[]}` — поиск по партномеру, шаг 1 |
 | `offers <артикул> --brand <имя> [--analogs]` | `{items: Offer[]}` — поиск по партномеру, шаг 2 |
 
@@ -242,7 +248,7 @@ SDK делает за провайдера:
 ```ts
 type Command = { name: string; usage: string; about: string; auth: boolean }
 
-type Display = { name: string; email?: string; phone?: string }  // уже маскированы
+type Display = { name: string; email?: string; phone?: string }  // как отдаёт сайт
 
 type Rating = { average: number; count: number }                 // count — число оценок
 
@@ -266,6 +272,7 @@ type BrandHit = {
   name?: string
   rating?: Rating
   images?: string[]
+  extra?: Record<string, unknown>  // сырые провайдерские поля (у autodoc — manufacturerId)
 }
 
 type Offer = {
@@ -349,7 +356,8 @@ type Car = {
 | `notfound` | артикул или бренд не найдены |
 | `tty` | `login` без терминала |
 | `timeout` | превышен собственный таймаут провайдера |
-| `bad_args` | неверные аргументы |
+| `bad_args` | неверные аргументы или неизвестная команда |
+| `internal` | всё остальное: неожиданное исключение внутри провайдера |
 
 Неоднозначный бренд: exit `2`, `{error: {code: "ambiguous", items: BrandHit[]}}`.
 Пустой результат — не ошибка: exit `0`, `{items: []}`.
@@ -359,7 +367,8 @@ type Car = {
 - Артикул на входе принимается в любом виде. Провайдер сам приводит его к
   форме сайта.
 - `brand` в ответах — как показывает сайт, без обрезки. Склейку делает обёртка.
-- `display` уже маскирован: провайдер не отдаёт наружу полный email и телефон.
+- `display` — как отдаёт сайт: полные имя, email и телефон, без маскировки.
+  Прячет их тот, кто рисует вывод, а не провайдер.
 - Аккаунт: `accounts/<id>.json` в `ADOC_CONFIG_DIR`. Провайдер владеет файлом
   целиком: создаёт его в `login`, читает и обновляет (refresh-токены), права
   600. Обёртка только перечисляет файлы в `accounts` и удаляет при `logout`.
@@ -521,8 +530,10 @@ exit `1`. Exit `2` только за неоднозначный бренд.
 - Файл аккаунта — `accounts/autodoc.json` вместо `token.json`.
 
 Все команды принимают `--brand <имя>` вместо позиционного `brandId`: провайдер
-находит производителя по имени через `search/manufacturers`. Позиционный
-числовой `brandId` остаётся для совместимости.
+находит производителя по имени через `search/manufacturers`. У контрактных
+`offers` и `reviews` это единственный способ задать бренд; позиционный
+числовой `brandId` остаётся только у собственных команд (`info`, `prices`,
+`analogs`) для совместимости.
 
 ## Провайдер armtek
 
