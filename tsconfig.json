@@ -1,0 +1,14 @@
+{
+	"compilerOptions": {
+		"lib": ["ESNext"],
+		"target": "ESNext",
+		"module": "Preserve",
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"types": ["bun"],
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"noEmit": true,
+		"skipLibCheck": true
+	}
+}

@@ -1,0 +1,13 @@
+{
+	"name": "adoc",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Command-line client for the undocumented autodoc.ru web API",
+	"bin": {
+		"adoc": "./main.ts"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	}
+}
