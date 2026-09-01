@@ -134,6 +134,46 @@ export const addFavorite = (Article: string, ManufacturerId: number, ListId?: nu
 	call<unknown>("POST", "/api/favorite-service/favorites/favorite", {
 		query: { Article, ManufacturerId, ListId }, body: {}, auth: true,
 	})
+// --- гараж ----------------------------------------------------------------
+
+export type Car = {
+	id: number
+	brand: string
+	brandId: number
+	model: string
+	modelId: number
+	modificationId: number
+	engine?: string
+	year?: number
+	vin?: string
+	odometer?: number
+	fullName?: string
+	clientCode?: string
+	activeRequestsCount?: number
+}
+
+export type CarGood = {
+	groupName?: string
+	article: string
+	name: string
+	manufacturer?: Manufacturer
+	items?: { price?: number; quantity?: number; deliveryDays?: number }[]
+}
+
+export const garageCars = () =>
+	call<{ cars: Car[]; totalActiveRequestsCount?: number }>("GET", "/api/garage-service/garage/cars", { auth: true })
+
+/** Основная машина гаража — та, под которую сайт подбирает запчасти. */
+export const garageTopCar = () =>
+	call<{ car: Car | null }>("GET", "/api/garage-service/garage/top-car", { auth: true })
+
+export const garageProducts = (carId: number) =>
+	call<{ modification?: string; goods?: CarGood[] }>(
+		"GET", `/api/garage-service/garage/${carId}/products-lite`, { auth: true })
+
+export const garageSetMain = (carId: number) =>
+	call<unknown>("PUT", `/api/garage-service/garage/main-car/${carId}`, { body: {}, auth: true })
+
 export const orders = (q: { BeginDate?: string; EndDate?: string; Statuses?: string } = {}) =>
 	call<unknown>("GET", "/api/order-service/orders/items", { query: q, auth: true })
 export const profile = () => call<unknown>("GET", "/api/client-service/profile/account-summary", { auth: true })

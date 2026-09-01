@@ -18,6 +18,9 @@
 //   favorites [listId]          Избранное; без аргумента — списки
 //   orders                      Заказы
 //   profile                     Сводка по аккаунту
+//   garage                      Гараж: список машин, ★ отмечает основную
+//   garage parts <carId>        Подборка запчастей под конкретную машину
+//   garage main <carId>         Сделать машину основной
 //
 // Аккаунт:
 //   login                       Войти (см. ниже)
@@ -305,6 +308,53 @@ function accountFields(c: auth.Claims | null, t: auth.Tokens): [string, string][
 	]
 }
 
+async function cmdGarage(sub?: string, arg?: string): Promise<void> {
+	if (sub === "main") {
+		const id = Number(arg)
+		if (!id) die("нужен id машины: `adoc garage main <carId>`")
+		await api.garageSetMain(id)
+		console.log(green(`основной автомобиль теперь ${id}`))
+		return
+	}
+
+	if (sub === "parts") {
+		const id = Number(arg)
+		if (!id) die("нужен id машины: `adoc garage parts <carId>`")
+		const r = await api.garageProducts(id)
+		if (json) return out(r)
+		if (r.modification) console.log(dim(r.modification))
+		const goods = r.goods ?? []
+		if (!goods.length) { console.log(dim("подборки для этой машины нет")); process.exit(1) }
+		console.log(table(goods.map(g => {
+			const best = (g.items ?? []).reduce<{ price?: number; deliveryDays?: number } | null>(
+				(acc, it) => (acc === null || (it.price ?? Infinity) < (acc.price ?? Infinity) ? it : acc), null)
+			return [
+				cyan(g.article), bold(g.name.slice(0, 40)), dim(g.manufacturer?.name ?? ""),
+				money(best?.price), days(best?.deliveryDays), dim(g.groupName ?? ""),
+			]
+		}), ["АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ОТ", "СРОК", "ГРУППА"]))
+		return
+	}
+
+	if (sub) die(`неизвестная подкоманда гаража: ${sub}`)
+
+	const [list, top] = await Promise.all([api.garageCars(), api.garageTopCar().catch(() => null)])
+	if (json) return out({ ...list, mainCarId: top?.car?.id ?? null })
+	const cars = list.cars ?? []
+	if (!cars.length) { console.log(dim("гараж пуст")); process.exit(1) }
+	const mainId = top?.car?.id
+	console.log(table(cars.map(c => [
+		c.id === mainId ? yellow("★") : " ",
+		cyan(String(c.id)),
+		bold([c.brand, c.model].filter(Boolean).join(" ")),
+		c.engine ?? dim("—"),
+		c.year ? String(c.year) : dim("—"),
+		c.vin ?? dim("—"),
+		c.odometer ? `${c.odometer.toLocaleString("ru-RU")} км` : dim("—"),
+	]), [" ", "ID", "АВТОМОБИЛЬ", "ДВИГАТЕЛЬ", "ГОД", "VIN", "ПРОБЕГ"]))
+	console.log(dim("\n★ — основная машина; `adoc garage parts <id>` — подборка под неё"))
+}
+
 async function cmdLogin(): Promise<void> {
 	if (flags.paste === true) return cmdLoginPaste()
 
@@ -415,6 +465,7 @@ else {
 			case "basket":    out(await api.basket()); break
 			case "favorites": out(args[0] ? await api.favorites(Number(args[0])) : await api.favoriteLists()); break
 			case "orders":    out(await api.orders()); break
+			case "garage":    await cmdGarage(args[0], args[1]); break
 			case "profile":   out(await api.profile()); break
 			case "login":     await cmdLogin(); break
 			case "logout": {

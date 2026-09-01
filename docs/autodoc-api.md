@@ -229,6 +229,27 @@ POST /api/catalog-universal-service/catalog-universal-goods/find-goods?CategoryI
 `totalCount: 0`. Полнотекстового поиска по товарам в этом эндпоинте нет —
 сначала подсказка, потом категория.
 
+### Гараж
+
+```
+GET /api/garage-service/garage/cars          → {"cars":[{...}],"totalActiveRequestsCount":0}
+GET /api/garage-service/garage/top-car       → {"car":{...}}  основная машина
+GET /api/garage-service/garage/{carId}/products-lite
+PUT /api/garage-service/garage/main-car/{carId}
+```
+
+Машина приходит так (поля, на которые можно опираться):
+
+```json
+{"id":0,"brand":"SKODA","brandId":575,"model":"OCTAVIA III лифтбек (5E3)","modelId":11195,
+ "modificationId":58759,"engine":"1.8 TSI","year":2017,"vin":"...","odometer":0,
+ "fullName":"SKODA OCTAVIA III лифтбек (5E3)","clientCode":"...","activeRequestsCount":0}
+```
+
+Внимание на две разные величины: у машины есть `id` (запись в гараже) и
+`modificationId` (модификация в каталоге). В ответе `products-lite` поле
+`carId` у товаров содержит именно **modificationId**, а не id записи гаража.
+
 ### Что требует токена
 
 ```
