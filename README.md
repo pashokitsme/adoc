@@ -32,8 +32,6 @@ gh skill install pashokitsme/adoc adoc
 
 Обновление — `bun remove -g adoc` и установка заново: повторный `bun install -g`
 берёт git-пакет из кэша и новый коммит не подхватывает даже с `--force`.
-Для работы над самим тулом удобнее клон и `./install.sh` — он линкует checkout,
-а не копию.
 
 Зависимость одна: [Bun](https://bun.sh).
 
