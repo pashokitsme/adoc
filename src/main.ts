@@ -84,9 +84,22 @@ for (let i = 0; i < argv.length; i++) {
 }
 const cmd = args.shift()
 const json = flags.json === true
-const limit = Number(flags.limit ?? 10)
-const page = Number(flags.page ?? 1)
-const sort = flags.sort === undefined ? undefined : Number(flags.sort)
+
+const out = (v: unknown) => console.log(JSON.stringify(v, null, 2))
+const die: (msg: string) => never = msg => { console.error(red(msg)); process.exit(1) }
+
+/** Числовой флаг с проверкой: без неё NaN молча уезжает в параметры запроса. */
+function num(name: string, v: string | true | undefined, def: number): number {
+	if (v === undefined) return def
+	if (v === true) die(`--${name}: нужно значение`)
+	const n = Number(v)
+	if (!Number.isFinite(n) || n < 0) die(`--${name}: нужно неотрицательное число, а не «${v}»`)
+	return n
+}
+
+const limit = num("limit", flags.limit, 10)
+const page = num("page", flags.page, 1)
+const sort = flags.sort === undefined ? undefined : num("sort", flags.sort, 0)
 
 function usage(): void {
 	const src = Bun.file(new URL("main.ts", import.meta.url)).text()
@@ -96,9 +109,6 @@ function usage(): void {
 		console.log(body.slice(0, end).map(l => l.replace(/^\/\/ ?/, "")).join("\n").trim())
 	})
 }
-
-const out = (v: unknown) => console.log(JSON.stringify(v, null, 2))
-const die: (msg: string) => never = msg => { console.error(red(msg)); process.exit(1) }
 
 // --- разрешение артикул → производитель -----------------------------------
 
@@ -359,39 +369,37 @@ async function cmdLogin(): Promise<void> {
 	if (flags.paste === true) return cmdLoginPaste()
 
 	const already = await auth.loadTokens()
-	console.log(bold("\n  Вход в autodoc.ru"))
+	console.log(bold("\nАвторизация на autodoc.ru"))
 	if (already) {
-		const c = auth.decodeClaims(already.access_token)
-		console.log(dim(`  сейчас сохранён вход: ${whoLine(c)}${dim(" — будет заменён")}`))
+		console.log(dim(`Сейчас сохранён вход: ${whoLine(auth.decodeClaims(already.access_token))}. Будет заменён.`))
 	}
-	console.log(dim("  пароль вводится без эха и никуда не сохраняется\n"))
+	console.log()
 
-	const username = (await readLine("  телефон или email  ")).trim()
-	if (!username) die("логин пустой")
-	const password = await readSecret("  пароль             ")
-	if (!password) die("пароль пустой")
+	const username = (await readLine("Логин, телефон или email > ")).trim()
+	if (!username) die("Логин не может быть пустым")
+	const password = await readSecret("Пароль > ")
+	if (!password) die("Пароль не может быть пустым")
 
 	const spin = process.stdout.isTTY
-	if (spin) process.stdout.write(dim("\n  проверяю…"))
+	if (spin) process.stdout.write(dim("Проверяю…"))
 	let tokens: auth.Tokens
 	try {
 		tokens = await auth.passwordGrant(username, password)
 	} catch (e) {
 		if (spin) process.stdout.write("\r" + " ".repeat(24) + "\r")
 		const m = e instanceof Error ? e.message : String(e)
-		if (m.includes("invalid_grant")) die("  логин или пароль не подошли")
-		die("  " + m)
+		if (m.includes("invalid_grant")) die("Логин или пароль не подошли")
+		die(m)
 	}
 	if (spin) process.stdout.write("\r" + " ".repeat(24) + "\r")
-	else console.log()
 
 	await auth.saveTokens(tokens)
 
 	const claims = auth.decodeClaims(tokens.access_token)
-	console.log(`  ${green("✓")} ${whoLine(claims)}`)
-	console.log(fields(accountFields(claims, tokens), "    "))
+	console.log(`${green("✓")} ${whoLine(claims)}`)
+	console.log(fields(accountFields(claims, tokens), "  "))
 	if (!tokens.refresh_token) {
-		console.log(yellow("\n  refresh-токена нет — вход придётся повторить, когда access протухнет"))
+		console.log(yellow("\nrefresh-токена нет — вход придётся повторить, когда access протухнет"))
 	}
 	console.log()
 }
@@ -463,7 +471,13 @@ else {
 				out(await api.analogs(args[0]!, b.id)); break
 			}
 			case "basket":    out(await api.basket()); break
-			case "favorites": out(args[0] ? await api.favorites(Number(args[0])) : await api.favoriteLists()); break
+			case "favorites": {
+				if (!args[0]) { out(await api.favoriteLists()); break }
+				const listId = Number(args[0])
+				if (!Number.isFinite(listId)) die(`listId должен быть числом, а не «${args[0]}»`)
+				out(await api.favorites(listId))
+				break
+			}
 			case "orders":    out(await api.orders()); break
 			case "garage":    await cmdGarage(args[0], args[1]); break
 			case "profile":   out(await api.profile()); break

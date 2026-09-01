@@ -43,7 +43,13 @@ async function call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, 
 	})
 	const text = await res.text()
 	if (!res.ok) throw new ApiError(res.status, path, text)
-	return (text ? JSON.parse(text) : null) as T
+	if (!text) return null as T
+	try {
+		return JSON.parse(text) as T
+	} catch {
+		// 200 с HTML — обычно прокси или страница-заглушка, а не ответ API
+		throw new ApiError(res.status, path, `сервер вернул не JSON: ${text.slice(0, 120)}`)
+	}
 }
 
 // --- типы ответов (только используемые поля) ------------------------------

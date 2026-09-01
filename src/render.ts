@@ -27,7 +27,9 @@ export function days(n: number | undefined | null): string {
 /** Звёзды с половинками: 4.91 → ★★★★★ */
 export function stars(avg: number | undefined): string {
 	if (!avg) return dim("нет оценок")
-	const full = Math.round(avg)
+	// шкала пятибалльная, но данные приходят из чужого API — без зажима
+	// average > 5 даёт repeat(-1) и RangeError вместо карточки
+	const full = Math.min(5, Math.max(0, Math.round(avg)))
 	return yellow("★".repeat(full) + dim("☆".repeat(5 - full)))
 }
 
@@ -90,6 +92,7 @@ export function maskPhone(v: string | undefined): string {
 
 /** Пары «поле — значение» с выровненной колонкой. */
 export function fields(rows: [string, string][], indent = "  "): string {
+	if (!rows.length) return ""
 	const w = Math.max(...rows.map(r => r[0].length))
 	return rows.map(([k, v]) => `${indent}${dim(k.padEnd(w))}  ${v}`).join("\n")
 }

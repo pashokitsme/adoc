@@ -38,7 +38,9 @@ export async function loadTokens(): Promise<Tokens | null> {
 
 export async function saveTokens(t: Tokens): Promise<void> {
 	await mkdir(dirname(TOKEN_PATH), { recursive: true })
-	await writeFile(TOKEN_PATH, JSON.stringify(t, null, 2))
+	// mode в writeFile действует только при создании, поэтому chmod следом —
+	// он чинит файл, созданный прошлой версией с правами по umask
+	await writeFile(TOKEN_PATH, JSON.stringify(t, null, 2), { mode: 0o600 })
 	await chmod(TOKEN_PATH, 0o600) // содержит refresh-токен от живого аккаунта
 }
 
@@ -73,8 +75,8 @@ export function decodeClaims(accessToken: string): Claims | null {
 	const part = accessToken.split(".")[1]
 	if (!part) return null
 	try {
-		const padded = part.replace(/-/g, "+").replace(/_/g, "/")
-		return JSON.parse(atob(padded + "=".repeat((4 - (padded.length % 4)) % 4))) as Claims
+		// не atob: он отдаёт байты как Latin-1 и портит кириллицу в именах
+		return JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Claims
 	} catch {
 		return null
 	}
@@ -118,7 +120,15 @@ export async function currentToken(): Promise<string | null> {
 	if (!t) return null
 	if (t.expires_at - 60 > Math.floor(Date.now() / 1000)) return t.access_token
 	if (!t.refresh_token) return null
-	const fresh = await refresh(t.refresh_token)
+	let fresh: Tokens
+	try {
+		fresh = await refresh(t.refresh_token)
+	} catch {
+		// refresh отозван или протух: держать негодный файл нельзя, иначе каждая
+		// команда будет вечно повторять ошибку сервера вместо «нужен вход»
+		await clearTokens()
+		return null
+	}
 	// сервер может не вернуть новый refresh — тогда держимся за старый
 	if (!fresh.refresh_token) fresh.refresh_token = t.refresh_token
 	await saveTokens(fresh)
@@ -134,11 +144,8 @@ export function parsePasted(input: string): Pasted | null {
 	const s = input.trim()
 	if (!s) return null
 
-	if (s.includes("authDiagSnapshot") || s.includes("could not find matching config")) {
-		const m = s.match(/could not find matching config for state ([A-Za-z0-9._~-]+)/)
-		return { diag: m?.[1] ?? "" }
-	}
-
+	// Токены ищем ПЕРВЫМИ: ключ authDiagSnapshot SPA пишет в тот же
+	// sessionStorage, и проверка на него раньше разбора прятала бы валидный дамп.
 	if (s.startsWith("{") || s.startsWith("[")) {
 		let found: { access_token?: string; refresh_token?: string; expires_in?: number } = {}
 		const walk = (v: unknown) => {
@@ -157,15 +164,21 @@ export function parsePasted(input: string): Pasted | null {
 				} else walk(x)
 			}
 		}
-		try { walk(JSON.parse(s)) } catch { return null }
-		if (!found.access_token) return null
-		return {
-			tokens: {
-				access_token: found.access_token,
-				refresh_token: found.refresh_token,
-				expires_at: Math.floor(Date.now() / 1000) + (found.expires_in ?? 3600),
-			},
+		try { walk(JSON.parse(s)) } catch { /* разберём как диагностику ниже */ }
+		if (found.access_token) {
+			return {
+				tokens: {
+					access_token: found.access_token,
+					refresh_token: found.refresh_token,
+					expires_at: Math.floor(Date.now() / 1000) + (found.expires_in ?? 3600),
+				},
+			}
 		}
+	}
+
+	if (s.includes("authDiagSnapshot") || s.includes("could not find matching config")) {
+		const m = s.match(/could not find matching config for state ([A-Za-z0-9._~-]+)/)
+		return { diag: m?.[1] ?? "" }
 	}
 
 	return null
