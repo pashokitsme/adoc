@@ -15,8 +15,8 @@ Autodoc не документирует свой API, а `adoc` — это не�
 ## Установка
 
 ```sh
-bun install -g github:pashokitsme/adoc
-gh skill install pashokitsme/adoc adoc
+$ bun install -g github:pashokitsme/adoc
+$ gh skill install pashokitsme/adoc adoc
 ```
 
 ## Использование
@@ -59,9 +59,9 @@ gh skill install pashokitsme/adoc adoc
 ## Авторизация
 
 ```sh
-adoc login      # авторизация при помощи логина и пароля
-adoc whoami    	# показывает текущего пользователя
-adoc logout     # разлогинивает
+$ adoc login      # авторизация при помощи логина и пароля
+$ adoc whoami    	# показывает текущего пользователя
+$ adoc logout     # разлогинивает
 ```
 
 Есть путь без пароля: в консоли браузера на сайте с открытой сессией —
