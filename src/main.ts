@@ -52,10 +52,6 @@
 // autodoc.ru с открытой сессией `copy(JSON.stringify(sessionStorage))`, буфер
 // вставляется в приглашение. Тул вытащит оттуда access и refresh токены.
 //
-// PKCE в туле нет намеренно: SPA отвергает чужой колбэк с
-// `could not find matching config for state` и код наружу не отдаёт. Проверка
-// и подробности — в docs/autodoc-api.md, чтобы находка не потерялась с кодом.
-//
 // Токен лежит в $XDG_CONFIG_HOME/adoc/token.json с правами 600 и обновляется
 // сам по refresh_token. `adoc logout` удаляет файл.
 //
