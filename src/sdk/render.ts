@@ -1,6 +1,8 @@
 // render.ts — вывод в терминал. Цвета гаснут вне TTY и при NO_COLOR,
 // чтобы `adoc ... | grep` не ловил escape-последовательности.
 
+import type { Basket, BrandHit, Car, Display, Offer, Product, Reviews } from "./contract.ts"
+
 const plain = !process.stdout.isTTY || !!process.env.NO_COLOR
 const wrap = (code: string) => (s: string) => (plain ? s : `\x1b[${code}m${s}\x1b[0m`)
 
@@ -99,4 +101,79 @@ export function fields(rows: [string, string][], indent = "  "): string {
 
 export function rule(width = 44): string {
 	return dim("─".repeat(width))
+}
+
+export const isoDate = (s: string | undefined): string | undefined => s?.slice(0, 10)
+
+const ratingCell = (r: { average: number; count: number } | undefined) =>
+	r && r.count ? `${r.average.toFixed(1)}★ (${r.count})` : dim("—")
+
+const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim("нет"))
+
+export function renderProducts(items: Product[]): string {
+	if (!items.length) return "ничего не найдено"
+	return table(items.map(p => [
+		cyan(p.article), bold(p.brand), p.name.slice(0, 50),
+		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
+	]), ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"])
+}
+
+export function renderBrands(items: BrandHit[]): string {
+	if (!items.length) return "не найдено"
+	return table(items.map(b => [bold(b.brand), cyan(b.article), b.name ?? "", ratingCell(b.rating)]),
+		["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"])
+}
+
+export function renderOffers(items: Offer[]): string {
+	if (!items.length) return "предложений нет"
+	return table(items.map((o, i) => [
+		String(i + 1), bold(o.brand), (o.name ?? "").slice(0, 40), money(o.price), qtyCell(o.quantity),
+		o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
+		o.seller ?? dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "",
+	]), ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""])
+}
+
+export function renderReviews(r: Reviews): string {
+	const out: string[] = [dim(`отзывов: ${r.total}`)]
+	if (r.rating) out.push(`${stars(r.rating.average)}  ${bold(r.rating.average.toFixed(2))}  ${dim(`${r.rating.count} оценок`)}`)
+	for (const l of bar(r.rating?.histogram)) out.push(l)
+	if (r.summary && (r.summary.pros.length || r.summary.cons.length)) {
+		out.push(heading("Выжимка"))
+		for (const p of r.summary.pros) out.push(`  ${green("+")} ${p}`)
+		for (const c of r.summary.cons) out.push(`  ${red("−")} ${c}`)
+	}
+	for (const it of r.items) {
+		const who = [it.author, it.purchased ? "покупка подтверждена" : ""].filter(Boolean).join(" · ")
+		out.push(heading(`${it.rating ? stars(it.rating) + "  " : ""}${who || "аноним"}`) + (it.date ? dim(`  ${it.date}`) : ""))
+		if (it.pros) out.push(`  ${green("+")} ${it.pros}`)
+		if (it.cons) out.push(`  ${red("−")} ${it.cons}`)
+		if (it.text) out.push(fold(it.text))
+	}
+	return out.join("\n")
+}
+
+export function renderBasket(b: Basket): string {
+	if (!b.items.length) return "корзина пуста"
+	const rows = b.items.map((it, i) => [
+		`${i + 1}`, dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 36),
+		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
+		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
+	])
+	const total = b.total ?? b.items.reduce((s, it) => s + (it.sum ?? it.price * it.quantity), 0)
+	return table(rows, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"]) +
+		`\n${dim("итого")}  ${bold(money(total))}`
+}
+
+export function renderCars(cars: Car[]): string {
+	if (!cars.length) return "гараж пуст"
+	return table(cars.map(c => [
+		bold([c.brand, c.model].filter(Boolean).join(" ")), c.modification ?? c.engine ?? dim("—"),
+		c.year ? String(c.year) : dim("—"), c.vin ?? dim("—"),
+		c.odometer ? `${c.odometer.toLocaleString("ru-RU")} км` : dim("—"),
+	]), ["АВТОМОБИЛЬ", "МОДИФИКАЦИЯ", "ГОД", "VIN", "ПРОБЕГ"])
+}
+
+export function renderDisplay(d: Display | null | undefined): string {
+	if (!d) return dim("не авторизован")
+	return fields([["имя", bold(d.name)], ["email", d.email ?? "—"], ["телефон", d.phone ?? "—"]])
 }

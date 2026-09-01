@@ -65,7 +65,7 @@
 import * as api from "./api.ts"
 import { ApiError } from "./api.ts"
 import * as auth from "./auth.ts"
-import { bar, bold, cyan, dim, days, fields, fold, green, heading, maskEmail, maskPhone, money, red, rule, stars, table, yellow } from "./render.ts"
+import { bar, bold, cyan, dim, days, fields, fold, green, heading, maskEmail, maskPhone, money, red, rule, stars, table, yellow } from "./sdk/render.ts"
 
 // --- разбор аргументов ----------------------------------------------------
 
