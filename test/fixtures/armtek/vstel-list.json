@@ -1,0 +1,129 @@
+{
+	"data": {
+		"paginator": {
+			"currentPage": 1,
+			"perPage": 50,
+			"totalCount": 3,
+			"pageCount": 1
+		},
+		"items": [
+			{
+				"vname": "Алматы ТЦ \"Car City\"",
+				"vstel": "AT02",
+				"alias": "almaty-tc-car-city-at02",
+				"adress": "г. Алматы, мкр. Баянаул, д. 57а, ТЦ \"Car City\", 1 ярус, 30 бутик",
+				"phone": "+77273309252",
+				"email": null,
+				"remark": "ПН-ВС 09:00-18:00",
+				"geolat": "43.239016000000",
+				"geolon": "76.822845000000",
+				"typobj": "Региональный склад-магазин",
+				"vkorg": 8000,
+				"mainPhotoHash": null,
+				"thumbnailLink": null,
+				"deleted": false,
+				"isActive": false,
+				"locationInformation": null,
+				"filled": false,
+				"isReturn": null,
+				"isPartialIssue": null,
+				"isPickup": false,
+				"schedule": {
+					"restrictions": []
+				}
+			},
+			{
+				"vname": "Москва МКАД 86 км",
+				"vstel": "ME86",
+				"alias": "moskva-mkad-86-km-me86",
+				"adress": "141031, Московская обл., Мытищинский р-н, МКАД 86-ой км, владение 13А, строение 1",
+				"phone": "*7600",
+				"email": "info@armtek.ru",
+				"remark": "Пн - Пт 08:00 - 17:00, Сб - Вс Выходной",
+				"geolat": "55.906885000000",
+				"geolon": "37.611043000000",
+				"typobj": "Региональный склад-магазин",
+				"vkorg": 4000,
+				"mainPhotoHash": null,
+				"thumbnailLink": null,
+				"deleted": false,
+				"isActive": true,
+				"locationInformation": null,
+				"filled": false,
+				"isReturn": false,
+				"isPartialIssue": false,
+				"isPickup": false,
+				"schedule": {
+					"restrictions": [
+						{
+							"time_from": {
+								"hours": 8,
+								"minutes": 0
+							},
+							"time_to": {
+								"hours": 17,
+								"minutes": 0
+							},
+							"days": [
+								1
+							]
+						},
+						{
+							"time_from": {
+								"hours": 8,
+								"minutes": 0
+							},
+							"time_to": {
+								"hours": 17,
+								"minutes": 0
+							},
+							"days": [
+								2
+							]
+						},
+						{
+							"time_from": {
+								"hours": 8,
+								"minutes": 0
+							},
+							"time_to": {
+								"hours": 17,
+								"minutes": 0
+							},
+							"days": [
+								3
+							]
+						},
+						{
+							"time_from": {
+								"hours": 8,
+								"minutes": 0
+							},
+							"time_to": {
+								"hours": 17,
+								"minutes": 0
+							},
+							"days": [
+								4
+							]
+						},
+						{
+							"time_from": {
+								"hours": 8,
+								"minutes": 0
+							},
+							"time_to": {
+								"hours": 17,
+								"minutes": 0
+							},
+							"days": [
+								5
+							]
+						}
+					]
+				}
+			}
+		]
+	},
+	"arr_messages": []
+}

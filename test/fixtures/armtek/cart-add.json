@@ -1,0 +1,21 @@
+{
+	"data": {
+		"items": [
+			{
+				"vbeln": 1000000,
+				"posnr": 1,
+				"comments": "",
+				"status": "",
+				"artid": 55469,
+				"keyzak": "MOV0000019",
+				"parentPosnr": 0,
+				"kwmeng": 1
+			}
+		]
+	},
+	"arr_messages": [],
+	"execution_time": {
+		"seconds": 0.041,
+		"milliseconds": 41
+	}
+}

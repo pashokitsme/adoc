@@ -346,49 +346,151 @@ armtek нет — отзыв это один `text` и `rating` 1–5.
 Значение по умолчанию у фронта — `ME86` («Москва МКАД 86 км», `vkorg` 4000);
 у вошедшего клиента вместо него надо брать `VSTEL_DATA` из карточки клиента.
 
-## Корзина — `cart-microservice/v1/*`
+## Корзина — `cart-microservice/v1/*` **[проверено]**
 
-Разобрано из бандла; живая проверка — раздел ниже по фазе 3.
+Круговой проход «добавить → изменить количество → убрать» выполнен на живом
+аккаунте; после него корзина проверена пустой двумя разными вызовами.
 
-- `GET cart-microservice/v1/base?vstels[]=<VSTEL>&clientCategory=<…>&clientSegment=<…>`
-  — состояние корзины **[из бандла]**. `clientCategory`/`clientSegment` берутся
-  из `ADDITIONAL` карточки клиента и необязательны.
-- `POST cart-microservice/v1/base` — добавить/изменить количество **[из бандла]**:
+### Заголовок `X-CA-VKORG` — ловушка
+
+`GET cart-microservice/v1/base` **молча отдаёт пустую корзину**, если не
+прислать заголовок `X-CA-VKORG: <vkorg>`. Не 400, не сообщение в
+`arr_messages` — ровно `{"items":[],"codes":[]}`, неотличимое от честно пустой
+корзины. Проверено: тот же запрос с заголовком возвращает позицию, а
+`cart/items-total-count` в это же время видит её и без заголовка.
+
+Тот же заголовок фронт шлёт и в остальные вызовы корзины, доставки и заказов.
+`vkorg` **в query** этот вызов не принимает вовсе: `?vkorg=4000` — **417**.
+
+### `GET cart-microservice/v1/base` — что в корзине
+
+Query: `vstels[]=<VSTEL>` (обязателен; пустое значение — 417),
+необязательные `clientCategory` и `clientSegment` из `ADDITIONAL` карточки
+клиента. Заголовок `X-CA-VKORG` обязателен, см. выше.
+
+→ `data: {items: [...], codes: []}`. **Итога в ответе нет** — сумму считает
+клиент. Позиция:
+
+```json
+{"posnr":1,"artid":55469,"keyzak":"MOV0000019","parnr":0,"kwmeng":1,
+ "prices":592,"prices1":"592.00","pricep":"624.00","pricem":592,"priceb":0,
+ "oldPrices":"592.00","waers":"RUB","numZak":"1",
+ "dateDel":"20260902","timeDel":"043000","orddt":"20260902030000","wrntdt":"",
+ "vstels":"ME86","zzsign":"S","charg":"","status":"","comments":"","podbor":"",
+ "dateSt":"20260902","timeSt":"023037","dateUpd":"…","timeUpd":"…",
+ "minbm":1,"rvalue":"46","rdprf":"1","saleCode":0,"parentPosnr":null,
+ "brand":"BOSCH","pin":"0 986 452 041","name":"фильтр масляный…",
+ "brandAlias":"bosch-934","articleAlias":"filtr-maslyanyy-bosch-…-55469",
+ "photo":["https://img.armtek.ru/…"],"brandIcon":"…",
+ "brgew":"258.000","laeng":"101.000","breit":"70.000","hoehe":"70.000",
+ "categories":[8963,11132],"points":{"value":0,"rule":{…}},"fav":false}
+```
+
+`posnr` — id позиции внутри корзины, им же она удаляется и обновляется.
+Любопытное: `rvalue` здесь настоящий остаток (`"46"`), тогда как поиск на том
+же складе показывал `">20"`.
+
+### `POST cart-microservice/v1/base` — добавить
 
 ```json
 {"vkorg": "4000",
- "items": [{"keyzak": "<KEYZAK>", "parnr": <+PARNR>, "artid": <+ARTID>,
-            "kwmeng": <количество>, "numZak": "<NUMZAK>",
-            "prices": <+PRICES1>, "pricem": <+PRICEP>,
-            "waers": "<WAERS>", "vstels": "<VSTEL>", "charg": "<CHARG>",
-            "zzsign": "S", "comments": "", "podbor": "", "status": "",
-            "saleCode": 0, "parentPosnr": null, "parentArtid": null,
-            "posnr": <POSNR или null>}]}
+ "items": [{"keyzak": "MOV0000019", "parnr": 0, "artid": 55469, "kwmeng": 1,
+            "numZak": "1", "prices": 592, "pricem": 624,
+            "waers": "RUB", "vstels": "ME86", "charg": "", "zzsign": "S",
+            "comments": "", "podbor": "", "status": "", "saleCode": 0,
+            "parentPosnr": null, "parentArtid": null, "posnr": 0}]}
 ```
 
-- `PUT cart-microservice/v1/base` — то же тело, обновление уже лежащей позиции
-  **[из бандла]**.
-- `DELETE cart-microservice/v1/base`, тело `{"vkorg": "4000", "posnr": [<posnr>, …]}`
-  **[из бандла]**.
-- `GET cart-microservice/v1/cart/items-total-count` — счётчик в шапке **[из бандла]**.
-- `POST cart-microservice/v1/cart/copy`, `POST cart-microservice/v1/cart/clear-discount`,
-  `GET cart-microservice/v1/cart/check-discount?vkorg=&vstels[]=&code=` **[из бандла]**.
+Числовые поля идут **числами**, хотя в выдаче поиска они строки
+(`+PARNR`, `+ARTID`, `+PRICES1`, `+PRICEP`). `posnr: 0` — «этой позиции в
+корзине ещё нет».
 
-## Гараж — `garage/v2/*` и `task-selection-microservice` **[из бандла]**
+→ `data.items[]` — только затронутые позиции:
+`{"vbeln":<номер корзины>,"posnr":1,"artid":…,"keyzak":"…","kwmeng":1,"parentPosnr":0,"comments":"","status":""}`
+
+**POST по существующему `posnr` отвечает 400** — добавление и изменение не
+взаимозаменяемы.
+
+### `PUT cart-microservice/v1/base` — изменить количество
+
+Тело то же, но `posnr` — существующий, `kwmeng` — новое количество. Ответ той
+же формы, что у POST. Проверено: `kwmeng` 1 → 2 меняется и виден в `GET base`.
+
+### `DELETE cart-microservice/v1/base` — убрать
+
+Тело `{"vkorg": "4000", "posnr": [1]}` (массив). → `data: true`.
+
+### `GET cart-microservice/v1/cart/items-total-count?vkorg=<vkorg>`
+
+`vkorg` в query **обязателен**, иначе 400. → `{"count": 1, "items":
+[{"artid": …, "posnr": …, "keyzak": "…", "kwmeng": 1}]}`. Годится как дешёвая
+проверка «пуста ли корзина» — заголовок `X-CA-VKORG` ей не нужен.
+
+### Прочее в сервисе
+
+- `GET cart-microservice/v1/basket` — корзина ЭТП (B2B), просит `login` и
+  `kunag`; для розничного аккаунта не наш путь **[проверено, 400]**.
+- `POST cart/copy`, `POST cart/clear-discount`,
+  `GET cart/check-discount?vkorg=&vstels[]=&code=` **[из бандла]**.
+
+## Гараж — `garage/v2/*` и `task-selection-microservice`
 
 - `GET task-selection-microservice/v1/garage/get-transport-list-by-filter?client_id=<CLIENT_ID>`
-- `GET garage/v2/get-transport?transport_id=<id>`
-- `GET garage/v2/get-transport-types-list`
-- `GET garage/v2/history-by-vin?vin=<vin>`
-- `GET task-selection-microservice/v1/garage/get-data-by-vin-code-extended?vin=<vin>`
-- пишущие: `POST garage/v2/add-transport`, `PUT garage/v2/update-transport`,
-  `DELETE garage/v2/del-transport`, загрузка файлов и картинок.
+  **[проверено]** — `client_id` берётся из клейма `data.clientId` access-токена
+  или из `CLIENT_ID` карточки клиента. На пустом гараже →
+  `{"garageTypes":[],"transportList":[],"collectionList":{"data":[]}}`.
+  **Форма непустой машины не проверена**: у тестового аккаунта гараж пуст, а
+  добавлять машину владелец не разрешал.
+- `GET garage/v2/get-transport-types-list` **[проверено]** → справочник:
+  `[{"id":1,"title":"Легковой автомобиль","key":"Car","position":1,"active":1,
+  "linking_target_type":"P"}, … Truck, Bus, Trailer, SpecialMachinery, Motorcycle]`.
+- `GET garage/v2/get-transport?transport_id=<id>` **[из бандла]**
+- `GET garage/v2/history-by-vin?vin=<vin>` **[из бандла]**
+- `GET task-selection-microservice/v1/garage/get-data-by-vin-code-extended?vin=<vin>` **[из бандла]**
+- пишущие **[из бандла]**: `POST garage/v2/add-transport`,
+  `PUT garage/v2/update-transport`, `DELETE garage/v2/del-transport`,
+  `POST garage/v2/upload-transport-file`, `…/upload-transport-image`.
 
-## Заказы — `order-microservice/v1/*` **[из бандла]**
+## Заказы — `order-microservice/v1/*`
 
-`GET order-microservice/v1/order/get-info`, `…/order/get-full-position-statuses`,
-`…/delivery`, `…/proforma`, `…/order/report/purchases`; создание —
-`POST order-microservice/v1/claim/create`.
+`GET order-microservice/v1/order/get-info` **[проверено]** — список заказов.
+Параметры из фронта: `dateFrom`, `dateTo` (`YYYY-MM-DD`), `page`, а также флаги
+состояния `created`, `inProgress`, `closed`, `rejected` (по единице). У
+тестового аккаунта заказов нет — и без параметров, и с диапазоном 2020–2026
+ответ `data: []`, поэтому **форма заказа не проверена**.
+
+Остальное **[из бандла]**: `…/order/get-full-position-statuses`, `…/delivery`,
+`…/proforma`, `…/order/report/purchases`, `…/order/positions/cancel`;
+создание заказа — `POST order-microservice/v1/claim/create`, оплата —
+`POST order-microservice/v1/order/payment/create`. Ничего из пишущего не
+трогалось.
+
+## Отзывы аккаунта **[проверено]**
+
+- `GET review-microservice/v2/review/get-list-by-client-id?clientId=<CLIENT_ID>&page=1&isRemove=false`
+  → `{"paginator":{…},"items":[]}` на аккаунте без отзывов.
+- `GET review-microservice/v2/review/get-received-positions?vstelList[]=<VSTEL>`
+  → `[]` — товары, на которые можно оставить отзыв (то есть полученные).
+
+## Что провайдер уже умеет
+
+`login`, `logout`, `whoami` — работают. `search`, `brands`, `offers`, отзывы,
+корзина и гараж пока не реализованы; всё, что для них нужно, описано выше.
+
+Вход без терминала: `login` берёт `ARMTEK_PHONE` и `ARMTEK_PASSWORD` из
+окружения, когда заданы обе переменные, иначе спрашивает в tty. Пароль на диск
+не попадает; в `accounts/armtek.json` лежат только `access`, `refresh`,
+`expires`, `vkorg`, `vstel` и кэш гостевого токена.
+
+## Фикстуры
+
+`test/fixtures/armtek/` — реальные ответы от 2026-09-02, вычищенные:
+`search-list.json`, `search-card.json`, `search-brand-group.json`,
+`reviews-list.json`, `reviews-rating.json`, `cart-list.json`, `cart-add.json`,
+`cart-put.json`, `cart-delete.json`, `cart-count.json`, `vstel-list.json`,
+`garage-empty.json`, `orders-empty.json`, `error-validation.json` и
+синтетический `client.json` (карточка клиента целиком выдумана: настоящая
+состоит из персональных данных).
 
 ## Что ещё есть в бандле
 

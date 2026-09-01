@@ -5,8 +5,9 @@
 // access живёт двое суток, refresh — три месяца, и refresh при обновлении
 // ротируется, поэтому новый обязателен к сохранению.
 //
-// Пароль на диск не попадает: он живёт только в аргументе запроса. В файле
-// аккаунта лежат токены, точка выдачи и то, что показывает whoami.
+// На диск не попадают ни пароль, ни персональные данные: пароль живёт только
+// в аргументе запроса, а имя, почта и телефон каждый раз спрашиваются у сайта.
+// В файле аккаунта — токены, сбытовая организация и точка выдачи.
 
 import { ProviderError, type Ctx, type Display } from "../../sdk/index.ts"
 import { call, fetchGuestToken, type Tokens } from "./api.ts"
@@ -21,7 +22,6 @@ export type Account = {
 	vkorg: string
 	/** точка выдачи: от неё зависят цены, сроки и наличие в выдаче поиска */
 	vstel: string
-	display?: Display
 }
 
 export const DEFAULT_VKORG = "4000"
@@ -175,13 +175,12 @@ export async function login(ctx: Ctx<Account>): Promise<{ account: Account; disp
 	const client = await fetchClient(t.accessToken)
 	const display = displayOf(client, decodeClaims(t.accessToken)?.data?.login ?? userLogin)
 	const place = placeOf(client)
-	account.display = display
 	if (place.vkorg) account.vkorg = place.vkorg
 	if (place.vstel) account.vstel = place.vstel
 	return { account, display }
 }
 
-/** Кто вошёл. Профиль спрашивается у сайта, ответ кладётся в файл аккаунта. */
+/** Кто вошёл. Профиль спрашивается у сайта; в файл едут только vkorg и vstel. */
 export async function whoami(ctx: Ctx<Account>): Promise<Display | null> {
 	if (!ctx.account?.access) return null
 	const token = await accessToken(ctx)
@@ -189,8 +188,10 @@ export async function whoami(ctx: Ctx<Account>): Promise<Display | null> {
 	const display = displayOf(client, decodeClaims(token)?.data?.login ?? "armtek")
 	const a = ctx.account
 	if (a) {
+		// Имя, почта и телефон в файл не пишутся: whoami и так спрашивает их у
+		// сайта, а лишние персональные данные на диске ни к чему.
 		const place = placeOf(client)
-		await ctx.saveAccount({ ...a, display, vkorg: place.vkorg ?? a.vkorg, vstel: place.vstel ?? a.vstel })
+		await ctx.saveAccount({ ...a, vkorg: place.vkorg ?? a.vkorg, vstel: place.vstel ?? a.vstel })
 	}
 	return display
 }

@@ -1,0 +1,20 @@
+{
+	"data": [
+		{
+			"artId": 55469,
+			"reviewCount": 2,
+			"rating": "5.0",
+			"fiveStarsCount": 2,
+			"fourStarsCount": 0,
+			"threeStarsCount": 0,
+			"twoStarsCount": 0,
+			"oneStarsCount": 0,
+			"active": true
+		}
+	],
+	"arr_messages": [],
+	"execution_time": {
+		"seconds": 0.031,
+		"milliseconds": 31
+	}
+}
