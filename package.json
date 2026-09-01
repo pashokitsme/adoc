@@ -5,7 +5,7 @@
 	"type": "module",
 	"description": "Агрегатор магазинов автозапчастей: autodoc.ru, armtek.ru",
 	"bin": {
-		"adoc": "./src/main.ts",
+		"adoc": "./src/providers/autodoc/main.ts",
 		"adoc-autodoc": "./src/providers/autodoc/main.ts"
 	},
 	"scripts": {

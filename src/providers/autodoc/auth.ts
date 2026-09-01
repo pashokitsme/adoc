@@ -37,7 +37,9 @@ export const clearTokens = (): Promise<void> => store().clear()
 
 /**
  * До версии 2 токен лежал в <config>/token.json. Переносим в accounts/autodoc.json,
- * если нового файла ещё нет; старый удаляем, чтобы refresh-токен не жил в двух местах.
+ * только если нового файла ещё нет; тогда старый удаляем, чтобы refresh-токен не
+ * жил в двух местах. Когда новый файл уже есть, старый не трогаем: его содержимое
+ * могло бы затереть свежий вход.
  */
 export async function migrateLegacyToken(): Promise<boolean> {
 	const legacy = join(configDir(), "token.json")
