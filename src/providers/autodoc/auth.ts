@@ -7,9 +7,10 @@
 // чужой колбэк с `could not find matching config for state` и код наружу не
 // отдаёт. Подробности и проверка — в autodoc-api.md.
 
-import { mkdir, chmod, readFile, writeFile, unlink } from "node:fs/promises"
-import { dirname, join } from "node:path"
-import { homedir } from "node:os"
+import { readFile, unlink } from "node:fs/promises"
+import { join } from "node:path"
+import { accountStore } from "../../sdk/account.ts"
+import { configDir } from "../../sdk/config.ts"
 
 export const AUTH = "https://login.autodoc.ru"
 export const CLIENT_ID = "Angular"
@@ -26,26 +27,30 @@ export type Tokens = {
 	expires_at: number // unix seconds
 }
 
-const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
-export const TOKEN_PATH = join(configHome, "adoc", "token.json")
-export async function loadTokens(): Promise<Tokens | null> {
+export const ACCOUNT_ID = "autodoc"
+const store = () => accountStore<Tokens>(ACCOUNT_ID)
+export const accountPath = () => store().path
+
+export const loadTokens = (): Promise<Tokens | null> => store().load()
+export const saveTokens = (t: Tokens): Promise<void> => store().save(t)
+export const clearTokens = (): Promise<void> => store().clear()
+
+/**
+ * До версии 2 токен лежал в <config>/token.json. Переносим в accounts/autodoc.json,
+ * если нового файла ещё нет; старый удаляем, чтобы refresh-токен не жил в двух местах.
+ */
+export async function migrateLegacyToken(): Promise<boolean> {
+	const legacy = join(configDir(), "token.json")
+	if (await store().load()) return false
+	let t: Tokens
 	try {
-		return JSON.parse(await readFile(TOKEN_PATH, "utf8")) as Tokens
+		t = JSON.parse(await readFile(legacy, "utf8")) as Tokens
 	} catch {
-		return null
+		return false
 	}
-}
-
-export async function saveTokens(t: Tokens): Promise<void> {
-	await mkdir(dirname(TOKEN_PATH), { recursive: true })
-	// mode в writeFile действует только при создании, поэтому chmod следом —
-	// он чинит файл, созданный прошлой версией с правами по umask
-	await writeFile(TOKEN_PATH, JSON.stringify(t, null, 2), { mode: 0o600 })
-	await chmod(TOKEN_PATH, 0o600) // содержит refresh-токен от живого аккаунта
-}
-
-export async function clearTokens(): Promise<void> {
-	try { await unlink(TOKEN_PATH) } catch { /* уже нет */ }
+	await saveTokens(t)
+	try { await unlink(legacy) } catch { /* уже нет */ }
+	return true
 }
 
 // --- разбор токена --------------------------------------------------------

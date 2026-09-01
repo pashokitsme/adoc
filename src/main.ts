@@ -58,9 +58,9 @@
 // Карта всех 214 эндпоинтов, соглашения по параметрам и что именно требует
 // авторизации — в docs/autodoc-api.md.
 
-import * as api from "./api.ts"
-import { ApiError } from "./api.ts"
-import * as auth from "./auth.ts"
+import * as api from "./providers/autodoc/api.ts"
+import { ApiError } from "./providers/autodoc/api.ts"
+import * as auth from "./providers/autodoc/auth.ts"
 import { bar, bold, cyan, dim, days, fields, fold, green, heading, maskEmail, maskPhone, money, red, rule, stars, table, yellow } from "./sdk/render.ts"
 
 // --- разбор аргументов ----------------------------------------------------
@@ -310,7 +310,7 @@ function accountFields(c: auth.Claims | null, t: auth.Tokens): [string, string][
 		["токен", left > 0 ? `живёт ещё ${Math.floor(left / 60)} мин` : yellow("протух")],
 		["refresh", t.refresh_token ? green("есть") : yellow("нет")],
 		["доступ", services.length ? dim(`${services.length} сервисов`) : dim("—")],
-		["файл", dim(auth.TOKEN_PATH.replace(process.env.HOME ?? "", "~"))],
+		["файл", dim(auth.accountPath().replace(process.env.HOME ?? "", "~"))],
 	]
 }
 
@@ -481,7 +481,7 @@ else {
 			case "logout": {
 				const had = await auth.loadTokens()
 				await auth.clearTokens()
-				console.log(had ? `токен удалён — ${dim(auth.TOKEN_PATH)}` : dim("токена и не было"))
+				console.log(had ? `токен удалён — ${dim(auth.accountPath())}` : dim("токена и не было"))
 				break
 			}
 			case "whoami":    await cmdWhoami(); break
