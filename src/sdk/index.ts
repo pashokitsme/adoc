@@ -1,0 +1,12 @@
+// Публичная поверхность SDK для провайдеров.
+export { defineProvider } from "./define.ts"
+export type { BasketOps, CommandResult, Ctx, ProviderCommand, ProviderSpec } from "./define.ts"
+export { runProvider } from "./run.ts"
+export { ProviderError } from "./errors.ts"
+export type { ErrorMapper } from "./errors.ts"
+export { HttpError, fetchJson } from "./http.ts"
+export { articleKey, brandKey } from "./keys.ts"
+export { accountStore } from "./account.ts"
+export { CONFIG_DIR_ENV, TOOL, configDir } from "./config.ts"
+export * from "./contract.ts"
+export * as render from "./render.ts"
