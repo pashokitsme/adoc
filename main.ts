@@ -23,6 +23,9 @@
 //   garage main <carId>         Сделать машину основной
 //
 // Аккаунт:
+//   skill                       Куда установлен скилл для агента
+//   skill install               Связать скилл с ~/.claude/skills
+//
 //   login                       Войти (см. ниже)
 //   logout                      Забыть токен
 //   whoami                      Показать, есть ли живой токен
@@ -61,6 +64,11 @@
 //
 // Карта всех 214 эндпоинтов, соглашения по параметрам и что именно требует
 // авторизации — в docs/autodoc-api.md.
+
+import { mkdir, lstat, readlink, rm, stat, symlink } from "node:fs/promises"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { homedir } from "node:os"
 
 import * as api from "./api.ts"
 import { ApiError } from "./api.ts"
@@ -308,6 +316,31 @@ function accountFields(c: auth.Claims | null, t: auth.Tokens): [string, string][
 	]
 }
 
+async function cmdSkill(sub?: string): Promise<void> {
+	// каталог скилла лежит рядом с main.ts — и в git-клоне, и в глобальной
+	// установке bun, так что симлинк на него переживает обновление пакета
+	const src = fileURLToPath(new URL("skills/adoc", import.meta.url))
+	const dst = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "skills", "adoc")
+
+	if (sub !== "install") {
+		const linked = await stat(dst).then(() => true).catch(() => false)
+		console.log(`  ${dim("скилл в пакете")}  ${src}`)
+		console.log(`  ${dim("установлен")}      ${linked ? green(dst) : dim("нет — `adoc skill install`")}`)
+		return
+	}
+
+	await mkdir(dirname(dst), { recursive: true })
+	const existing = await lstat(dst).catch(() => null)
+	if (existing) {
+		const same = existing.isSymbolicLink() && (await readlink(dst)) === src
+		if (same) { console.log(dim(`уже связан: ${dst}`)); return }
+		if (flags.force !== true) die(`${dst} уже существует — повтори с --force`)
+		await rm(dst, { recursive: true, force: true })
+	}
+	await symlink(src, dst)
+	console.log(green(`скилл связан: ${dst}`))
+}
+
 async function cmdGarage(sub?: string, arg?: string): Promise<void> {
 	if (sub === "main") {
 		const id = Number(arg)
@@ -466,6 +499,7 @@ else {
 			case "favorites": out(args[0] ? await api.favorites(Number(args[0])) : await api.favoriteLists()); break
 			case "orders":    out(await api.orders()); break
 			case "garage":    await cmdGarage(args[0], args[1]); break
+			case "skill":     await cmdSkill(args[0]); break
 			case "profile":   out(await api.profile()); break
 			case "login":     await cmdLogin(); break
 			case "logout": {

@@ -19,16 +19,21 @@ API за ней рабочий, просто недокументированн�
 Нужен [Bun](https://bun.sh).
 
 ```sh
-git clone https://github.com/pashokitsme/adoc ~/Source/repos/adoc
-cd ~/Source/repos/adoc && ./install.sh
+bun install -g github:pashokitsme/adoc
+adoc skill install
 ```
 
-Ставит симлинк `~/.local/bin/adoc` и скилл в `~/.claude/skills/adoc`, после
-чего агент знает, когда звать `adoc`, и не пытается открыть autodoc.ru
-браузером. Агенту установку можно поручить целиком:
+Второй командой рядом встаёт скилл для агента — после неё Claude Code сам
+знает, когда звать `adoc`, и не пытается открыть autodoc.ru браузером (у него
+это не выйдет, сайт не рендерится вне обычного Chrome). Агенту установку можно
+поручить целиком:
 
-> Установи https://github.com/pashokitsme/adoc, запусти ./install.sh и проверь,
-> что `adoc part n90954802` печатает таблицу с производителем VAG.
+> Установи https://github.com/pashokitsme/adoc через `bun install -g`, выполни
+> `adoc skill install` и проверь, что `adoc part n90954802` печатает таблицу с
+> производителем VAG.
+
+Обновление — той же командой, удаление — `bun remove -g adoc`. Для правок в
+самом туле удобнее клон и `./install.sh`: он линкует checkout, а не копию.
 
 ## Команды
 
@@ -43,6 +48,7 @@ cd ~/Source/repos/adoc && ./install.sh
 | `garage` | машины; `parts <id>` — подборка под них | да |
 | `basket` · `favorites` · `orders` · `profile` | | да |
 | `get <путь> [k=v]` | любой эндпоинт из карты API | `--auth` |
+| `skill install` | связать скилл с `~/.claude/skills` | |
 
 Один артикул бывает у нескольких производителей — тогда `adoc` покажет список и
 выйдет с кодом 2, добавь `brandId` вторым аргументом. `--json` отдаёт сырой
