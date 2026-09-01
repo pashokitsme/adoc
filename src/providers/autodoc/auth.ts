@@ -124,6 +124,8 @@ export async function currentToken(): Promise<string | null> {
 	const t = await loadTokens()
 	if (!t) return null
 	if (t.expires_at - 60 > Math.floor(Date.now() / 1000)) return t.access_token
+	// в фикстурном режиме сети нет: протухший токен считаем отсутствующим
+	if (process.env.ADOC_FIXTURES) return null
 	if (!t.refresh_token) return null
 	let fresh: Tokens
 	try {

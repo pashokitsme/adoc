@@ -5,6 +5,8 @@
 // ошибку приходится опознавать по статусу, а не по JSON.
 
 import { currentToken } from "./auth.ts"
+// только типы: цикл api ↔ map существует лишь на уровне типов и стирается при сборке
+import type { Originals, RawBasket } from "./map.ts"
 
 export const BASE = "https://web.autodoc.ru"
 
@@ -23,6 +25,17 @@ async function call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, 
 	body?: unknown
 	auth?: boolean
 } = {}): Promise<T> {
+	// Фикстурный режим: ответы читаются с диска, сеть не трогаем совсем.
+	// Имя файла — метод и путь: `<METHOD>_<путь с _ вместо />.json`.
+	const fixtures = process.env.ADOC_FIXTURES
+	if (fixtures) {
+		if (opts.auth && !(await currentToken())) throw new ApiError(401, path, "")
+		const name = `${method}_${path.replace(/\//g, "_")}.json`
+		const f = Bun.file(`${fixtures}/${name}`)
+		if (!(await f.exists())) throw new ApiError(404, path, `нет фикстуры ${name}`)
+		return JSON.parse(await f.text()) as T
+	}
+
 	const url = new URL(BASE + path)
 	for (const [k, v] of Object.entries(opts.query ?? {})) {
 		if (v !== undefined && v !== "") url.searchParams.set(k, String(v))
@@ -122,16 +135,22 @@ export const categoryGoods = (CategoryId: number, opts: { PageNumber?: number; S
 // --- требует токена -------------------------------------------------------
 
 export const offers = (Article: string, ManufacturerId: number) =>
-	call<unknown>("GET", "/api/price-service/price-list/originals", {
+	call<Originals>("GET", "/api/price-service/price-list/originals", {
 		query: { Article, ManufacturerId, LoadAnalogs: false }, auth: true,
 	})
 
 export const analogs = (Article: string, ManufacturerId: number) =>
-	call<unknown>("GET", "/api/price-service/price-list/analogs", {
+	call<Originals>("GET", "/api/price-service/price-list/analogs", {
 		query: { Article, ManufacturerId }, auth: true,
 	})
 
-export const basket = () => call<unknown>("GET", "/api/basket-service/basket/items", { auth: true })
+export const basket = () => call<RawBasket>("GET", "/api/basket-service/basket/items", { auth: true })
+export const basketAdd = (body: Record<string, unknown>) =>
+	call<unknown>("POST", "/api/basket-service/basket/items", { body, auth: true })
+export const basketUpdate = (body: { id: number | string; quantity: number; description?: string; priceType?: number; hash?: string }) =>
+	call<unknown>("PUT", "/api/basket-service/basket/items", { body, auth: true })
+export const basketDelete = (body: { items: { id: number | string; priceType?: number; hash?: string }[]; deleteAll: false }) =>
+	call<unknown>("DELETE", "/api/basket-service/basket/items", { body, auth: true })
 export const basketCount = () => call<unknown>("GET", "/api/basket-service/basket/count", { auth: true })
 export const favorites = (Id?: number) =>
 	call<unknown>("GET", "/api/favorite-service/favorites/favorites", { query: { Id }, auth: true })
