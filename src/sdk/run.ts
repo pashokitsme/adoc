@@ -8,7 +8,7 @@ import type { Ctx, ProviderSpec } from "./define.ts"
 import { ProviderError, errorBody, exitCode, type ErrorMapper } from "./errors.ts"
 import { HttpError } from "./http.ts"
 import { emit } from "./out.ts"
-import { bold, dim, fields, red, renderBasket, renderBrands, renderCars, renderDisplay, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews } from "./render.ts"
+import { bold, dim, fields, linksHint, red, renderBasket, renderBrands, renderCars, renderDisplay, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews } from "./render.ts"
 import { TOOL } from "./config.ts"
 
 const CONTRACT_VALUE_FLAGS = ["brand", "page", "limit", "qty", "ref", "car"]
@@ -208,7 +208,12 @@ export async function runProvider<A>(spec: ProviderSpec<A>, argv: string[] = pro
 		ctx.page = pageNum("page", flags.page, 1)
 		ctx.limit = pageNum("limit", flags.limit, 10)
 		const out = await dispatch(spec, ctx, args)
-		return await emit(process.stdout, (json ? JSON.stringify(out.json) : out.render()) + "\n", 0)
+		if (json) return await emit(process.stdout, JSON.stringify(out.json) + "\n", 0)
+		// Подсказка про клик — одна на весь вывод и только когда ссылки в нём
+		// и правда вшиты: правило то же, что у обёртки.
+		const text = out.render()
+		const tip = linksHint(text)
+		return await emit(process.stdout, text + (tip ? `\n${tip}` : "") + "\n", 0)
 	} catch (e) {
 		// Один разбор ошибки на оба вывода: код в JSON и код в exit-е — из
 		// одного места, иначе текстовый и машинный ответы разошлись бы.

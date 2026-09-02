@@ -4,7 +4,7 @@
 // Единственное исключение — интерактивный `login`: его диалог идёт прямо в
 // терминал, иначе подсказка «Пароль >» появилась бы после ввода пароля.
 
-import { ProviderError, TOOL, errorBody, exitCode, parseArgv, red, renderBrands, yellow } from "./sdk/index.ts"
+import { ProviderError, TOOL, errorBody, exitCode, linksHint, parseArgv, red, renderBrands, yellow } from "./sdk/index.ts"
 import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
 import { cmdAnalogs } from "./commands/analogs.ts"
@@ -107,7 +107,12 @@ export async function run(argv: string[]): Promise<RunResult> {
 		}
 
 		const out = await handler(ctx)
-		return { stdout: `${json ? JSON.stringify(out.json) : out.render()}\n`, stderr, code: out.code ?? 0 }
+		if (json) return { stdout: `${JSON.stringify(out.json)}\n`, stderr, code: out.code ?? 0 }
+		// Подсказка про клик — последней строкой всего вывода, а не под каждой
+		// таблицей: у `part` их две, а сказать это надо один раз за запуск.
+		const text = out.render()
+		const tip = linksHint(text)
+		return { stdout: `${text}${tip ? `\n${tip}` : ""}\n`, stderr, code: out.code ?? 0 }
 	} catch (e) {
 		// Список вариантов, собранный из половины сайтов, — неполный список:
 		// молчать про упавшего нельзя ни человеку, ни машине.
@@ -127,10 +132,13 @@ export async function run(argv: string[]): Promise<RunResult> {
 				renderBrands(e.brands, [whereCol<MergedBrand>()]),
 				...extraLinks(e.brands),
 				"",
-				hint(`повтори с брендом: ${TOOL} ${ran} <артикул> <бренд> или --brand <бренд>`),
+				hint(`повторить с брендом: ${TOOL} ${ran} <артикул> <бренд> или --brand <бренд>`),
 			].join("\n")}\n`
 			: ""
-		return { stdout: "", stderr: `${stderr}${red(body.error.message)}\n${table}`, code }
+		// Таблица вариантов — тоже таблица со ссылками: подсказка про клик
+		// нужна и здесь, иначе её увидят не все, кто эти ссылки получил.
+		const tip = table ? linksHint(table) : ""
+		return { stdout: "", stderr: `${stderr}${red(body.error.message)}\n${table}${tip ? `${tip}\n` : ""}`, code }
 	}
 }
 

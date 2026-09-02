@@ -7,7 +7,7 @@ process.env.NO_COLOR = "1"
 process.env.ADOC_LINKS = "list"
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { days, hyperlink, isoDate, linksMode, renderBasket, renderBrands, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews, table } from "../../src/sdk/render.ts"
+import { LINKS_HINT, days, hyperlink, isoDate, linksHint, linksMode, renderBasket, renderBrands, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews, table } from "../../src/sdk/render.ts"
 
 describe("days", () => {
 	test("склонение", () => {
@@ -304,10 +304,11 @@ describe("ссылки в тексте (osc8)", () => {
 		expect(osc8(() => table([[cell, "bb"], ["ccc", "d"]]))).toBe(`${cell}    bb\nccc  d`)
 	})
 
-	test("адрес вшит в номер и название, списка под таблицей нет", () => {
+	test("адрес вшит в номер, артикул и название, списка под таблицей нет", () => {
 		const out = osc8(() => renderProducts([{ article: "N1", brand: "VAG", name: "Болт", url: "https://x/1" }]))
 		expect(out).toContain(hyperlink("Болт", "https://x/1"))
 		expect(out).toContain(hyperlink("1", "https://x/1"))
+		expect(out).toContain(hyperlink("N1", "https://x/1"))
 		// на экране адреса нет вовсе: он только внутри escape
 		expect(strip(out)).not.toContain("https://")
 	})
@@ -320,6 +321,26 @@ describe("ссылки в тексте (osc8)", () => {
 		const list = renderProducts(items)
 		// список адресов — последние строки; таблица обязана совпасть посимвольно
 		expect(strip(osc8(() => renderProducts(items)))).toBe(list.split("\n").slice(0, 3).join("\n"))
+	})
+
+	test("артикул кликается везде, где он есть колонкой", () => {
+		expect(osc8(() => renderBrands([{ brand: "VAG", article: "N1", url: "https://x/b" }])))
+			.toContain(hyperlink("N1", "https://x/b"))
+		expect(osc8(() => renderBasket({ currency: "RUB", items: [{ id: "1", article: "N1", brand: "VAG", price: 1, quantity: 1, url: "https://x/i" }] })))
+			.toContain(hyperlink("N1", "https://x/i"))
+		expect(osc8(() => renderOrders([{
+			id: "1", date: "2026-09-01", status: "ок", total: 1, currency: "RUB",
+			items: [{ article: "N1", brand: "VAG", name: "Болт", qty: 1, price: 1, url: "https://x/p" }],
+		}]))).toContain(hyperlink("N1", "https://x/p"))
+	})
+
+	test("подсказка про клик — только под выводом со вшитой ссылкой", () => {
+		const out = osc8(() => renderProducts([{ article: "N1", brand: "VAG", name: "Болт", url: "https://x/1" }]))
+		expect(osc8(() => linksHint(out))).toContain(LINKS_HINT)
+		// нечего кликать — не о чем и подсказывать
+		expect(osc8(() => linksHint("просто таблица"))).toBe("")
+		// в списке адресов подсказка не нужна: адрес и так виден целиком
+		expect(linksHint(out)).toBe("")
 	})
 
 	test("бренд, предложение и позиция корзины кликаются", () => {

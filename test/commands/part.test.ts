@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
+import { CONFIG_DIR_ENV, LINKS_HINT } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { LAST_PART_FILE } from "../../src/core/lastpart.ts"
 import { filePath, readJson } from "../../src/core/store.ts"
@@ -269,6 +269,16 @@ describe("adoc part", () => {
 		const url = "https://beta.example/p/N%20909%20548%2002"
 		expect(r.stdout).toContain(`\x1b]8;;${url}\x1b\\beta\x1b]8;;\x1b\\`)
 		expect(r.stdout.replace(/\x1b\]8;;[^\x07\x1b]*(\x1b\\|\x07)/g, "")).not.toContain("https://")
+	})
+
+	test("в osc8 под выводом одна подсказка про клик, в списке её нет", async () => {
+		process.env.ADOC_LINKS = "osc8"
+		const r = await run(["part", "n90954802", "--analogs"])
+		// две таблицы, а подсказка одна на весь запуск и последней строкой
+		expect(r.stdout.split(LINKS_HINT).length - 1).toBe(1)
+		expect(r.stdout.trimEnd().split("\n").at(-1)).toContain(LINKS_HINT)
+		process.env.ADOC_LINKS = "list"
+		expect((await run(["part", "n90954802"])).stdout).not.toContain(LINKS_HINT)
 	})
 
 	test("у аналогов свой список, нумерация продолжает основную", async () => {

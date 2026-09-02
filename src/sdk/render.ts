@@ -64,6 +64,22 @@ export const hyperlink = (text: string, url: string): string =>
 	`\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`
 
 /**
+ * Подсказка под таблицей: в режиме osc8 адрес не виден, и без строки про клик
+ * таблица читается как обычный текст — владелец решил, что ссылок нет вовсе.
+ * Модификатор у терминалов разный, поэтому названы оба.
+ */
+export const LINKS_HINT = "ссылки — Cmd+клик (iTerm2, WezTerm, ghostty) или Ctrl+клик (kitty, VS Code, Windows Terminal)"
+
+/**
+ * Та же подсказка, но только когда ей есть о чём говорить: `text` — уже
+ * собранный вывод, и без единой вшитой ссылки подсказывать нечего. Печатается
+ * она один раз, потому что и вывод собирается один раз за запуск.
+ */
+export function linksHint(text: string): string {
+	return linksMode() === "osc8" && text.includes("\x1b]8;;") ? dim(LINKS_HINT) : ""
+}
+
+/**
  * Ячейка-ссылка: в режиме osc8 адрес строки вшивается в её собственный текст,
  * и список адресов под таблицей становится не нужен. Пустой текст не
  * оборачиваем — кликать было бы нечего, а ширину ячейки это не меняет.
@@ -174,7 +190,7 @@ export const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim(
 export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "ничего не найдено"
 	return table(items.map((p, i) => cellsNum(cols, p, i + 1, [
-		cyan(p.article), bold(p.brand), cellLink(p.url, p.name.slice(0, 50)),
+		cellLink(p.url, cyan(p.article)), bold(p.brand), cellLink(p.url, p.name.slice(0, 50)),
 		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
 	], p.url)), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
 		+ urlList(items)
@@ -184,7 +200,7 @@ export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []
 	if (!items.length) return "не найдено"
 	// имя режется: у armtek в него уезжает применимость целиком
 	return table(items.map((b, i) => cellsNum(cols, b, i + 1, [
-		cellLink(b.url, bold(b.brand)), cyan(b.article), (b.name ?? "").slice(0, 50), ratingCell(b.rating),
+		cellLink(b.url, bold(b.brand)), cellLink(b.url, cyan(b.article)), (b.name ?? "").slice(0, 50), ratingCell(b.rating),
 	], b.url)), headsNum(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
 		+ urlList(items)
 }
@@ -271,7 +287,7 @@ export const basketTotal = (b: Basket): number =>
 export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
 	if (!b.items.length) return "корзина пуста"
 	const rows = b.items.map((it, i) => cellsNum(cols, it, i + 1, [
-		dim(it.id), cyan(it.article), bold(it.brand), cellLink(it.url, (it.name ?? "").slice(0, 36)),
+		dim(it.id), cellLink(it.url, cyan(it.article)), bold(it.brand), cellLink(it.url, (it.name ?? "").slice(0, 36)),
 		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
 		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
 	], it.url))
@@ -338,7 +354,7 @@ export function renderOrders(items: Order[]): string {
 		out.push(`${bold(`№ ${o.id}`)}  ${dim(isoDate(o.date) || "—")}  ${green(o.status)}  ${bold(money(o.total))}${own ? `  ${own}` : ""}`)
 		if (o.items?.length) {
 			out.push(table(o.items.map((it, i) => [
-				`  ${cellLink(it.url, String(i + 1))}`, cyan(it.article), bold(it.brand), cellLink(it.url, it.name.slice(0, 40)),
+				`  ${cellLink(it.url, String(i + 1))}`, cellLink(it.url, cyan(it.article)), bold(it.brand), cellLink(it.url, it.name.slice(0, 40)),
 				`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
 			])))
 			// отступ тот же, что у номеров позиций: номер и адрес читаются парой
