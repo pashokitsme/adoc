@@ -14,17 +14,35 @@ export const hint = (s: string): string => dim(s)
 /** Блок подсказок: пустая строка перед ними одна на всех, а не на каждую. */
 export const tips = (lines: string[]): string[] => (lines.length ? ["", ...lines.map(hint)] : [])
 
+/**
+ * Путь к бинарю в колонку. Установленный провайдер — это короткий
+ * `/usr/local/bin/adoc-armtek`, а запущенный из исходников тянет за собой весь
+ * путь до рабочего каталога и растягивает таблицу вдвое. В глаза нужен хвост:
+ * по нему и видно, какой именно файл запускается. Целиком путь никуда не
+ * девается — он в `providers --json`.
+ */
+function shortPath(path: string): string {
+	const home = process.env.HOME
+	const p = home && path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path
+	if (p.length <= 40) return p
+	const parts = p.split("/")
+	return parts.length > 4 ? `…/${parts.slice(-3).join("/")}` : p
+}
+
+/** Команда запуска: первое слово — сам бинарь или интерпретатор, дальше пути. */
+const runsBy = (bin: string[]): string => bin.map(shortPath).join(" ")
+
 export function providersTable(ok: Provider[], bad: BadProvider[], accounts: Set<string>): string {
 	if (!ok.length && !bad.length) return `провайдеров не нашлось: положи исполняемый ${TOOL}-<id> в PATH`
 	const rows = ok.map(p => [
 		bold(p.id), p.describe.name, String(p.describe.contract),
 		p.describe.capabilities.join(", ") || dim("—"),
 		accounts.has(p.id) ? green("есть") : dim("нет"),
-		dim(p.bin.join(" ")),
+		dim(runsBy(p.bin)),
 	])
 	// Сломанный провайдер остаётся в списке: его id в своей колонке, поэтому
 	// сообщение печатается как есть — имя рядом, второй раз не нужно.
-	for (const b of bad) rows.push([red(b.id), red(b.message), dim("—"), dim("—"), dim("—"), dim(b.bin.join(" "))])
+	for (const b of bad) rows.push([red(b.id), red(b.message), dim("—"), dim("—"), dim("—"), dim(runsBy(b.bin))])
 	return table(rows, ["ID", "ИМЯ", "КОНТРАКТ", "УМЕЕТ", "АККАУНТ", "ЧЕМ ЗАПУСКАЕТСЯ"])
 }
 

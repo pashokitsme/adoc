@@ -57,4 +57,13 @@ describe("adoc providers", () => {
 		expect(j.providers.map(p => p.id)).toEqual(["noisy"])
 		expect(j.broken[0]!.id).toBe("broken")
 	})
+
+	test("длинный путь в таблице ужат с головы, а в --json остаётся целым", async () => {
+		const r = await run(["providers"])
+		// Фикстуры лежат глубоко, поэтому в таблице виден только хвост пути.
+		expect(r.stdout).toContain("…/providers/alpha/main.ts")
+		const j = JSON.parse((await run(["providers", "--json"])).stdout) as { providers: { bin: string }[] }
+		expect(j.providers[0]!.bin).not.toContain("…")
+		expect(j.providers[0]!.bin.startsWith("bun /")).toBe(true)
+	})
 })
