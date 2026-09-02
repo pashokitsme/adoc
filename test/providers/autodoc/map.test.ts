@@ -147,12 +147,27 @@ describe("toInfo", () => {
 })
 
 describe("toOrders", () => {
-	test("позиция заказа как заказ: статус, сумма, товар со ссылкой", async () => {
+	test("позиции с одним number — один заказ, новые сверху", async () => {
 		const orders = toOrders((await fx("orders")).items)
-		expect(orders).toHaveLength(2)
-		expect(orders[0]).toMatchObject({ id: "185465447", date: "2026-09-01T11:18:18.31", status: "Закуплено", total: 912, currency: "RUB", url: "https://www.autodoc.ru/my/orders" })
-		expect(orders[0]!.items![0]).toMatchObject({ article: "n90954802", brand: "VAG", qty: 6, price: 152, sum: 912, url: "https://www.autodoc.ru/man/657/part/n90954802" })
-		// «0001-01-01» — пустое значение SAP, а не первый век
-		expect(orders[1]!.date).toBe("")
+		expect(orders.map(o => o.id)).toEqual(["6", "4"])
+		expect(orders[0]).toMatchObject({ id: "6", date: "2026-09-01T11:18:18.31", status: "Закуплено", total: 912, currency: "RUB", url: "https://www.autodoc.ru/my/orders" })
+		expect(orders[0]!.items![0]).toMatchObject({ article: "n10127707", brand: "VAG", qty: 6, price: 152, sum: 912, url: "https://www.autodoc.ru/man/657/part/n10127707" })
+	})
+
+	test("сумма заказа складывается из позиций, статус — самой отставшей", async () => {
+		const order = toOrders((await fx("orders")).items).find(o => o.id === "4")!
+		expect(order.items).toHaveLength(3)
+		expect(order.total).toBe(814 + 260 + 920)
+		// «Готово к выдаче» — groupId 6, «Проведён возврат» — 101: берём ранний
+		expect(order.status).toBe("Готово к выдаче")
+		expect(order.extra!.statuses).toEqual(["Готово к выдаче", "Проведён возврат"])
+		// у одной позиции createDate — пустышка «0001-01-01»; дата заказа берётся из живых
+		expect(order.date).toBe("2026-08-30T13:26:43.63")
+		expect((order.extra!.positions as { id: string }[]).map(p => p.id)).toContain("23027026")
+	})
+
+	test("позиция без номера заказа не теряется", () => {
+		const orders = toOrders([{ id: 7, total: 100, status: { name: "ок" }, createDate: "2026-01-02T00:00:00" }])
+		expect(orders[0]!.id).toBe("id:7")
 	})
 })

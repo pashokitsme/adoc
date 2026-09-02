@@ -343,7 +343,9 @@ POST search-microservice/v1/search/by-category
 пустой список.
 
 **`linkingTargetId` совпадает с `modificationId` из гаража autodoc** — оба
-сайта сидят на TecDoc. Проверено:
+сайта сидят на TecDoc, поэтому провайдер принимает в `--car` ref с любым из
+полей `linkingTargetId`, `modificationId` или `carId`: это одно и то же число.
+Проверено живьём, что оба написания дают одну выдачу (392 позиции). Проверено:
 `substitutes-microservice/v1/substitutes/get-vehicle-ids-and-car-info?manuId=106&modId=11195&linkingTargetType=P`
 содержит `carId: 58759`, а `get-model-series` для SKODA отдаёт `modelId: 11195`
 — те же числа, что у autodoc.
@@ -520,9 +522,14 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
   `PUT garage/v2/update-transport`, `DELETE garage/v2/del-transport`,
   `POST garage/v2/upload-transport-file`, `…/upload-transport-image`.
 
-## Заказы — `order-microservice/v1/*`
+## Заказы — `order-microservice/v1/*` **[форма — из бандла]**
 
-`GET order-microservice/v1/order/report` **[проверено]** — список заказов; это
+> **Форма заказа живьём не проверена.** У аккаунта заказов нет: ручка отвечает
+> `ORDER: []`. Проверен только сам вызов и конверт ответа; **все поля строки
+> заказа и позиции ниже сняты из бандла фронта**, а не с настоящего ответа.
+> Не считать их подтверждёнными.
+
+`GET order-microservice/v1/order/report` **[вызов проверен]** — список заказов; это
 его зовёт страница `/profile/orders`. `GET order-microservice/v1/order/get-info`
 — карточка одного заказа.
 
@@ -538,8 +545,8 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 любую их пару отбивает «`dateFrom`: Значение не является правильной датой» —
 поэтому провайдер дат не шлёт вовсе.
 
-У аккаунта заказов нет, поэтому **форма заказа взята из бандла**
-(`chunk-FZVGACXA.js`), а не с ответа: строка `ORDER[]` — `VBELN` (номер),
+**Форма заказа взята из бандла** (`chunk-FZVGACXA.js`) **[из бандла]**, а не с
+ответа: строка `ORDER[]` — `VBELN` (номер),
 `GUID`, `date`/`ORDER_DATE`/`CREDT`, `ORDER_STATUS`, `ORDER_STATUS_ALIAS`,
 `NETWR` (сумма), `PAYMENT_STATUS`, `PAYMENT_TYPE`, `ITEMS[]`; позиция —
 `ARTID`, `PIN`, `BRAND`, `NAME`/`ARTICLE_NAME`, `ARTICLE_ALIAS`, `KWMENG`,
@@ -586,8 +593,8 @@ Capabilities — `reviews`, `garage`, `analogs`, `basket`, `orders`.
 | `brands`, выбор бренда | страницы `queryType: 2` добираются до потолка в 5 (180 строк) | упёрлись в потолок — то же предупреждение в stderr: список брендов неполный |
 | `Product.url`, `Offer.url`, `BrandHit.url`, `BasketItem.url`, `Reviews.url` | `ARTICLE_ALIAS`, иначе `ARTID` | у уценённой партии — `/product/markdown/<alias>/<charg>`; отдельной страницы отзывов у сайта нет, поэтому `Reviews.url` — та же карточка |
 | `Info.*` | форма `card`: `CUSTOM_NAME`, минимум `PRICES1`, минимум срока по `DLVDT`, `KEYZAK` в `stock[].code` | человеческого названия склада сайт не отдаёт, поэтому `stock[].name` пустое |
-| `search --car` | `search/by-category` с `linkingTargetId` | ref без идентификатора модификации TecDoc — предупреждение в stderr и обычный поиск |
-| `Order.*` | `order/report` | форма из бандла: живых заказов на аккаунте нет |
+| `search --car` | `search/by-category` с `linkingTargetId` | ref принимает `linkingTargetId`, `modificationId` и `carId` как одно и то же число (модификация TecDoc) и `linkingTargetType` (по умолчанию `"P"`); ref без такого числа — предупреждение в stderr и обычный поиск |
+| `Order.*` | `order/report` | **форма из бандла**: живых заказов на аккаунте нет, маппер написан мягко и живьём не проверен |
 
 Неоднозначности: бренд, которого нет среди точных совпадений, — ошибка
 `ambiguous` со списком брендов (exit 2); артикул, которого нет вовсе, —

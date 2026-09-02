@@ -123,12 +123,17 @@ export type CatalogGood = {
 	price?: number; quantity?: number; rating?: Rating; isFavorite?: boolean; imageUrl?: string
 }
 
-/** Строка ответа orders/items — позиция заказа, а не заказ. */
+/**
+ * Строка ответа orders/items — позиция заказа, а не заказ. Номер заказа лежит
+ * в `number`: позиции с одним `number` — один заказ, и так же их группирует
+ * сам сайт в `orders/ready`.
+ */
 export type OrderRow = {
 	id: number | string
 	price?: number; quantity?: number; total?: number
 	description?: string
 	number?: number
+	orderType?: number
 	status?: { name?: string; text?: string; id?: number; groupId?: number }
 	goods?: { manufacturerId: number; manufacturerName: string; goodsName?: string; article: string }
 	createDate?: string

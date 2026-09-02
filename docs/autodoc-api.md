@@ -317,13 +317,24 @@ GET /api/order-service/orders/items[?BeginDate&EndDate&Statuses]
 ```
 
 Отдаёт не заказы, а **позиции**: у каждой свой `id`, `status`, `total`,
-`createDate` и ровно один товар в `goods`. Общего номера заказа в ответе нет.
-Умолчание по датам — последний месяц. У части позиций `createDate` приходит
-как `0001-01-01T00:00:00` — это пустое значение, а не дата.
+`createDate` и ровно один товар в `goods`. Умолчание по датам — последний
+месяц. У части позиций `createDate` приходит как `0001-01-01T00:00:00` — это
+пустое значение, а не дата.
+
+**Номер заказа — поле `number`.** Позиции с одним `number` — один заказ, и так
+же их складывает сам сайт: `GET /api/order-service/orders/ready` отдаёт
+`{"items":[{"number":4,"goods":[…]}]}`, то есть группирует **только по
+`number`**, не разделяя позиции разных `orderType`. Статус у позиций одного
+заказа при этом разный, общего статуса заказа в API нет.
+
+Смежное: `GET …/orders/grouped-history/<id позиции>` и `…/orders/details/<id
+позиции>` — история статусов **одной позиции**, а не состав заказа;
+`…/orders/info/<id>` отвечает 404; `GET …/orders/count` →
+`{"ready":5,"deliveries":0,"total":12884}`.
 
 ```json
 {"dateFrom":"…","dateTo":"…","items":[
-  {"id":185465447,"number":6,"price":152,"quantity":6,"total":912,
+  {"id":185465447,"number":6,"orderType":1,"price":152,"quantity":6,"total":912,
    "status":{"id":3,"groupId":3,"name":"Закуплено","text":"Товары зарезервированы"},
    "goods":{"manufacturerId":657,"manufacturerName":"VAG","goodsName":"Болт","article":"n90954802"},
    "createDate":"2026-09-01T11:18:18.31","waitInShopDate":"2026-09-05T00:00:00",

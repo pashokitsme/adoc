@@ -213,41 +213,68 @@ export function toInfo(g: GoodsInfo, price: GoodsPrice | null): Info {
 	}
 }
 
+/** Дата SAP-пустышка: у части позиций createDate приходит первым веком. */
+const orderDate = (v: string | undefined): string | undefined =>
+	v && !v.startsWith("0001") ? v : undefined
+
 /**
- * Заказы. Ручка отдаёт не заказы, а позиции: у каждой свой статус, своя сумма
- * и ровно один товар; общего номера заказа в ответе нет. Поэтому один `Order`
- * — это одна позиция, ровно так, как её показывает и отменяет сам сайт.
+ * Заказы. Ручка отдаёт не заказы, а позиции: у каждой свой id, свой статус и
+ * ровно один товар. Номер заказа лежит в `number`, и позиции с одним номером —
+ * один заказ: ровно так их группирует сам сайт в `orders/ready`, складывая под
+ * одним номером даже позиции разных `orderType`.
+ *
+ * Статус у позиций одного заказа разный (одна уже готова к выдаче, другая ещё
+ * едет на склад), а в контракте он один. Берём самый ранний по `groupId` —
+ * заказ не сделан, пока не доехала самая медленная позиция; полный разбор по
+ * позициям остаётся в `extra`.
  */
 export function toOrders(rows: OrderRow[]): Order[] {
-	return rows.map(r => {
-		const item: OrderItem | undefined = r.goods && {
-			article: r.goods.article,
-			brand: r.goods.manufacturerName,
-			name: r.goods.goodsName ?? "",
-			qty: r.quantity ?? 1,
-			price: r.price ?? 0,
-			sum: r.total,
-			url: cardUrl(r.goods.manufacturerId, r.goods.article),
-		}
-		return {
-			id: String(r.id),
-			// у части позиций сайт отдаёт «0001-01-01T00:00:00» — это не дата,
-			// а пустое значение SAP; лучше отдать пустую строку, чем первый век
-			date: r.createDate && !r.createDate.startsWith("0001") ? r.createDate : "",
-			status: r.status?.name ?? "",
-			total: r.total ?? 0,
+	const groups = new Map<string, OrderRow[]>()
+	for (const r of rows) {
+		const key = r.number === undefined ? `id:${r.id}` : String(r.number)
+		const g = groups.get(key)
+		if (g) g.push(r)
+		else groups.set(key, [r])
+	}
+
+	const out: Order[] = []
+	for (const [id, group] of groups) {
+		const byStage = [...group].sort((a, b) => (a.status?.groupId ?? 99) - (b.status?.groupId ?? 99))
+		const dates = group.map(r => orderDate(r.createDate)).filter((v): v is string => !!v).sort()
+		const statuses = [...new Set(group.map(r => r.status?.name).filter((v): v is string => !!v))]
+		out.push({
+			id,
+			date: dates[0] ?? "",
+			status: byStage[0]?.status?.name ?? "",
+			total: group.reduce((s, r) => s + (r.total ?? 0), 0),
 			currency: "RUB",
+			// страницы отдельного заказа у сайта нет — только список
 			url: ORDERS_URL,
-			items: item ? [item] : undefined,
+			items: group.map(r => ({
+				article: r.goods?.article ?? "",
+				brand: r.goods?.manufacturerName ?? "",
+				name: r.goods?.goodsName ?? "",
+				qty: r.quantity ?? 1,
+				price: r.price ?? 0,
+				sum: r.total,
+				url: r.goods ? cardUrl(r.goods.manufacturerId, r.goods.article) : undefined,
+			})),
 			extra: {
-				...(r.status?.text ? { statusText: r.status.text } : {}),
-				...(r.deliveryStatusName ? { deliveryStatus: r.deliveryStatusName } : {}),
-				...(r.waitInShopDate ? { waitInShopDate: r.waitInShopDate } : {}),
-				...(r.description ? { description: r.description } : {}),
-				...(r.isCancelable ? { cancelable: true } : {}),
+				...(statuses.length > 1 ? { statuses } : {}),
+				positions: group.map(r => ({
+					id: String(r.id),
+					status: r.status?.name,
+					statusText: r.status?.text,
+					orderType: r.orderType,
+					deliveryStatus: r.deliveryStatusName ?? undefined,
+					waitInShopDate: r.waitInShopDate ?? undefined,
+					cancelable: r.isCancelable === true,
+				})),
 			},
-		}
-	})
+		})
+	}
+	// сайт показывает новые заказы первыми; номер растёт, поэтому по нему
+	return out.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0))
 }
 
 export const toCars = (cars: ApiCar[], mainId?: number | null): Car[] =>
