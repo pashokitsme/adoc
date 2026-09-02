@@ -49,13 +49,13 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 	},
 
 	brands: async (ctx, article) => ({
-		items: toBrandHits(await brand.exactSearch(article, await readToken(ctx), place(ctx))),
+		items: toBrandHits(await brand.exactSearch(article, await readToken(ctx), place(ctx), ctx.warn)),
 	}),
 
 	offers: async (ctx, article, brandName, { analogs }) => {
 		const token = await readToken(ctx)
 		const p = place(ctx)
-		const { row } = await brand.resolve(article, brandName, token, p)
+		const { row } = await brand.resolve(article, brandName, token, p, ctx.warn)
 		const want = { article, brand: row.BRAND }
 		if (!analogs) return { items: toOffers([row], want, p.vstel) }
 
@@ -64,13 +64,21 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 		// `--analogs` терял бы оригинал.
 		const all = await api.search({ query: article, queryType: 1, page: ctx.page, typeView: "list", ...p }, token)
 		const rows = all.articlesData ?? []
+		// Аналоги приходят страницами, а --page у offers контрактом не
+		// предусмотрен: агрегатор получит одну страницу и не сможет узнать об
+		// этом из ответа. Значит, говорим вслух — в stderr, чтобы --json
+		// остался ровно одним объектом.
+		const pageCount = all.pagination?.pageCount ?? 1
+		if (pageCount > 1) {
+			ctx.warn(`armtek: аналогов ${all.pagination?.totalCount ?? "?"} на ${pageCount} страницах, возвращена только страница ${all.pagination?.currentPage ?? ctx.page} из ${pageCount}`)
+		}
 		const hasExact = rows.some(a => articleKey(a.PIN) === articleKey(article) && brandKey(a.BRAND) === brandKey(row.BRAND))
 		return { items: toOffers(hasExact ? rows : [row, ...rows], want, p.vstel) }
 	},
 
 	reviews: async (ctx, article, brandName) => {
 		const token = await readToken(ctx)
-		const { row } = await brand.resolve(article, brandName, token, place(ctx))
+		const { row } = await brand.resolve(article, brandName, token, place(ctx), ctx.warn)
 		const [list, stats] = await Promise.all([
 			api.reviewsByArtId(row.ARTID, token, { page: ctx.page, limit: ctx.limit }),
 			// оценки — отдельная ручка; без неё лента всё ещё имеет смысл

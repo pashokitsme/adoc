@@ -11,6 +11,9 @@ import { exactRows, toBrandHits } from "./map.ts"
 
 export type Place = { vkorg: string; vstel: string }
 
+/** Куда жаловаться на неполноту выдачи; в SDK это `ctx.warn` (пишет в stderr). */
+export type Warn = (msg: string) => void
+
 export type Resolved = {
 	/** Строка выбранного бренда. */
 	row: RawArticle
@@ -27,10 +30,14 @@ export type Resolved = {
 export const MAX_PAGES = 5
 
 /** Точные совпадения артикула: queryType 2 отсекает аналоги на стороне сайта. */
-export async function exactSearch(article: string, token: string, place: Place): Promise<RawArticle[]> {
+export async function exactSearch(article: string, token: string, place: Place, warn?: Warn): Promise<RawArticle[]> {
 	const first = await api.search({ query: article, queryType: 2, page: 1, typeView: "list", ...place }, token)
 	const rows = [...(first.articlesData ?? [])]
-	const pages = Math.min(first.pagination?.pageCount ?? 1, MAX_PAGES)
+	const total = first.pagination?.pageCount ?? 1
+	const pages = Math.min(total, MAX_PAGES)
+	// Упёрлись в потолок — значит список брендов заведомо неполный, и молчать
+	// об этом нельзя: агрегатор иначе решит, что видит всех производителей.
+	if (total > MAX_PAGES) warn?.(`armtek: точных совпадений ${total} страниц по ${first.pagination?.perPage ?? 36}, взяты первые ${MAX_PAGES} — список брендов неполный`)
 	if (pages > 1) {
 		const rest = await Promise.all(
 			Array.from({ length: pages - 1 }, (_, i) =>
@@ -45,8 +52,8 @@ export async function exactSearch(article: string, token: string, place: Place):
  * подошёл — `ambiguous` со списком: это ровно тот случай, когда агрегатору
  * надо переспросить, а не гадать.
  */
-export async function resolve(article: string, brand: string, token: string, place: Place): Promise<Resolved> {
-	const rows = await exactSearch(article, token, place)
+export async function resolve(article: string, brand: string, token: string, place: Place, warn?: Warn): Promise<Resolved> {
+	const rows = await exactSearch(article, token, place, warn)
 	if (!rows.length) throw new ProviderError("notfound", `armtek: артикул ${article} не найден`)
 	const want = brandKey(brand)
 	const row = rows.find(a => brandKey(a.BRAND) === want)
