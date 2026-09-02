@@ -9,6 +9,7 @@ import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
 import { cmdPart } from "./commands/part.ts"
 import { cmdProviders } from "./commands/providers.ts"
+import { cmdSearch } from "./commands/search.ts"
 import type { Ctx, Output } from "./core/ctx.ts"
 import { Ambiguous } from "./core/errors.ts"
 import type { MergedBrand } from "./core/merge.ts"
@@ -29,6 +30,7 @@ type Handler = (ctx: Ctx) => Promise<Output>
 // самому провайдеру: `adoc armtek hello` появится в задаче 14.
 const COMMANDS: Record<string, Handler> = {
 	part: cmdPart,
+	search: cmdSearch,
 	providers: cmdProviders,
 	accounts: cmdAccounts,
 	whoami: cmdAccounts,

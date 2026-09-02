@@ -45,3 +45,10 @@ export const providerCol: Col<OfferRow> = { head: "ПРОВАЙДЕР", cell: o 
 /** Колонка «ГДЕ»: у каких сайтов есть эта строка. */
 export const whereCol = <T extends { providers: string[] }>(): Col<T> =>
 	({ head: "ГДЕ", cell: x => dim(x.providers.join(", ")) })
+
+/**
+ * «показано X из Y» под таблицей: строка появляется, только когда --limit
+ * что-то отрезал. Возвращается списком, чтобы вызывающий не проверял пустоту.
+ */
+export const cut = (shown: number, total: number): string[] =>
+	(total > shown ? [hint(`показано ${shown} из ${total} — --limit <n>`)] : [])

@@ -10,7 +10,7 @@ import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
 import { splitOffers } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { hint, providerCol } from "../core/render.ts"
+import { cut, hint, providerCol } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -70,13 +70,10 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 				"",
 				renderOffers(exact, [providerCol]),
 			]
-			const cut = (shown: number, total: number): void => {
-				if (total > shown) out.push(hint(`показано ${shown} из ${total} — --limit <n>`))
-			}
-			cut(exact.length, split.offers.length)
+			out.push(...cut(exact.length, split.offers.length))
 			if (analogs) {
 				out.push(heading("Аналоги"), extra.length ? renderOffers(extra, [providerCol], exact.length + 1) : dim("аналогов нет"))
-				cut(extra.length, split.analogs.length)
+				out.push(...cut(extra.length, split.analogs.length))
 			} else if (split.analogs.length) {
 				out.push(hint("есть и аналоги — --analogs"))
 			}
