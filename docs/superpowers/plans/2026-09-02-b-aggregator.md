@@ -29,20 +29,28 @@
 `src/sdk/` и провайдеры `autodoc`/`armtek` готовы (план A, 213 тестов зелёные). Агрегатор:
 
 - **не** импортирует код провайдеров — только запускает их процессы;
-- **не** дублирует `articleKey`/`brandKey`, `table`, `money`, `days`, `stars`, `bar`, `fold`, `fields`, `renderReviews`, `renderDisplay`, `renderCars` — берёт их из `src/sdk/`;
+- **не** дублирует `articleKey`/`brandKey`, `table`, `money`, `days`, `stars`, `bar`, `fold`, `fields` и **ни один из рендеров** `renderProducts`/`renderBrands`/`renderOffers`/`renderReviews`/`renderBasket`/`renderCars`/`renderDisplay` — свою колонку («ПРОВАЙДЕР», «ГДЕ», «ID») он добавляет параметром `cols`, который эти рендеры получают в задаче 1;
 - **не** пишет `accounts/<id>.json` — это делает провайдер (зафиксировано в плане A);
 - переиспользует `ProviderError`, `errorBody`, `exitCode` из `src/sdk/errors.ts`: коды и отображение в exit те же самые, второй набор развёлся бы с первым;
-- переиспользует `parseArgv` из `src/sdk/cli.ts`: соглашения о флагах у обёртки и у провайдера обязаны совпадать (`--flag value`, `--flag=value`, значение обязательно, булев флаг берёт только `true`/`false`).
+- переиспользует `parseArgv`, `need`, `parseRef`, `intFlag`, `positiveInt` из `src/sdk/cli.ts`: соглашения о флагах и тексты ошибок у обёртки и у провайдера обязаны совпадать (`--flag value`, `--flag=value`, значение обязательно, булев флаг берёт только `true`/`false`);
+- **берёт всё из одного входа** — `src/sdk/index.ts`. Глубоких импортов вида `../sdk/render.ts` или `../sdk/config.ts` в `src/core/`, `src/commands/`, `src/app.ts` и `src/main.ts` быть не должно: задача 1 доводит `index.ts` до полной поверхности SDK.
 
 ## Правки в SDK, которые нужны агрегатору
 
-Обе — мелкие, обе с причиной, обе делаются в задаче 1:
+Все делаются в задаче 1, каждая с причиной:
 
 1. `src/sdk/out.ts`: функция `emit(sink, text, code)` выносится из `src/sdk/run.ts` и экспортируется. Причина: у агрегатора та же беда, что у провайдера, — `process.exit` обрезает stdout за первым буфером пайпа (64 КБ), а `adoc part --json` по нескольким провайдерам этот буфер перерастает. Копировать хитрость в двух местах — заводить два разных бага.
-2. `src/sdk/index.ts`: к экспортам добавляются `parseArgv`, `errorBody`, `exitCode`, `emit` и тип `Flags`. Причина: сегодня они доступны только глубоким импортом (`../sdk/cli.ts`), а агрегатор — первый внешний потребитель ровно этих трёх вещей.
-3. `src/sdk/render.ts`: `ratingCell` и `qtyCell` становятся `export const` (сейчас они приватные). Причина: агрегатор рисует те же колонки «РЕЙТИНГ» и «НАЛИЧИЕ», и форматировать их вторым, чуть-чуть другим кодом — верный способ получить две разные таблицы для одних и тех же данных.
+2. `src/sdk/render.ts`: у `renderProducts`, `renderBrands`, `renderOffers`, `renderBasket`, `renderCars` появляется необязательный параметр `cols?: Col<T>[]` — дополнительные колонки вызывающего, встающие **слева**; `renderOffers` получает ещё и `from` (номер первой строки). Плюс `ratingCell`, `qtyCell` и новая `basketTotal` становятся экспортами. Причина: агрегатору нужны те же таблицы плюс колонка источника; писать пять почти дословных копий рендеров — гарантированно получить две разные таблицы для одних и тех же данных.
+3. `src/sdk/cli.ts`: `parseRef` и `need` переезжают сюда из `run.ts`, а `num` становится `intFlag(name, v): number | undefined`. Причина: обёртке нужны ровно эти три разбора с ровно теми же текстами ошибок; копия в `core/args.ts` разошлась бы с оригиналом на первой же правке.
+4. `src/sdk/index.ts`: доводится до полной поверхности — `parseArgv`, `need`, `parseRef`, `intFlag`, `errorBody`, `exitCode`, `emit`, тип `Flags`, все цвета и рендеры из `render.ts`. Причина: правило «агрегатор берёт SDK только через `index.ts`»; сегодня половина имён доступна лишь глубоким импортом.
 
 Больше в SDK и в провайдерах ничего не меняется.
+
+## Отступления от спеки, зафиксированные здесь
+
+1. **Корзина: две колонки вместо одной.** Спека §`basket` п.4 говорит «колонка `#` показывает и порядковый номер, и `itemId`». `renderBasket` из SDK рисует их раздельно — `#` и `ID`, — и так и остаётся: `itemId` у autodoc это длинный склеенный идентификатор, в одной ячейке с номером строки он нечитаем, а `basket set <provider> <ID>` требует его копировать целиком. Задача 15 правит эту строку спеки.
+2. **`--providers` как синоним `--only`.** Спека знает только `--only`/`--skip`; синоним заведён потому, что эту мысль чаще записывают так. Канонический — `--only`.
+3. **Владение файлом аккаунта** — уже зафиксировано планом A: файл создаёт и обновляет провайдер, обёртка перечисляет и удаляет.
 
 ## Структура файлов
 
@@ -52,16 +60,16 @@ src/
   app.ts                  run(argv) → {stdout, stderr, code}; разбор argv, таблица команд
   core/
 	ctx.ts                типы Ctx и Output — общий язык команд
-	args.ts               need/limitOf/pageOf/qtyOf/refOf/one — разбор аргументов команд
+	args.ts               limitOf/pageOf/qtyOf/one — разбор аргументов команд поверх sdk/cli.ts
 	store.ts              файлы агрегатора: атомарный readJson/writeJson, список и удаление аккаунтов
 	registry.ts           обнаружение провайдеров, describe на запуск, выбор по --only/--skip
 	validate.ts           проверка форм ответов провайдера по контракту
-	invoke.ts             spawn провайдера, таймаут, вырезание JSON, маппинг ошибок
+	invoke.ts             spawn провайдера, таймаут, вырезание JSON, маппинг ошибок, passNoise
 	partial.ts            частичный отказ: fanout, Failure, жёлтые строки
-	render.ts             таблицы агрегатора (колонка ПРОВАЙДЕР, колонка ГДЕ, блоки корзин)
+	render.ts             только то, чего нет в SDK: колонки агрегатора, таблицы providers и accounts
 	merge.ts              склейка брендов, предложений и товаров между провайдерами
-	brand.ts              общий шаг «артикул → бренд» для part и reviews
-	errors.ts             Ambiguous — ошибка «уточни бренд» с таблицей вариантов
+	brand.ts              общий шаг «артикул → бренд» и общий пустой результат для part и reviews
+	errors.ts             Ambiguous — ошибка «уточни бренд» со списком вариантов
 	lastpart.ts           last-part.json: сохранение выдачи part и строка по номеру
 	garage.ts             garage.json: чтение, запись, add/rm/main, слияние импорта
 	help.ts               справка обёртки, строки провайдеров из describe
@@ -75,41 +83,67 @@ src/
 	garage.ts             adoc garage [add|rm|main|import]
 	passthrough.ts        adoc <provider> … — проброс stdio и кода возврата
 test/
-  core/{store,registry,invoke,partial,merge,lastpart,garage}.test.ts
+  core/{app,store,registry,invoke,partial,merge,lastpart,garage,contract}.test.ts
   commands/{providers,accounts,part,search,reviews,basket,garage,passthrough,help}.test.ts
-  fixtures/fake/provider.ts              makeFake(id, data) — фиктивный провайдер под любой id
-  fixtures/providers/{alpha,beta}/main.ts  нормальные фиктивные провайдеры
-  fixtures/odd/{noisy,sleepy,broken}/main.ts  грязный stdout, зависший, битый describe
+  fixtures/fake/provider.ts                 makeFake(id, data) — фиктивный провайдер под любой id
+  fixtures/providers/{alpha,beta}/main.ts   нормальные фиктивные провайдеры
+  fixtures/odd/{noisy,broken}/main.ts       грязный stdout и битый describe
+  fixtures/sleepy.ts                        зависший провайдер для теста таймаута
 ```
 
 Один файл — одна ответственность. `core/` ничего не знает про argv, `commands/` — про spawn, `app.ts` — про формы ответов провайдеров.
 
 ---
 
-### Task 1: Бинарь `adoc`, каркас `run()` и две правки SDK
+### Task 1: Бинарь `adoc`, каркас `run()` и правки SDK
 
 **Files:**
 - Modify: `package.json`
 - Create: `src/sdk/out.ts`
 - Modify: `src/sdk/run.ts`
-- Modify: `src/sdk/index.ts`
+- Modify: `src/sdk/cli.ts`
 - Modify: `src/sdk/render.ts`
+- Modify: `src/sdk/index.ts`
 - Create: `src/app.ts`
 - Create: `src/main.ts`
+- Test: `test/sdk/render.test.ts`
 - Test: `test/core/app.test.ts`
 
 **Interfaces:**
 - Consumes: `parseArgv(argv, valueFlags)`, `errorBody(e)`, `exitCode(code)` из `src/sdk/`.
-- Produces: `emit(sink, text, code): Promise<never>`; `run(argv: string[]): Promise<{stdout: string; stderr: string; code: number}>`; бинарь `adoc` → `src/main.ts`.
+- Produces: `emit(sink, text, code): Promise<never>`; `Col<T> = {head: string; cell: (item: T) => string}`, `CarLike`, `basketTotal(b): number`; `parseRef(v): Record<string, unknown>`, `need(v, what): string`, `intFlag(name, v): number | undefined` из `sdk/cli.ts`; полная поверхность `src/sdk/index.ts`; `run(argv: string[]): Promise<{stdout: string; stderr: string; code: number}>`; бинарь `adoc` → `src/main.ts`.
 
 - [ ] **Step 1: Тест каркаса**
 
-`test/core/app.test.ts`:
+`test/core/app.test.ts`. Каталог конфига и набор провайдеров подменяются с
+первого же теста: `run()` в задаче 16 начнёт снимать `describe`, и без этих
+двух переменных тест ушёл бы к настоящим `autodoc`/`armtek`, в настоящий
+`~/.config/adoc` и в `PATH` разработчика.
 
 ```ts
-import { describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
+
+const PROVIDERS_DIR_ENV = "ADOC_PROVIDERS_DIR"
+
+let dir: string
+let env: Record<string, string>
+beforeEach(async () => {
+	dir = await mkdtemp(join(tmpdir(), "adoc-app-"))
+	// Пустой каталог провайдеров: задача 3 заведёт фикстуры, до тех пор набор
+	// должен быть пустым, но своим — не настоящим.
+	env = { [CONFIG_DIR_ENV]: dir, [PROVIDERS_DIR_ENV]: join(dir, "providers") }
+	Object.assign(process.env, env)
+})
+afterEach(async () => {
+	delete process.env[CONFIG_DIR_ENV]
+	delete process.env[PROVIDERS_DIR_ENV]
+	await rm(dir, { recursive: true, force: true })
+})
 
 describe("run", () => {
 	test("--help печатает справку обёртки", async () => {
@@ -146,7 +180,10 @@ describe("run", () => {
 
 	test("бинарь запускается и печатает справку", async () => {
 		const bin = join(import.meta.dir, "..", "..", "src", "main.ts")
-		const proc = Bun.spawn(["bun", bin, "--help"], { stdin: "ignore", stdout: "pipe", stderr: "pipe" })
+		const proc = Bun.spawn(["bun", bin, "--help"], {
+			env: { ...process.env, ...env, NO_COLOR: "1" },
+			stdin: "ignore", stdout: "pipe", stderr: "pipe",
+		})
 		const out = await new Response(proc.stdout).text()
 		expect(await proc.exited).toBe(0)
 		expect(out).toContain("part")
@@ -154,12 +191,42 @@ describe("run", () => {
 })
 ```
 
-- [ ] **Step 2: Запустить, убедиться, что падает**
+- [ ] **Step 2: Тест дополнительных колонок рендера**
 
-Run: `bun test test/core/app.test.ts`
-Expected: FAIL, `Cannot find module '../../src/app.ts'`.
+Дописать в конец `test/sdk/render.test.ts` (файл уже ставит `NO_COLOR=1` в
+первой строке, поэтому строки сравниваются напрямую):
 
-- [ ] **Step 3: Вынести `emit` в `src/sdk/out.ts`**
+```ts
+describe("дополнительные колонки", () => {
+	test("встают слева и в шапке, и в строке", () => {
+		const out = renderOffers(
+			[{ article: "N1", brand: "VAG", price: 407, currency: "RUB" as const, provider: "beta" }],
+			[{ head: "ПРОВАЙДЕР", cell: o => o.provider }],
+		)
+		const lines = out.split("\n")
+		expect(lines[0]!.startsWith("ПРОВАЙДЕР")).toBe(true)
+		expect(lines[1]!.startsWith("beta")).toBe(true)
+		expect(lines[1]).toContain("407 ₽")
+	})
+
+	test("from сдвигает нумерацию строк", () => {
+		const out = renderOffers([{ article: "N1", brand: "VAG", price: 1, currency: "RUB" as const }], [], 5)
+		expect(out.split("\n")[1]!.startsWith("5")).toBe(true)
+	})
+
+	test("без колонок вывод прежний", () => {
+		const one = { article: "N1", brand: "VAG", price: 1, currency: "RUB" as const }
+		expect(renderOffers([one])).toBe(renderOffers([one], []))
+	})
+})
+```
+
+- [ ] **Step 3: Запустить, убедиться, что падает**
+
+Run: `bun test test/core/app.test.ts test/sdk/render.test.ts`
+Expected: FAIL — `Cannot find module '../../src/app.ts'` и `renderOffers` не принимает второй аргумент.
+
+- [ ] **Step 4: Вынести `emit` в `src/sdk/out.ts`**
 
 `src/sdk/out.ts`:
 
@@ -177,32 +244,215 @@ export async function emit(sink: Sink, text: string, code: number): Promise<neve
 }
 ```
 
-В `src/sdk/run.ts` удалить тип `Sink` и функцию `emit` вместе с их комментарием (строки с `type Sink = …` по конец `async function emit`) и добавить импорт рядом с остальными:
+В `src/sdk/run.ts` удалить тип `Sink` и функцию `emit` вместе с их комментарием
+(строки с `type Sink = …` по конец `async function emit`) и добавить импорт:
 
 ```ts
 import { emit } from "./out.ts"
 ```
 
-В `src/sdk/render.ts` открыть два форматтера ячеек — заменить `const ratingCell` на `export const ratingCell` и `const qtyCell` на `export const qtyCell`.
+- [ ] **Step 5: Перенести `parseRef`, `need` и `num` в `src/sdk/cli.ts`**
 
-В `src/sdk/index.ts` добавить строки:
+Дописать в конец `src/sdk/cli.ts`:
 
 ```ts
-export { emit } from "./out.ts"
-export { parseArgv } from "./cli.ts"
-export type { Flags } from "./cli.ts"
-export { errorBody, exitCode } from "./errors.ts"
+/** Обязательный позиционный аргумент. */
+export function need(v: string | undefined, what: string): string {
+	if (!v) throw new ProviderError("bad_args", `нужен ${what}`)
+	return v
+}
+
+/**
+ * `--ref <json>` — непрозрачный объект сайта: пришёл в `offers`, уходит обратно
+ * в `basket add`. Ни SDK, ни обёртка внутрь не смотрят.
+ */
+export function parseRef(v: string | true | undefined): Record<string, unknown> {
+	if (typeof v !== "string" || !v) throw new ProviderError("bad_args", "нужен --ref <json> из выдачи offers")
+	try {
+		const o = JSON.parse(v) as unknown
+		if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error()
+		return o as Record<string, unknown>
+	} catch {
+		throw new ProviderError("bad_args", "--ref должен быть JSON-объектом")
+	}
+}
+
+/**
+ * Целое ≥ 0: `--qty`, `--year`, `--odometer`. `undefined` — флага нет; ноль
+ * законен (пробег), поэтому не `positiveInt`.
+ */
+export function intFlag(name: string, v: string | true | undefined): number | undefined {
+	if (v === undefined) return undefined
+	if (v === true || v === "") throw new ProviderError("bad_args", `--${name}: нужно значение`)
+	const n = Number(v)
+	if (!Number.isInteger(n) || n < 0) throw new ProviderError("bad_args", `--${name}: нужно целое число не меньше нуля, а не «${v}»`)
+	return n
+}
 ```
 
-- [ ] **Step 4: `src/app.ts` — каркас**
+В `src/sdk/run.ts`:
+
+1. удалить функцию `parseRef` и функцию `num` целиком;
+2. удалить локальный `const need = (v: string | undefined, what: string): string => {…}` внутри `dispatch`;
+3. добавить их в импорт из `./cli.ts`: `import { hasTTY, intFlag, need, parseArgv, parseRef, positiveInt, readLine, readSecret } from "./cli.ts"`;
+4. заменить оба вызова `num("qty", ctx.flags.qty, 1)` на `intFlag("qty", ctx.flags.qty) ?? 1`.
+
+- [ ] **Step 6: Дополнительные колонки в `src/sdk/render.ts`**
+
+Заменить блок рендеров (от `renderProducts` до `renderCars`) на этот; `ratingCell`
+и `qtyCell` при этом становятся экспортами, а сумма корзины — отдельной функцией:
+
+```ts
+/**
+ * Дополнительная колонка вызывающего: встаёт слева от таблицы. Так агрегатор
+ * добавляет «ПРОВАЙДЕР», «ГДЕ» и «ID» к тем же самым таблицам, вместо того
+ * чтобы писать пятую почти дословную копию рендера.
+ */
+export type Col<T> = { head: string; cell: (item: T) => string }
+
+const heads = <T>(cols: Col<T>[], own: string[]): string[] => [...cols.map(c => c.head), ...own]
+const cells = <T>(cols: Col<T>[], item: T, own: string[]): string[] => [...cols.map(c => c.cell(item)), ...own]
+
+export const ratingCell = (r: { average: number; count: number } | undefined) =>
+	r && r.count ? `${r.average.toFixed(1)}★ (${r.count})` : dim("—")
+
+export const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim("нет"))
+
+export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = []): string {
+	if (!items.length) return "ничего не найдено"
+	return table(items.map(p => cells(cols, p, [
+		cyan(p.article), bold(p.brand), p.name.slice(0, 50),
+		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
+	])), heads(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
+}
+
+export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []): string {
+	if (!items.length) return "не найдено"
+	return table(items.map(b => cells(cols, b, [bold(b.brand), cyan(b.article), b.name ?? "", ratingCell(b.rating)])),
+		heads(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
+}
+
+/** `from` — номер первой строки: у блока аналогов нумерация продолжает основную. */
+export function renderOffers<T extends Offer>(items: T[], cols: Col<T>[] = [], from = 1): string {
+	if (!items.length) return "предложений нет"
+	return table(items.map((o, i) => cells(cols, o, [
+		String(from + i), bold(o.brand), (o.name ?? "").slice(0, 40), money(o.price), qtyCell(o.quantity),
+		o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
+		o.seller ?? dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "",
+	])), heads(cols, ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
+}
+
+export function renderReviews(r: Reviews): string {
+	const out: string[] = [dim(`отзывов: ${r.total}`)]
+	if (r.rating) out.push(`${stars(r.rating.average)}  ${bold(r.rating.average.toFixed(2))}  ${dim(`${r.rating.count} оценок`)}`)
+	for (const l of bar(r.rating?.histogram)) out.push(l)
+	if (r.summary && (r.summary.pros.length || r.summary.cons.length)) {
+		out.push(heading("Выжимка"))
+		for (const p of r.summary.pros) out.push(`  ${green("+")} ${p}`)
+		for (const c of r.summary.cons) out.push(`  ${red("−")} ${c}`)
+	}
+	for (const it of r.items) {
+		const who = [it.author, it.purchased ? "покупка подтверждена" : ""].filter(Boolean).join(" · ")
+		out.push(heading(`${it.rating ? stars(it.rating) + "  " : ""}${who || "аноним"}`) + (it.date ? dim(`  ${it.date}`) : ""))
+		if (it.pros) out.push(`  ${green("+")} ${it.pros}`)
+		if (it.cons) out.push(`  ${red("−")} ${it.cons}`)
+		if (it.text) out.push(fold(it.text))
+	}
+	return out.join("\n")
+}
+
+/** Сумма как её считает сайт; если он её не считает — складываем сами. */
+export const basketTotal = (b: Basket): number =>
+	b.total ?? b.items.reduce((s, it) => s + (it.sum ?? it.price * it.quantity), 0)
+
+export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
+	if (!b.items.length) return "корзина пуста"
+	const rows = b.items.map((it, i) => cells(cols, it, [
+		`${i + 1}`, dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 36),
+		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
+		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
+	]))
+	return table(rows, heads(cols, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"])) +
+		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}`
+}
+
+/**
+ * Машина настолько, насколько её рисует таблица: `Car` из контракта и
+ * `GarageCar` из локального гаража отличаются идентификаторами, а не тем,
+ * что видит человек.
+ */
+export type CarLike = {
+	brand: string
+	model: string
+	modification?: string
+	year?: number
+	engine?: string
+	vin?: string
+	odometer?: number
+}
+
+export function renderCars<T extends CarLike>(cars: T[], cols: Col<T>[] = []): string {
+	if (!cars.length) return "гараж пуст"
+	return table(cars.map(c => cells(cols, c, [
+		bold([c.brand, c.model].filter(Boolean).join(" ")), c.modification ?? c.engine ?? dim("—"),
+		c.year ? String(c.year) : dim("—"), c.vin ?? dim("—"),
+		c.odometer ? `${c.odometer.toLocaleString("ru-RU")} км` : dim("—"),
+	])), heads(cols, ["АВТОМОБИЛЬ", "МОДИФИКАЦИЯ", "ГОД", "VIN", "ПРОБЕГ"]))
+}
+```
+
+Импорт типов в шапке файла дополнить `BasketItem`:
+
+```ts
+import type { Basket, BasketItem, BrandHit, Car, Display, Offer, Product, Reviews } from "./contract.ts"
+```
+
+`Car` остаётся импортированным: он больше не упоминается в сигнатурах, но
+`renderCars(r.cars)` в `run.ts` подставляет именно его — тип `Car` подходит под
+`CarLike` структурно, поэтому вызовы в `run.ts` не правятся.
+
+- [ ] **Step 7: Полная поверхность `src/sdk/index.ts`**
+
+Файл целиком:
+
+```ts
+// Публичная поверхность SDK. И провайдеры, и агрегатор берут отсюда всё:
+// второго входа в SDK нет, глубоких импортов вида ../sdk/render.ts быть не должно.
+export { defineProvider } from "./define.ts"
+export type { BasketOps, CommandResult, Ctx, ProviderCommand, ProviderSpec } from "./define.ts"
+export { runProvider } from "./run.ts"
+export { emit } from "./out.ts"
+export type { Sink } from "./out.ts"
+export { ProviderError, errorBody, exitCode, toProviderError } from "./errors.ts"
+export type { ErrorMapper } from "./errors.ts"
+export { HttpError, fetchJson } from "./http.ts"
+export { articleKey, brandKey } from "./keys.ts"
+export { decodeClaims } from "./jwt.ts"
+export { hasTTY, intFlag, need, parseArgv, parseRef, positiveInt, readLine, readSecret } from "./cli.ts"
+export type { Flags } from "./cli.ts"
+export { accountStore } from "./account.ts"
+export type { AccountStore } from "./account.ts"
+export { CONFIG_DIR_ENV, TOOL, configDir } from "./config.ts"
+export * from "./contract.ts"
+export {
+	bar, basketTotal, bold, cyan, days, dim, fields, fold, green, heading, isoDate, money,
+	qtyCell, ratingCell, red, renderBasket, renderBrands, renderCars, renderDisplay,
+	renderOffers, renderProducts, renderReviews, stars, table, yellow,
+} from "./render.ts"
+export type { CarLike, Col } from "./render.ts"
+export * as render from "./render.ts"
+```
+
+- [ ] **Step 8: `src/app.ts` — каркас**
 
 ```ts
 // app.ts — argv агрегатора: разбор, выбор команды, сбор вывода. Сам ничего не
 // печатает: строки копятся и уходят наружу одним куском, чтобы большой --json
 // не обрезался на пайпе (см. sdk/out.ts) и чтобы run() был проверяем тестом.
+// Единственное исключение — интерактивный `login`: его диалог идёт прямо в
+// терминал, иначе подсказка «Пароль >» появилась бы после ввода пароля.
 
-import { ProviderError, errorBody, exitCode, parseArgv } from "./sdk/index.ts"
-import { red } from "./sdk/render.ts"
+import { ProviderError, errorBody, exitCode, parseArgv, red } from "./sdk/index.ts"
 
 // Флаги обёртки, которые берут значение. Булевы (--json, --analogs) сюда не
 // входят: parseArgv развернёт их сам.
@@ -255,21 +505,21 @@ export async function run(argv: string[]): Promise<RunResult> {
 Переменная `warn` пока не используется ни одной командой — она заводится здесь,
 чтобы форма `run()` не менялась в задаче 6, когда команды появятся.
 
-- [ ] **Step 5: `src/main.ts`**
+- [ ] **Step 9: `src/main.ts`**
 
 ```ts
 #!/usr/bin/env bun
 // adoc — агрегатор магазинов автозапчастей. Справка: adoc --help.
 
 import { run } from "./app.ts"
-import { emit } from "./sdk/out.ts"
+import { emit } from "./sdk/index.ts"
 
 const r = await run(process.argv.slice(2))
 if (r.stderr) process.stderr.write(r.stderr)
 await emit(process.stdout, r.stdout, r.code)
 ```
 
-- [ ] **Step 6: Бинарь в `package.json`**
+- [ ] **Step 10: Бинарь в `package.json`**
 
 Заменить блок `bin` на:
 
@@ -281,16 +531,19 @@ await emit(process.stdout, r.stdout, r.code)
 	},
 ```
 
-- [ ] **Step 7: Всё зелёное**
+- [ ] **Step 11: Всё зелёное**
 
 Run: `bun test && bun run typecheck`
-Expected: PASS, включая старые 213 тестов — правка `run.ts` не должна ломать `sdk/run.test.ts` («большой ответ не режется на пайпе»).
+Expected: PASS. Особое внимание — старым тестам SDK: `sdk/render.test.ts`
+(рендеры без колонок печатают ровно то же), `sdk/run.test.ts` (`basket add
+--ref "{bad"` по-прежнему `bad_args`, `basket set 7` без `--qty` тоже,
+«большой ответ не режется на пайпе» — тоже).
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
-git add package.json src/sdk/out.ts src/sdk/run.ts src/sdk/index.ts src/sdk/render.ts src/app.ts src/main.ts test/core/app.test.ts
-git commit -m "feat(core): adoc binary and aggregator skeleton
+git add package.json src/sdk/out.ts src/sdk/run.ts src/sdk/cli.ts src/sdk/index.ts src/sdk/render.ts src/app.ts src/main.ts test/sdk/render.test.ts test/core/app.test.ts
+git commit -m "feat(core): adoc binary, aggregator skeleton, SDK columns and shared arg parsers
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -304,8 +557,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `test/core/store.test.ts`
 
 **Interfaces:**
-- Consumes: `configDir()` из `src/sdk/config.ts`.
-- Produces: `filePath(name): string`, `readJson<T>(name): Promise<T | null>`, `writeJson(name, data): Promise<void>`, `removeFile(name): Promise<boolean>`, `listAccountIds(): Promise<string[]>`, `removeAccount(id): Promise<boolean>`.
+- Consumes: `configDir()` из `src/sdk/index.ts`.
+- Produces: `filePath(name): string`, `readJson<T>(name): Promise<T | null>`, `writeJson(name, data): Promise<void>`, `listAccountIds(): Promise<string[]>`, `removeAccount(id): Promise<boolean>`.
 
 - [ ] **Step 1: Тест**
 
@@ -313,12 +566,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```ts
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readdir, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
-import { accountStore } from "../../src/sdk/account.ts"
-import { filePath, listAccountIds, readJson, removeAccount, removeFile, writeJson } from "../../src/core/store.ts"
+import { CONFIG_DIR_ENV, accountStore } from "../../src/sdk/index.ts"
+import { filePath, listAccountIds, readJson, removeAccount, writeJson } from "../../src/core/store.ts"
 
 let dir: string
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), "adoc-store-")); process.env[CONFIG_DIR_ENV] = dir })
@@ -345,11 +597,6 @@ describe("readJson/writeJson", () => {
 		expect((await readdir(dir)).filter(n => n.includes(".tmp"))).toEqual([])
 	})
 
-	test("removeFile сообщает, был ли файл", async () => {
-		await writeJson("last-part.json", {})
-		expect(await removeFile("last-part.json")).toBe(true)
-		expect(await removeFile("last-part.json")).toBe(false)
-	})
 })
 
 describe("аккаунты", () => {
@@ -369,6 +616,13 @@ describe("аккаунты", () => {
 		expect(await removeAccount("alpha")).toBe(true)
 		expect(await removeAccount("alpha")).toBe(false)
 		expect(await listAccountIds()).toEqual([])
+	})
+
+	test("не ENOENT — ошибка наружу, а не тихое «файла не было»", async () => {
+		// Каталог вместо файла: unlink отвечает EPERM/EISDIR. Соврать здесь
+		// «аккаунта и не было» значит оставить токены на диске после logout.
+		await mkdir(join(dir, "accounts", "alpha.json"), { recursive: true })
+		await expect(removeAccount("alpha")).rejects.toThrow()
 	})
 })
 ```
@@ -391,7 +645,10 @@ Expected: FAIL, `Cannot find module '../../src/core/store.ts'`.
 
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import { configDir } from "../sdk/config.ts"
+import { configDir } from "../sdk/index.ts"
+
+/** Нет файла — это состояние, а не сбой. Всё остальное — сбой. */
+const missing = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === "ENOENT"
 
 export const filePath = (name: string): string => join(configDir(), name)
 
@@ -418,16 +675,6 @@ export async function writeJson(name: string, data: unknown): Promise<void> {
 	}
 }
 
-/** true — файл был и удалён, false — его и не было. */
-export async function removeFile(name: string): Promise<boolean> {
-	try {
-		await unlink(filePath(name))
-		return true
-	} catch {
-		return false
-	}
-}
-
 const accountsDir = (): string => join(configDir(), "accounts")
 
 /** Кто вошёл хоть раз: имена файлов accounts/<id>.json. Содержимое не читается. */
@@ -435,17 +682,24 @@ export async function listAccountIds(): Promise<string[]> {
 	try {
 		const names = await readdir(accountsDir())
 		return names.filter(n => n.endsWith(".json")).map(n => n.slice(0, -".json".length)).sort()
-	} catch {
-		return []
+	} catch (e) {
+		if (missing(e)) return []
+		throw e
 	}
 }
 
+/**
+ * true — файл был и удалён, false — его и не было. Права, занятый файл и
+ * каталог вместо файла — это ошибка: `logout`, отрапортовавший успех на
+ * неудалённых токенах, хуже, чем `logout`, честно упавший.
+ */
 export async function removeAccount(id: string): Promise<boolean> {
 	try {
 		await unlink(join(accountsDir(), `${id}.json`))
 		return true
-	} catch {
-		return false
+	} catch (e) {
+		if (missing(e)) return false
+		throw e
 	}
 }
 ```
@@ -453,7 +707,7 @@ export async function removeAccount(id: string): Promise<boolean> {
 - [ ] **Step 4: Зелёные тесты**
 
 Run: `bun test test/core/store.test.ts && bun run typecheck`
-Expected: PASS.
+Expected: PASS, 8 тестов.
 
 - [ ] **Step 5: Commit**
 
@@ -479,7 +733,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `test/core/registry.test.ts`
 
 **Interfaces:**
-- Consumes: `TOOL` из `src/sdk/config.ts`, `ProviderError` из `src/sdk/index.ts`, типы контракта.
+- Consumes: `TOOL`, `ProviderError`, `CONTRACT_VERSION` и типы контракта — всё из `src/sdk/index.ts`.
 - Produces: `PROVIDERS_DIR_ENV = "ADOC_PROVIDERS_DIR"`; типы `ProviderEntry = {id, bin: string[], source}`, `Provider = ProviderEntry & {describe: Describe}`, `BadProvider = ProviderEntry & {message}`, `Loaded = {ok: Provider[]; bad: BadProvider[]}`; `discover(): Promise<ProviderEntry[]>`; `select(ok: Provider[], flags: Flags, cap?: Capability): Provider[]`; из `validate.ts` — `parseDescribe`, `parseBrands`, `parseOffers`, `parseProducts`, `parseReviews`, `parseBasket`, `parseCars`, `parseWhoami`, `parseDisplay`.
 - Produces (тесты): `makeFake(id, data): ProviderSpec<Account>` и каталоги фиктивных провайдеров.
 
@@ -511,6 +765,28 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		if (delay) await Bun.sleep(Number(delay))
 		const fail = knob(id, "FAIL")
 		if (fail) throw new ProviderError(fail as ErrorCode, `${id}: так велено переменной окружения`)
+	}
+
+	const auth = (a: FakeAccount | null): void => {
+		if (!a) throw new ProviderError("auth", `${id}: нужен вход`)
+	}
+
+	// Корзина живёт в файле: каждый вызов — новый процесс, в памяти она
+	// забывалась бы между `basket add` и `basket`.
+	const basketFile = (): string => join(configDir(), `fake-${id}-basket.json`)
+	const load = async (): Promise<Basket> => {
+		try {
+			return JSON.parse(await readFile(basketFile(), "utf8")) as Basket
+		} catch {
+			return { items: [], currency: "RUB", total: 0 }
+		}
+	}
+	const store = async (b: Basket): Promise<Basket> => {
+		const total = b.items.reduce((s, it) => s + it.price * it.quantity, 0)
+		const full: Basket = { ...b, total, currency: "RUB" }
+		await mkdir(configDir(), { recursive: true })
+		await writeFile(basketFile(), JSON.stringify(full))
+		return full
 	}
 
 	// Товарная база: два артикула. Второй — с двумя брендами, на нём
@@ -653,6 +929,10 @@ process.stdout.write(`мусор до\n${JSON.stringify(body)}\nмусор по�
 
 ```ts
 // Никогда не отвечает: на нём проверяется таймаут и SIGTERM.
+// `export {}` — чтобы файл был модулем: иначе tsc падает TS1375 на await
+// верхнего уровня.
+export {}
+
 await new Promise(() => {})
 ```
 
@@ -776,8 +1056,9 @@ describe("parseDescribe", () => {
 		expect(() => parseDescribe({ contract: 1, id: "b", name: "A", site: "s", capabilities: [], commands: [] }, "a")).toThrow("id")
 	})
 
-	test("нет обязательного поля — отказ", () => {
-		expect(() => parseDescribe({ contract: 1, id: "a" }, "a")).toThrow("name")
+	test("нет обязательного поля — отказ, и назван именно он", () => {
+		expect(() => parseDescribe({ contract: 1, id: "a" }, "a")).toThrow("нет поля name")
+		expect(() => parseDescribe({ contract: 1, id: "a", name: "A", site: "s", capabilities: [] }, "a")).toThrow("commands")
 	})
 
 	test("незнакомая capability отбрасывается, а не роняет провайдера", () => {
@@ -800,9 +1081,8 @@ Expected: FAIL, `Cannot find module '../../src/core/registry.ts'`.
 // иначе `undefined.map` вылезал бы посреди таблицы. Ошибка — internal с именем
 // провайдера: виноват он, а не пользователь.
 
-import { ProviderError } from "../sdk/index.ts"
-import { CONTRACT_VERSION } from "../sdk/contract.ts"
-import type { Basket, BasketItem, BrandHit, Capability, Car, Command, Describe, Display, Offer, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/contract.ts"
+import { CONTRACT_VERSION, ProviderError } from "../sdk/index.ts"
+import type { Basket, BasketItem, BrandHit, Capability, Car, Command, Describe, Display, Offer, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/index.ts"
 
 const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket"]
 
@@ -847,22 +1127,21 @@ function optRating(o: Record<string, unknown>): Rating | undefined {
 export function parseDescribe(v: unknown, id: string): Describe {
 	const who = id
 	const o = obj(v, who, "describe")
+	// Порядок проверок — от главного к частному: сначала версия и опознание,
+	// потом обязательные поля карточки, и только потом список команд. Иначе
+	// провайдер без name узнавал бы о себе, что у него «commands — не массив».
 	if (o.contract !== CONTRACT_VERSION) fail(who, `контракт версии ${String(o.contract)}, а обёртка знает ${CONTRACT_VERSION}`)
 	if (str(o, "id", who) !== id) fail(who, `id в describe — «${String(o.id)}», а бинарь зовётся «${id}»`)
+	const name = str(o, "name", who)
+	const site = str(o, "site", who)
+	// Незнакомая capability — это провайдер новее обёртки, а не поломка:
+	// молча отбрасываем, всё известное продолжает работать.
+	const capabilities = arr(o.capabilities, who, "capabilities").filter((c): c is Capability => CAPABILITIES.includes(c as Capability))
 	const commands: Command[] = arr(o.commands, who, "commands").map(c => {
 		const x = obj(c, who, "команда")
 		return { name: str(x, "name", who), usage: str(x, "usage", who), about: optStr(x, "about") ?? "", auth: x.auth === true }
 	})
-	return {
-		contract: CONTRACT_VERSION,
-		id,
-		name: str(o, "name", who),
-		site: str(o, "site", who),
-		// Незнакомая capability — это провайдер новее обёртки, а не поломка:
-		// молча отбрасываем, всё известное продолжает работать.
-		capabilities: arr(o.capabilities, who, "capabilities").filter((c): c is Capability => CAPABILITIES.includes(c as Capability)),
-		commands,
-	}
+	return { contract: CONTRACT_VERSION, id, name, site, capabilities, commands }
 }
 
 export function parseDisplay(v: unknown, who: string): Display {
@@ -995,8 +1274,8 @@ export function parseCars(v: unknown, who: string): Car[] {
 import { access, readdir } from "node:fs/promises"
 import { constants } from "node:fs"
 import { delimiter, join } from "node:path"
-import { ProviderError, TOOL, type Flags } from "../sdk/index.ts"
-import type { Capability, Describe } from "../sdk/contract.ts"
+import { ProviderError, TOOL } from "../sdk/index.ts"
+import type { Capability, Describe, Flags } from "../sdk/index.ts"
 
 export const PROVIDERS_DIR_ENV = `${TOOL.toUpperCase()}_PROVIDERS_DIR`
 
@@ -1112,7 +1391,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `discover()`, `ProviderEntry`, `parseDescribe(v, id)`, `configDir()`, `CONFIG_DIR_ENV`.
-- Produces: `INVOKE_TIMEOUT_MS = 30_000`; типы `InvokeError = {code: ErrorCode; message: string; items?: BrandHit[]}`, `InvokeResult = {ok: true; json: unknown; stderr: string; warnings: string[]} | {ok: false; error: InvokeError; stderr: string; warnings: string[]}`; `invoke(bin: string[], args: string[], opts?: {timeoutMs?: number; interactive?: boolean}): Promise<InvokeResult>`; `load(): Promise<Loaded>` в `registry.ts`.
+- Produces: `INVOKE_TIMEOUT_MS = 30_000`; типы `InvokeError = {code: ErrorCode; message: string; items?: BrandHit[]}`, `InvokeResult = {ok: true; json: unknown; stderr: string; warnings: string[]} | {ok: false; error: InvokeError; stderr: string; warnings: string[]}`, `InvokeOpts = {timeoutMs?: number; interactive?: boolean; env?: Record<string, string>}`; `invoke(bin: string[], args: string[], opts?: InvokeOpts): Promise<InvokeResult>`; `passNoise(id, r, warn): void`; `load(warn?: (line: string) => void): Promise<Loaded>` в `registry.ts`.
 
 - [ ] **Step 1: Тест**
 
@@ -1123,7 +1402,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { invoke } from "../../src/core/invoke.ts"
 import { load, PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 
@@ -1222,6 +1501,14 @@ describe("load", () => {
 		expect(bad).toEqual([])
 	})
 
+	test("предупреждения и stderr describe доходят до warn", async () => {
+		process.env[PROVIDERS_DIR_ENV] = join(import.meta.dir, "..", "fixtures", "odd")
+		const lines: string[] = []
+		await load(l => lines.push(l))
+		expect(lines.join(" ")).toContain("сайт просил подождать")
+		expect(lines.join(" ")).toContain("не только JSON")
+	})
+
 	test("провайдер с битым describe в агрегацию не попадает", async () => {
 		process.env[PROVIDERS_DIR_ENV] = join(import.meta.dir, "..", "fixtures", "odd")
 		const { ok, bad } = await load()
@@ -1231,8 +1518,6 @@ describe("load", () => {
 	})
 })
 ```
-
-Тесту нужен `opts.env` — вторая причина, кроме таймаута, по которой у `invoke` есть опции.
 
 - [ ] **Step 2: Запустить, убедиться, что падает**
 
@@ -1246,8 +1531,8 @@ Expected: FAIL, `Cannot find module '../../src/core/invoke.ts'`.
 // процессом и прочитать один JSON-объект из stdout. Ни импортов провайдера,
 // ни общей памяти: чужая реализация контракта может быть на любом языке.
 
-import { CONFIG_DIR_ENV, configDir } from "../sdk/config.ts"
-import type { BrandHit, ErrorCode } from "../sdk/contract.ts"
+import { CONFIG_DIR_ENV, TOOL, configDir, yellow } from "../sdk/index.ts"
+import type { BrandHit, ErrorCode } from "../sdk/index.ts"
 
 /** Столько ждём ответа. Дальше SIGTERM: висящий сайт не должен вешать выдачу. */
 export const INVOKE_TIMEOUT_MS = 30_000
@@ -1338,6 +1623,17 @@ function extractJson(out: string, warnings: string[]): unknown {
 	}
 }
 
+/**
+ * Разговор провайдера с человеком: его stderr уходит наружу как есть — это
+ * его собственные слова, — а наши замечания о его поведении идут подписанными.
+ * Зовётся на каждый ответ, включая `describe`: спека требует предупреждать о
+ * мусоре в stdout везде, а не только в командах выдачи.
+ */
+export function passNoise(id: string, r: InvokeResult, warn: (line: string) => void): void {
+	if (r.stderr.trim()) warn(r.stderr.replace(/\n+$/, ""))
+	for (const w of r.warnings) warn(yellow(`${TOOL}: ${id}: ${w}`))
+}
+
 function errorOf(body: unknown): InvokeError | null {
 	if (!body || typeof body !== "object") return null
 	const e = (body as { error?: unknown }).error
@@ -1356,7 +1652,7 @@ function errorOf(body: unknown): InvokeError | null {
 Добавить импорты и функцию в конец файла:
 
 ```ts
-import { invoke } from "./invoke.ts"
+import { invoke, passNoise } from "./invoke.ts"
 import { parseDescribe } from "./validate.ts"
 
 /**
@@ -1364,11 +1660,13 @@ import { parseDescribe } from "./validate.ts"
  * запуск (кэшем владеет app.ts), но не на диск: список команд провайдера
  * меняется вместе с его версией, а протухший кэш врал бы в справке.
  * Таймаут короче общего: describe обязан работать без сети.
+ * `warn` необязателен только для тестов реестра; команды передают свой.
  */
-export async function load(): Promise<Loaded> {
+export async function load(warn: (line: string) => void = () => {}): Promise<Loaded> {
 	const entries = await discover()
 	const settled = await Promise.all(entries.map(async (e): Promise<Provider | BadProvider> => {
 		const r = await invoke(e.bin, ["describe"], { timeoutMs: 10_000 })
+		passNoise(e.id, r, warn)
 		if (!r.ok) return { ...e, message: r.error.message }
 		try {
 			return { ...e, describe: parseDescribe(r.json, e.id) }
@@ -1386,7 +1684,7 @@ export async function load(): Promise<Loaded> {
 - [ ] **Step 5: Зелёные тесты**
 
 Run: `bun test test/core/invoke.test.ts && bun run typecheck`
-Expected: PASS, 11 тестов. Тест про таймаут занимает около 0.3 с — если он тянет секунды, значит `SIGTERM` не доходит.
+Expected: PASS, 12 тестов. Тест про таймаут занимает около 0.3 с — если он тянет секунды, значит `SIGTERM` не доходит.
 
 - [ ] **Step 6: Commit**
 
@@ -1406,8 +1704,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `test/core/partial.test.ts`
 
 **Interfaces:**
-- Consumes: `InvokeResult` из `invoke.ts`, `Provider`/`BadProvider` из `registry.ts`, `table`/`ratingCell`/`qtyCell`/цвета из `src/sdk/render.ts`.
-- Produces: типы `Failure = {provider: string; code: ErrorCode; message: string}`, `Got<T> = {provider: string; value: T}`, `Fanout<T> = {got: Got<T>[]; failures: Failure[]; asked: number}`; `fanout(providers, call, parse, warn)`, `passNoise(id, r, warn)`, `failureLine(f)`, `allFailed(f)`, `report(f, extra, warn): 0 | 1`; `providersTable(ok, bad, accounts)`, `accountsTable(rows)`, тип `AccountRow`.
+- Consumes: `InvokeResult` и `passNoise(id, r, warn)` из `invoke.ts`, `Provider`/`BadProvider` из `registry.ts`, `table` и цвета из `src/sdk/index.ts`.
+- Produces: типы `Failure = {provider: string; code: ErrorCode; message: string}`, `Got<T> = {provider: string; value: T}`, `Fanout<T> = {got: Got<T>[]; failures: Failure[]; asked: number}`; `fanout(providers, call, parse, warn)`, `failureLine(f)`, `allFailed(f)`, `report(f, extra, warn): 0 | 1`; `hint(s)`, `providersTable(ok, bad, accounts)`, `accountsTable(rows)`, тип `AccountRow`.
 
 - [ ] **Step 1: Тест**
 
@@ -1503,21 +1801,14 @@ Expected: FAIL, `Cannot find module '../../src/core/partial.ts'`.
 // показать второй и честно сказать про первый лучше, чем не показать ничего.
 // Отказ не прячется — жёлтая строка в stderr и поле errors в --json.
 
-import { TOOL } from "../sdk/config.ts"
-import { yellow } from "../sdk/render.ts"
-import type { ErrorCode } from "../sdk/contract.ts"
-import type { InvokeResult } from "./invoke.ts"
+import { TOOL, yellow } from "../sdk/index.ts"
+import type { ErrorCode } from "../sdk/index.ts"
+import { passNoise, type InvokeResult } from "./invoke.ts"
 import type { Provider } from "./registry.ts"
 
 export type Failure = { provider: string; code: ErrorCode; message: string }
 export type Got<T> = { provider: string; value: T }
 export type Fanout<T> = { got: Got<T>[]; failures: Failure[]; asked: number }
-
-/** Разговор провайдера с человеком: его stderr — как есть, наши замечания — подписанными. */
-export function passNoise(id: string, r: InvokeResult, warn: (line: string) => void): void {
-	if (r.stderr.trim()) warn(r.stderr.replace(/\n+$/, ""))
-	for (const w of r.warnings) warn(yellow(`${TOOL}: ${id}: ${w}`))
-}
 
 const asFailure = (provider: string, e: unknown): Failure =>
 	({ provider, code: "internal", message: e instanceof Error ? e.message : String(e) })
@@ -1579,12 +1870,9 @@ export function report(f: Fanout<unknown>, extra: Failure[], warn: (line: string
 // цвета, ячейки рейтинга и наличия) берутся из sdk/render.ts: у обёртки и у
 // провайдера одни и те же колонки должны выглядеть одинаково.
 
-import { TOOL } from "../sdk/config.ts"
-import { bold, dim, green, qtyCell, ratingCell, red, table, yellow } from "../sdk/render.ts"
-import type { Display } from "../sdk/contract.ts"
+import { TOOL, bold, dim, green, red, table, yellow } from "../sdk/index.ts"
+import type { Display } from "../sdk/index.ts"
 import type { BadProvider, Provider } from "./registry.ts"
-
-export { qtyCell, ratingCell }
 
 /** Подсказка под таблицей: что делать дальше. */
 export const hint = (s: string): string => dim(s)
@@ -1617,12 +1905,56 @@ export function accountsTable(rows: AccountRow[]): string {
 }
 ```
 
-- [ ] **Step 5: Зелёные тесты**
+- [ ] **Step 5: Тест таблиц**
+
+Дописать в `test/core/partial.test.ts` (файл гасит цвет первой строкой
+`process.env.NO_COLOR = "1"`, как `test/sdk/render.test.ts`):
+
+```ts
+import { accountsTable, providersTable } from "../../src/core/render.ts"
+
+describe("таблицы обёртки", () => {
+	test("providers: capabilities, статус аккаунта и чем запускается", () => {
+		const out = providersTable(
+			[{ ...provider("alpha"), describe: { contract: 1, id: "alpha", name: "Alpha", site: "https://a", capabilities: ["basket"], commands: [] } }],
+			[{ id: "broken", bin: ["bun", "/x/broken"], source: "dir", message: "нет поля name" }],
+			new Set(["alpha"]),
+		)
+		const lines = out.split("\n")
+		expect(lines[0]).toContain("АККАУНТ")
+		expect(lines[1]).toContain("basket")
+		expect(lines[1]).toContain("есть")
+		expect(lines[2]).toContain("нет поля name")
+	})
+
+	test("providers: ни одного — не пустая таблица, а совет", () => {
+		expect(providersTable([], [], new Set())).toContain("PATH")
+	})
+
+	test("accounts: имя и почта печатаются как есть, отказ — примечанием", () => {
+		const out = accountsTable([
+			{ provider: "alpha", ok: true, display: { name: "pavel", email: "pavel@alpha.example" } },
+			{ provider: "beta", ok: false, note: "HTTP 500" },
+		])
+		expect(out).toContain("pavel@alpha.example")
+		expect(out).toContain("HTTP 500")
+		expect(out).toContain("входа нет")
+	})
+
+	test("accounts: пустой список", () => {
+		expect(accountsTable([])).toBe("аккаунтов нет")
+	})
+})
+```
+
+Первая строка файла — `process.env.NO_COLOR = "1"` до всех импортов.
+
+- [ ] **Step 6: Зелёные тесты**
 
 Run: `bun test test/core/partial.test.ts && bun run typecheck`
-Expected: PASS, 8 тестов.
+Expected: PASS, 12 тестов.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/core/partial.ts src/core/render.ts test/core/partial.test.ts
@@ -1645,8 +1977,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `test/commands/accounts.test.ts`
 
 **Interfaces:**
-- Consumes: `load()`, `select()`, `invoke()`, `fanout()`, `passNoise()`, `parseWhoami`, `parseDisplay`, `listAccountIds()`, `removeAccount()`, `providersTable`, `accountsTable`.
-- Produces: типы `Ctx` и `Output`; `need(v, what)`, `limitOf(flags, def?)`, `pageOf(flags)`, `qtyOf(flags)`, `refOf(flags)`, `one(ctx, id, cap?)`; `cmdProviders`, `cmdAccounts`, `cmdLogin`, `cmdLogout` — все типа `(ctx: Ctx) => Promise<Output>`.
+- Consumes: `load(warn)`, `select()`, `invoke()`, `passNoise()`, `fanout()`, `parseWhoami`, `parseDisplay`, `listAccountIds()`, `removeAccount()`, `providersTable`, `accountsTable`; `need`, `positiveInt`, `intFlag` из `sdk/index.ts`.
+- Produces: типы `Ctx` и `Output`; `limitOf(flags, def?)`, `pageOf(flags)`, `qtyOf(flags)`, `one(ctx, id, cap?)`; `cmdProviders`, `cmdAccounts`, `cmdLogin`, `cmdLogout` — все типа `(ctx: Ctx) => Promise<Output>`. Разбор `need`, `parseRef` и `intFlag` берётся из `sdk/index.ts` как есть.
 
 - [ ] **Step 1: Тесты**
 
@@ -1658,8 +1990,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { accountStore } from "../../src/sdk/account.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV, accountStore } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 
 const FIXTURES = join(import.meta.dir, "..", "fixtures", "providers")
@@ -1717,8 +2048,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { accountStore } from "../../src/sdk/account.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV, accountStore } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 
 const FIXTURES = join(import.meta.dir, "..", "fixtures", "providers")
@@ -1779,6 +2109,15 @@ describe("adoc login / logout", () => {
 		expect(await accountStore("alpha").load()).toEqual({ token: "t-pavel", user: "pavel" })
 	})
 
+	test("тело login с токенами не уходит ни в stdout, ни в stderr", async () => {
+		process.env.FAKE_ALPHA_LOGIN = "pavel"
+		process.env.FAKE_ALPHA_PASSWORD = "pw"
+		const r = await run(["login", "alpha"])
+		expect(r.stdout).not.toContain("t-pavel")
+		expect(r.stderr).not.toContain("t-pavel")
+		expect(r.stdout).toContain("вошли")
+	})
+
 	test("неверный пароль — код 1 и текст провайдера", async () => {
 		process.env.FAKE_ALPHA_LOGIN = "pavel"
 		process.env.FAKE_ALPHA_PASSWORD = "не тот"
@@ -1819,35 +2158,21 @@ Expected: FAIL — `неизвестная команда: providers`.
 - [ ] **Step 3: `src/core/args.ts`**
 
 ```ts
-// args.ts — аргументы команд обёртки. Числа, JSON и имена провайдеров
-// проверяются здесь, чтобы пользователь получил bad_args с внятным текстом,
-// а не падение посреди выдачи.
+// args.ts — аргументы команд обёртки. Числа, JSON и обязательные позиционные
+// разбирает sdk/cli.ts: у обёртки и у провайдера должны совпадать не только
+// правила, но и тексты ошибок. Здесь остаётся то, чего в SDK нет: значения по
+// умолчанию и поиск провайдера по имени.
 
-import { ProviderError, TOOL, positiveInt, type Flags } from "../sdk/index.ts"
-import type { Capability } from "../sdk/contract.ts"
+import { ProviderError, TOOL, intFlag, need, positiveInt } from "../sdk/index.ts"
+import type { Capability, Flags } from "../sdk/index.ts"
 import type { Ctx } from "./ctx.ts"
 import type { Provider } from "./registry.ts"
 
-export function need(v: string | undefined, what: string): string {
-	if (!v) throw new ProviderError("bad_args", `нужен ${what}`)
-	return v
-}
-
 export const limitOf = (flags: Flags, def = 10): number => (flags.limit === undefined ? def : positiveInt("--limit", flags.limit))
 export const pageOf = (flags: Flags): number => (flags.page === undefined ? 1 : positiveInt("--page", flags.page))
-export const qtyOf = (flags: Flags): number => (flags.qty === undefined ? 1 : positiveInt("--qty", flags.qty))
 
-/** `--ref` — непрозрачный объект из выдачи `part`; обёртка его не толкует. */
-export function refOf(flags: Flags): Record<string, unknown> {
-	if (typeof flags.ref !== "string" || !flags.ref) throw new ProviderError("bad_args", `нужен --ref <json> из выдачи ${TOOL} part --json`)
-	try {
-		const o = JSON.parse(flags.ref) as unknown
-		if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error()
-		return o as Record<string, unknown>
-	} catch {
-		throw new ProviderError("bad_args", "--ref должен быть JSON-объектом")
-	}
-}
+/** Количество для корзины: целое ≥ 0, по умолчанию одна штука. */
+export const qtyOf = (flags: Flags): number => intFlag("qty", flags.qty) ?? 1
 
 /** Один провайдер по имени: для login/logout и адресных команд корзины. */
 export async function one(ctx: Ctx, id: string | undefined, cap?: Capability): Promise<Provider> {
@@ -1868,8 +2193,8 @@ export async function one(ctx: Ctx, id: string | undefined, cap?: Capability): P
 // Статус аккаунта берётся по наличию файла, а не вызовом whoami: список
 // провайдеров должен печататься мгновенно и без сети.
 
-import { listAccountIds } from "../core/store.ts"
 import { providersTable } from "../core/render.ts"
+import { listAccountIds } from "../core/store.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
 export async function cmdProviders(ctx: Ctx): Promise<Output> {
@@ -1894,12 +2219,11 @@ export async function cmdProviders(ctx: Ctx): Promise<Output> {
 // login целиком делегируется провайдеру, logout удаляет его файл, whoami
 // спрашивает сам провайдер. Тело login содержит токены и наружу не идёт.
 
-import { ProviderError, TOOL } from "../sdk/index.ts"
-import { bold, dim, green, renderDisplay } from "../sdk/render.ts"
-import type { Display, WhoamiResult } from "../sdk/contract.ts"
-import { need, one } from "../core/args.ts"
-import { invoke } from "../core/invoke.ts"
-import { fanout, passNoise, report } from "../core/partial.ts"
+import { ProviderError, TOOL, bold, dim, green, need, renderDisplay } from "../sdk/index.ts"
+import type { Display, WhoamiResult } from "../sdk/index.ts"
+import { one } from "../core/args.ts"
+import { invoke, passNoise } from "../core/invoke.ts"
+import { fanout, report } from "../core/partial.ts"
 import { accountsTable, type AccountRow } from "../core/render.ts"
 import { listAccountIds, removeAccount } from "../core/store.ts"
 import { parseDisplay, parseWhoami } from "../core/validate.ts"
@@ -1938,24 +2262,33 @@ export async function cmdAccounts(ctx: Ctx): Promise<Output> {
 
 export async function cmdLogin(ctx: Ctx): Promise<Output> {
 	const p = await one(ctx, ctx.args[0])
-	// Вход интерактивный: подсказки и ввод идут в терминал напрямую, а таймаут
-	// общий (30 с) человеку с паролем короток.
+
+	// Единственная команда, чей диалог идёт прямо в терминал: подсказку
+	// «Пароль >» нельзя копить до конца, её надо показать до ввода. Поэтому
+	// invoke наследует stdin и льёт stderr провайдера сразу — это объявленное
+	// исключение из инварианта app.ts «сам ничего не печатает».
+	// Таймаут общий (30 с) человеку с паролем короток.
 	const r = await invoke(p.bin, ["login"], { interactive: true, timeoutMs: 5 * 60_000 })
 	passNoise(p.id, r, ctx.warn)
+	// В stdout login лежит аккаунт целиком, вместе с токенами. Отсюда берётся
+	// только факт успеха; тело не печатается, не сохраняется и не разбирается.
 	if (!r.ok) throw new ProviderError(r.error.code, `${p.id}: ${r.error.message}`)
 
-	// В теле login лежит аккаунт целиком, вместе с токенами. Наружу берём
-	// только display: ни в stdout, ни в файл, ни в лог остальное не попадает.
-	const display = pickDisplay(r.json, p.id)
+	// Кто вошёл — спрашиваем отдельным whoami: у него в ответе ровно display и
+	// ничего секретного.
+	const display = await whoamiOf(ctx, p)
 	return {
-		json: { ok: true, provider: p.id, display },
+		json: { ok: true, provider: p.id, ...(display ? { display } : {}) },
 		render: () => `${green("вошли")} ${bold(p.id)}\n${renderDisplay(display)}`,
 	}
 }
 
-function pickDisplay(json: unknown, who: string): Display {
-	const d = (json as { display?: unknown } | null)?.display
-	return parseDisplay(d, who)
+async function whoamiOf(ctx: Ctx, p: Provider): Promise<Display | undefined> {
+	const r = await invoke(p.bin, ["whoami"])
+	passNoise(p.id, r, ctx.warn)
+	if (!r.ok) return undefined
+	const w = parseWhoami(r.json, p.id)
+	return w.ok ? w.display : undefined
 }
 
 export async function cmdLogout(ctx: Ctx): Promise<Output> {
@@ -1988,8 +2321,7 @@ export async function cmdLogout(ctx: Ctx): Promise<Output> {
 // ленивый доступ к провайдерам, а возвращает две формы одного ответа: JSON для
 // машины и текст для человека. Печатает их не команда, а app.ts.
 
-import type { Capability } from "../sdk/contract.ts"
-import type { Flags } from "../sdk/index.ts"
+import type { Capability, Flags } from "../sdk/index.ts"
 import type { Loaded, Provider } from "./registry.ts"
 
 export type Ctx = {
@@ -2011,8 +2343,7 @@ export type Output = { json: unknown; render(): string; code?: 0 | 1 | 2 }
 Дальше `src/app.ts`. Добавить импорты:
 
 ```ts
-import type { Flags } from "./sdk/index.ts"
-import { yellow } from "./sdk/render.ts"
+import { yellow, type Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
 import { cmdProviders } from "./commands/providers.ts"
 import type { Ctx, Output } from "./core/ctx.ts"
@@ -2056,7 +2387,8 @@ function makeCtx(args: string[], flags: Flags, json: boolean, warn: (line: strin
 	let toldAboutBad = false
 	const ctx: Ctx = {
 		args, flags, json, warn,
-		load: () => (loaded ??= load()),
+		// Предупреждения и stderr от describe тоже принадлежат человеку.
+		load: () => (loaded ??= load(warn)),
 		pick: async cap => {
 			const l = await ctx.load()
 			// Про сломанного провайдера говорим один раз за запуск, а не на
@@ -2075,7 +2407,7 @@ function makeCtx(args: string[], flags: Flags, json: boolean, warn: (line: strin
 - [ ] **Step 7: Зелёные тесты**
 
 Run: `bun test test/commands && bun run typecheck`
-Expected: PASS, 15 тестов.
+Expected: PASS, 16 тестов.
 
 - [ ] **Step 8: Commit**
 
@@ -2093,12 +2425,12 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/core/merge.ts`
 - Create: `src/core/errors.ts`
 - Create: `src/core/brand.ts`
-- Modify: `src/core/render.ts` (таблицы брендов, предложений и товаров)
+- Modify: `src/core/render.ts` (колонки агрегатора)
 - Test: `test/core/merge.test.ts`
 
 **Interfaces:**
-- Consumes: `articleKey`/`brandKey` из `src/sdk/index.ts`, `fanout`/`failureLine` из `partial.ts`, `parseBrands` из `validate.ts`, `invoke`.
-- Produces: типы `Per<T> = {provider: string; items: T[]}`, `OfferRow = Offer & {provider: string}`, `MergedBrand`, `MergedProduct`; `mergeBrands(article, per)`, `splitOffers(article, per)`, `mergeProducts(per)`; класс `Ambiguous extends ProviderError` с полем `brands: MergedBrand[]`; `resolveBrand(providers, article, wanted, warn): Promise<Resolved>` где `Resolved = {brand: MergedBrand | null; all: MergedBrand[]; failures: Failure[]}`; `brandsWhereTable`, `offersTable(rows, from?)`, `productsTable`.
+- Consumes: `articleKey`/`brandKey`/`Col` из `src/sdk/index.ts`, `fanout`/`failureLine`/`allFailed`/`Fanout` из `partial.ts`, `parseBrands` из `validate.ts`, `invoke`.
+- Produces: типы `Per<T> = {provider: string; items: T[]}`, `OfferRow = Offer & {provider: string}`, `MergedBrand`, `MergedProduct`; `mergeBrands(article, per)`, `splitOffers(article, per)`, `mergeProducts(per)`; класс `Ambiguous extends ProviderError` с полем `brands: MergedBrand[]`; `resolveBrand(providers, article, wanted, warn): Promise<Resolved>` где `Resolved = {brand: MergedBrand | null; all: MergedBrand[]; failures: Failure[]; step: Fanout<BrandHit[]>}`; `emptyResult(article, r, rest, warn): Output`; колонки `providerCol: Col<OfferRow>` и `whereCol<T>(): Col<T>`.
 
 - [ ] **Step 1: Тест склейки**
 
@@ -2110,11 +2442,11 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { mergeBrands, mergeProducts, splitOffers } from "../../src/core/merge.ts"
-import { resolveBrand } from "../../src/core/brand.ts"
+import { emptyResult, resolveBrand } from "../../src/core/brand.ts"
 import { Ambiguous } from "../../src/core/errors.ts"
 import { load, PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
-import type { Offer } from "../../src/sdk/contract.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
+import type { Offer } from "../../src/sdk/index.ts"
 
 const offer = (o: Partial<Offer> & { price: number }): Offer =>
 	({ article: "N90954802", brand: "VAG", currency: "RUB", ...o })
@@ -2218,6 +2550,7 @@ describe("resolveBrand", () => {
 		delete process.env[CONFIG_DIR_ENV]
 		delete process.env[PROVIDERS_DIR_ENV]
 		delete process.env.FAKE_ALPHA_FAIL
+		delete process.env.FAKE_BETA_FAIL
 		await rm(dir, { recursive: true, force: true })
 	})
 
@@ -2256,6 +2589,18 @@ describe("resolveBrand", () => {
 		expect(r.all).toEqual([])
 	})
 
+	test("пустая выдача: код 0, когда кто-то ответил, и 1, когда не ответил никто", async () => {
+		const { ok } = await load()
+		const quiet = await resolveBrand(ok, "ЧЕГО-ТАКОГО-НЕТ", undefined, () => {})
+		expect(emptyResult("ЧЕГО-ТАКОГО-НЕТ", quiet, { offers: [] }, () => {}).code).toBe(0)
+
+		process.env.FAKE_ALPHA_FAIL = "http"
+		process.env.FAKE_BETA_FAIL = "http"
+		const dead = await resolveBrand((await load()).ok, "n90954802", undefined, () => {})
+		expect(emptyResult("n90954802", dead, { offers: [] }, () => {}).code).toBe(1)
+		delete process.env.FAKE_BETA_FAIL
+	})
+
 	test("один провайдер упал — второй всё равно даёт бренд", async () => {
 		process.env.FAKE_ALPHA_FAIL = "http"
 		const { ok } = await load()
@@ -2279,7 +2624,7 @@ Expected: FAIL, `Cannot find module '../../src/core/merge.ts'`.
 // правил в проекте быть не должно, иначе part и search разъедутся.
 
 import { articleKey, brandKey } from "../sdk/index.ts"
-import type { BrandHit, Offer, Product, Rating } from "../sdk/contract.ts"
+import type { BrandHit, Offer, Product, Rating } from "../sdk/index.ts"
 
 export type Per<T> = { provider: string; items: T[] }
 export type OfferRow = Offer & { provider: string }
@@ -2399,13 +2744,16 @@ export class Ambiguous extends ProviderError {
 ```ts
 // brand.ts — общий для part и reviews шаг «артикул → бренд». Правило жёсткое:
 // пока производитель не назван однозначно, дальше идти нельзя — цена, срок и
-// отзывы у разных производителей одного артикула разные.
+// отзывы у разных производителей одного артикула разные. Здесь же общий ответ
+// «ничего не нашлось»: обе команды должны считать код возврата одинаково.
 
-import { brandKey } from "../sdk/index.ts"
+import { brandKey, cyan } from "../sdk/index.ts"
+import type { BrandHit } from "../sdk/index.ts"
+import type { Output } from "./ctx.ts"
 import { Ambiguous } from "./errors.ts"
 import { invoke } from "./invoke.ts"
 import { mergeBrands, type MergedBrand } from "./merge.ts"
-import { fanout, type Failure } from "./partial.ts"
+import { allFailed, failureLine, fanout, type Failure, type Fanout } from "./partial.ts"
 import type { Provider } from "./registry.ts"
 import { parseBrands } from "./validate.ts"
 
@@ -2414,66 +2762,73 @@ export type Resolved = {
 	brand: MergedBrand | null
 	all: MergedBrand[]
 	failures: Failure[]
+	/** Шаг брендов целиком: из него берётся код возврата пустой выдачи. */
+	step: Fanout<BrandHit[]>
 }
 
 export async function resolveBrand(
 	providers: Provider[], article: string, wanted: string | undefined, warn: (line: string) => void,
 ): Promise<Resolved> {
-	const f = await fanout(providers, p => invoke(p.bin, ["brands", article]), parseBrands, warn)
-	const all = mergeBrands(article, f.got.map(g => ({ provider: g.provider, items: g.value })))
+	const step = await fanout(providers, p => invoke(p.bin, ["brands", article]), parseBrands, warn)
+	const all = mergeBrands(article, step.got.map(g => ({ provider: g.provider, items: g.value })))
+	const base = { all, failures: step.failures, step }
 
-	if (!all.length) return { brand: null, all, failures: f.failures }
+	if (!all.length) return { brand: null, ...base }
 	if (wanted) {
 		const want = brandKey(wanted)
 		const hit = all.find(b => b.key === want)
-		// Названного бренда нет — показываем те, что есть: человек ошибся в
-		// написании чаще, чем сайт потерял производителя.
+		// Названного бренда нет — показываем те, что есть: человек ошибается в
+		// написании чаще, чем сайт теряет производителя.
 		if (!hit) throw new Ambiguous(all)
-		return { brand: hit, all, failures: f.failures }
+		return { brand: hit, ...base }
 	}
 	if (all.length > 1) throw new Ambiguous(all)
-	return { brand: all[0]!, all, failures: f.failures }
+	return { brand: all[0]!, ...base }
+}
+
+/**
+ * Ни у кого ничего не нашлось. Пустой результат — не ошибка; ошибка — только
+ * когда не ответил никто, и решает это `allFailed`, а не пересчёт в команде.
+ * `rest` — остаток формы `--json`, у part и reviews он разный.
+ */
+export function emptyResult(article: string, r: Resolved, rest: Record<string, unknown>, warn: (line: string) => void): Output {
+	for (const f of r.failures) warn(failureLine(f))
+	return {
+		json: { article, brand: null, ...rest, errors: r.failures },
+		render: () => `по ${cyan(article)} ничего не нашлось`,
+		code: allFailed(r.step) ? 1 : 0,
+	}
 }
 ```
 
-- [ ] **Step 6: Таблицы в `src/core/render.ts`**
+- [ ] **Step 6: Колонки в `src/core/render.ts`**
 
-Добавить импорты и три функции:
+Своих таблиц у обёртки нет: она берёт рендеры SDK и добавляет к ним колонку
+источника. Дописать в `src/core/render.ts` (импорт `Col` — к уже имеющемуся
+импорту из `../sdk/index.ts`):
 
 ```ts
-import { cyan, days, money } from "../sdk/render.ts"
-import type { MergedBrand, MergedProduct, OfferRow } from "./merge.ts"
+import type { Col } from "../sdk/index.ts"
+import type { OfferRow } from "./merge.ts"
 
-export function brandsWhereTable(brands: MergedBrand[]): string {
-	if (!brands.length) return "не найдено"
-	return table(brands.map(b => [
-		bold(b.brand), cyan(b.article), (b.name ?? "").slice(0, 40), ratingCell(b.rating), dim(b.providers.join(", ")),
-	]), ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ", "ГДЕ"])
-}
+/** Колонка «ПРОВАЙДЕР»: в таблице обёртки строки приходят из разных мест. */
+export const providerCol: Col<OfferRow> = { head: "ПРОВАЙДЕР", cell: o => dim(o.provider) }
 
-/** `from` — номер первой строки: у аналогов нумерация продолжает основную. */
-export function offersTable(rows: OfferRow[], from = 1): string {
-	if (!rows.length) return "предложений нет"
-	return table(rows.map((o, i) => [
-		String(from + i), dim(o.provider), bold(o.brand), (o.name ?? "").slice(0, 36),
-		money(o.price), qtyCell(o.quantity),
-		o.deliveryDays != null ? days(o.deliveryDays) : o.deliveryDate ?? dim("—"),
-		o.seller ?? dim("—"), ratingCell(o.rating),
-	]), ["#", "ПРОВАЙДЕР", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ"])
-}
-
-export function productsTable(items: MergedProduct[]): string {
-	if (!items.length) return "ничего не найдено"
-	return table(items.map(p => [
-		cyan(p.article), bold(p.brand), p.name.slice(0, 44), money(p.price), qtyCell(p.quantity), ratingCell(p.rating), dim(p.providers.join(", ")),
-	]), ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ", "ГДЕ"])
-}
+/** Колонка «ГДЕ»: у каких сайтов есть эта строка. */
+export const whereCol = <T extends { providers: string[] }>(): Col<T> =>
+	({ head: "ГДЕ", cell: x => dim(x.providers.join(", ")) })
 ```
+
+Таблицы рисуются вызовами SDK: `renderOffers(rows, [providerCol])`,
+`renderOffers(analogs, [providerCol], exact.length + 1)`,
+`renderProducts(items, [whereCol<MergedProduct>()])`,
+`renderBrands(brands, [whereCol<MergedBrand>()])`. Отдельных `offersTable`,
+`productsTable` и `brandsWhereTable` не заводится.
 
 - [ ] **Step 7: Зелёные тесты**
 
 Run: `bun test test/core/merge.test.ts && bun run typecheck`
-Expected: PASS, 16 тестов.
+Expected: PASS, 17 тестов.
 
 - [ ] **Step 8: Commit**
 
@@ -2496,7 +2851,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `test/commands/part.test.ts`
 
 **Interfaces:**
-- Consumes: `resolveBrand`, `splitOffers`, `fanout`/`report`/`failureLine`, `parseOffers`, `offersTable`/`brandsWhereTable`/`hint`, `limitOf`/`need`, `readJson`/`writeJson`.
+- Consumes: `resolveBrand`/`emptyResult` из `brand.ts`, `splitOffers`, `fanout`/`report`, `parseOffers`, `renderOffers`/`renderBrands`/`need` из `sdk/index.ts`, `providerCol`/`whereCol`/`hint`, `limitOf`, `readJson`/`writeJson`.
 - Produces: `LAST_PART_FILE = "last-part.json"`, `MAX_AGE_MS`, типы `LastPartLine`, `LastPart`; `saveLastPart(article, brand, rows)`, `lineOf(n, now?)`; `cmdPart(ctx): Promise<Output>`.
 
 - [ ] **Step 1: Тест кэша**
@@ -2508,7 +2863,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { LAST_PART_FILE, lineOf, MAX_AGE_MS, saveLastPart } from "../../src/core/lastpart.ts"
 import { readJson } from "../../src/core/store.ts"
 import type { OfferRow } from "../../src/core/merge.ts"
@@ -2531,22 +2886,22 @@ describe("last-part.json", () => {
 	})
 
 	test("нет файла — понятный отказ, а не пустой ref", async () => {
-		expect(lineOf(1)).rejects.toThrow("adoc part")
+		await expect(lineOf(1)).rejects.toThrow("adoc part")
 	})
 
 	test("номер за пределами выдачи", async () => {
 		await saveLastPart("N1", "VAG", [row("alpha", 1, { line: "a" })])
-		expect(lineOf(2)).rejects.toThrow("1 строк")
+		await expect(lineOf(2)).rejects.toThrow("1 строк")
 	})
 
 	test("выдача старше суток — просим повторить part", async () => {
 		await saveLastPart("N1", "VAG", [row("alpha", 1, { line: "a" })])
-		expect(lineOf(1, Date.now() + MAX_AGE_MS + 1000)).rejects.toThrow("старше суток")
+		await expect(lineOf(1, Date.now() + MAX_AGE_MS + 1000)).rejects.toThrow("старше суток")
 	})
 
 	test("строка без ref в корзину не кладётся", async () => {
 		await saveLastPart("N1", "VAG", [row("alpha", 1)])
-		expect(lineOf(1)).rejects.toThrow("ref")
+		await expect(lineOf(1)).rejects.toThrow("ref")
 	})
 })
 ```
@@ -2561,7 +2916,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { LAST_PART_FILE } from "../../src/core/lastpart.ts"
 import { readJson } from "../../src/core/store.ts"
@@ -2758,15 +3113,14 @@ export async function lineOf(n: number, now: number = Date.now()): Promise<LastP
 // уходит его собственное написание бренда — нормализация нужна обёртке для
 // склейки, а сайту она чужая.
 
-import { TOOL } from "../sdk/index.ts"
-import { bold, cyan, dim, heading } from "../sdk/render.ts"
-import { limitOf, need } from "../core/args.ts"
-import { resolveBrand } from "../core/brand.ts"
+import { TOOL, bold, cyan, dim, heading, need, renderOffers } from "../sdk/index.ts"
+import { limitOf } from "../core/args.ts"
+import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
 import { splitOffers } from "../core/merge.ts"
-import { failureLine, fanout, report } from "../core/partial.ts"
-import { hint, offersTable } from "../core/render.ts"
+import { fanout, report } from "../core/partial.ts"
+import { hint, providerCol } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -2774,18 +3128,16 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 	const article = need(ctx.args[0], "артикул")
 	const providers = await ctx.pick()
 	// Бросает Ambiguous — её ловит и рисует app.ts.
-	const { brand, all, failures } = await resolveBrand(providers, article, ctx.args[1], ctx.warn)
+	const resolved = await resolveBrand(providers, article, ctx.args[1], ctx.warn)
+	const { brand, all, failures } = resolved
 
-	const brandsJson = all.map(b => ({ brand: b.brand, article: b.article, ...(b.name ? { name: b.name } : {}), ...(b.rating ? { rating: b.rating } : {}), providers: b.providers }))
+	if (!brand) return emptyResult(article, resolved, { brands: [], offers: [], analogs: [] }, ctx.warn)
 
-	if (!brand) {
-		for (const x of failures) ctx.warn(failureLine(x))
-		return {
-			json: { article, brand: null, brands: [], offers: [], analogs: [], errors: failures },
-			render: () => `по ${cyan(article)} ничего не нашлось`,
-			code: failures.length === providers.length ? 1 : 0,
-		}
-	}
+	const brandsJson = all.map(b => ({
+		brand: b.brand, article: b.article,
+		...(b.name ? { name: b.name } : {}), ...(b.rating ? { rating: b.rating } : {}),
+		providers: b.providers,
+	}))
 
 	// Спрашиваем только тех, у кого этот бренд есть: остальным вопрос
 	// бессмысленен и стоил бы лишних секунд ожидания.
@@ -2818,13 +3170,13 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 			const out = [
 				`${cyan(article)} · ${bold(brand.brand)} · ${dim(brand.providers.join(", "))}`,
 				"",
-				offersTable(exact),
+				renderOffers(exact, [providerCol]),
 			]
 			if (split.offers.length > exact.length) out.push(hint(`показано ${exact.length} из ${split.offers.length} — --limit <n>`))
 			if (analogs) {
-				out.push(heading("Аналоги"), extra.length ? offersTable(extra, exact.length + 1) : dim("аналогов нет"))
+				out.push(heading("Аналоги"), extra.length ? renderOffers(extra, [providerCol], exact.length + 1) : dim("аналогов нет"))
 			} else if (split.analogs.length) {
-				out.push(hint(`есть и аналоги — --analogs`))
+				out.push(hint("есть и аналоги — --analogs"))
 			}
 			out.push(hint(`${TOOL} basket add <#> [--qty <n>] — положить строку в корзину её сайта`))
 			return out.join("\n")
@@ -2835,12 +3187,14 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 
 - [ ] **Step 6: Подключить `part` и отрисовку `Ambiguous` в `src/app.ts`**
 
-Импорты:
+Импорты (`renderBrands` добавляется к уже имеющемуся импорту из `./sdk/index.ts`):
 
 ```ts
+import { renderBrands } from "./sdk/index.ts"
 import { cmdPart } from "./commands/part.ts"
 import { Ambiguous } from "./core/errors.ts"
-import { brandsWhereTable } from "./core/render.ts"
+import { whereCol } from "./core/render.ts"
+import type { MergedBrand } from "./core/merge.ts"
 ```
 
 В таблицу команд добавить строку `part: cmdPart,`.
@@ -2853,7 +3207,7 @@ import { brandsWhereTable } from "./core/render.ts"
 		if (json) return { stdout: `${JSON.stringify(body)}\n`, stderr, code }
 		// «Уточни бренд» — не ошибка, а список: человеку нужна таблица с
 		// колонкой «где», а не одна строка красным.
-		const table = e instanceof Ambiguous ? `${brandsWhereTable(e.brands)}\n` : ""
+		const table = e instanceof Ambiguous ? `${renderBrands(e.brands, [whereCol<MergedBrand>()])}\n` : ""
 		return { stdout: "", stderr: `${stderr}${red(body.error.message)}\n${table}`, code }
 ```
 
@@ -2880,7 +3234,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `test/commands/search.test.ts`
 
 **Interfaces:**
-- Consumes: `mergeProducts`, `parseProducts`, `productsTable`, `hint`, `limitOf`/`pageOf`/`need`, `fanout`/`report`.
+- Consumes: `mergeProducts`, `parseProducts`, `renderProducts` и `need` из `sdk/index.ts`, `whereCol`/`hint`, `limitOf`/`pageOf`, `fanout`/`report`.
 - Produces: `cmdSearch(ctx): Promise<Output>`; форма `--json`: `{query, items: (Product & {providers: string[]; prices: Record<string, number>})[], errors}`.
 
 - [ ] **Step 1: Тест**
@@ -2893,7 +3247,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 
 type SearchJson = {
@@ -2982,12 +3336,12 @@ Expected: FAIL — `неизвестная команда: search`.
 // search.ts — поиск по названию. Сам по себе он не про цену: из его выдачи
 // берут артикул с брендом и идут в `part`, где цены и сроки.
 
-import { TOOL } from "../sdk/index.ts"
-import { limitOf, need, pageOf } from "../core/args.ts"
+import { TOOL, need, renderProducts } from "../sdk/index.ts"
+import { limitOf, pageOf } from "../core/args.ts"
 import { invoke } from "../core/invoke.ts"
-import { mergeProducts } from "../core/merge.ts"
+import { mergeProducts, type MergedProduct } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { hint, productsTable } from "../core/render.ts"
+import { hint, whereCol } from "../core/render.ts"
 import { parseProducts } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -3011,7 +3365,7 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 	return {
 		json: { query, items, errors: f.failures },
 		code,
-		render: () => [productsTable(items), hint(`${TOOL} part <артикул> <бренд> — цены, сроки и наличие по строке`)].join("\n"),
+		render: () => [renderProducts(items, [whereCol<MergedProduct>()]), hint(`${TOOL} part <артикул> <бренд> — цены, сроки и наличие по строке`)].join("\n"),
 	}
 }
 ```
@@ -3044,7 +3398,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Test: `test/commands/reviews.test.ts`
 
 **Interfaces:**
-- Consumes: `resolveBrand`, `parseReviews`, `renderReviews`/`heading` из `src/sdk/render.ts`, `fanout`/`report`.
+- Consumes: `resolveBrand`/`emptyResult` из `brand.ts`, `parseReviews`, `renderReviews`/`heading`/`need` из `src/sdk/index.ts`, `fanout`/`report`.
 - Produces: `cmdReviews(ctx): Promise<Output>`; форма `--json`: `{article, brand, providers: {<id>: Reviews}, errors}`.
 
 - [ ] **Step 1: Тест**
@@ -3057,9 +3411,9 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
-import type { Reviews } from "../../src/sdk/contract.ts"
+import type { Reviews } from "../../src/sdk/index.ts"
 
 type ReviewsJson = { article: string; brand: string | null; providers: Record<string, Reviews>; errors: { provider: string }[] }
 
@@ -3134,27 +3488,21 @@ Expected: FAIL — `неизвестная команда: reviews`.
 // отзывы привязаны к производителю, а не к номеру детали. Спрашиваются только
 // сайты с capability reviews — и только те, у кого этот бренд нашёлся.
 
-import { cyan, heading, renderReviews } from "../sdk/render.ts"
-import { limitOf, need } from "../core/args.ts"
-import { resolveBrand } from "../core/brand.ts"
+import { heading, need, renderReviews } from "../sdk/index.ts"
+import { limitOf } from "../core/args.ts"
+import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
-import { failureLine, fanout, report } from "../core/partial.ts"
+import { fanout, report } from "../core/partial.ts"
 import { parseReviews } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
 export async function cmdReviews(ctx: Ctx): Promise<Output> {
 	const article = need(ctx.args[0], "артикул")
 	const providers = await ctx.pick()
-	const { brand, failures } = await resolveBrand(providers, article, ctx.args[1], ctx.warn)
+	const resolved = await resolveBrand(providers, article, ctx.args[1], ctx.warn)
+	const { brand, failures } = resolved
 
-	if (!brand) {
-		for (const x of failures) ctx.warn(failureLine(x))
-		return {
-			json: { article, brand: null, providers: {}, errors: failures },
-			render: () => `по ${cyan(article)} ничего не нашлось`,
-			code: failures.length === providers.length ? 1 : 0,
-		}
-	}
+	if (!brand) return emptyResult(article, resolved, { providers: {} }, ctx.warn)
 
 	const holders = (await ctx.pick("reviews")).filter(p => brand.providers.includes(p.id))
 	const limit = limitOf(ctx.flags)
@@ -3204,13 +3552,12 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `src/commands/basket.ts`
-- Modify: `src/core/render.ts` (`basketBlock`, `basketTotal`)
 - Modify: `src/app.ts` (команда `basket`)
 - Test: `test/commands/basket.test.ts`
 
 **Interfaces:**
-- Consumes: `lineOf` из `lastpart.ts`, `one`/`need`/`qtyOf`/`refOf` из `args.ts`, `parseBasket`, `invoke`, `fanout`/`report`/`passNoise`.
-- Produces: `cmdBasket(ctx): Promise<Output>`; `basketBlock(id, b): string`, `basketTotal(b): number`; форма `--json` списка: `{providers: {<id>: Basket}, total, errors}`, форма изменения: `{provider, basket}`.
+- Consumes: `lineOf` из `lastpart.ts`, `one`/`qtyOf` из `args.ts`, `need`/`parseRef`/`renderBasket`/`basketTotal` из `sdk/index.ts`, `parseBasket`, `invoke`/`passNoise`, `fanout`/`report`.
+- Produces: `cmdBasket(ctx): Promise<Output>`; форма `--json` списка: `{providers: {<id>: Basket}, total, errors}`, форма изменения: `{provider, basket}`.
 
 - [ ] **Step 1: Тест**
 
@@ -3222,12 +3569,11 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { accountStore } from "../../src/sdk/account.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV, accountStore } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { LAST_PART_FILE } from "../../src/core/lastpart.ts"
 import { writeJson } from "../../src/core/store.ts"
-import type { Basket } from "../../src/sdk/contract.ts"
+import type { Basket } from "../../src/sdk/index.ts"
 
 type ListJson = { providers: Record<string, Basket>; total: number; errors: { provider: string; code: string }[] }
 type OneJson = { provider: string; basket: Basket }
@@ -3339,33 +3685,14 @@ describe("adoc basket", () => {
 Run: `bun test test/commands/basket.test.ts`
 Expected: FAIL — `неизвестная команда: basket`.
 
-- [ ] **Step 3: Блок корзины в `src/core/render.ts`**
+Колонки `#` и `ID` рисует `renderBasket` из SDK — это осознанное расхождение
+со спекой (§`basket` п.4 предлагает одну колонку `#`, показывающую и номер, и
+`itemId`): у autodoc `itemId` длинный и склеенный, в одной ячейке с номером он
+нечитаем, а `basket set <provider> <ID>` требует скопировать его целиком.
+Расхождение записано в разделе «Отступления от спеки», а строку спеки правит
+задача 15.
 
-```ts
-import type { Basket } from "../sdk/contract.ts"
-
-/** Сумма как её видит сайт; если он её не считает — складываем сами. */
-export const basketTotal = (b: Basket): number =>
-	b.total ?? b.items.reduce((s, it) => s + (it.sum ?? it.price * it.quantity), 0)
-
-/** Колонка # — номер строки, колонка ID — то, что нужно `basket set` и `basket rm`. */
-export function basketBlock(id: string, b: Basket): string {
-	const head = bold(id) + (b.url ? dim(`  ${b.url}`) : "")
-	if (!b.items.length) return `${head}\n${dim("корзина пуста")}`
-	const rows = b.items.map((it, i) => [
-		String(i + 1), dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 32),
-		money(it.price), String(it.quantity), money(it.sum ?? it.price * it.quantity),
-		it.deliveryDays != null ? days(it.deliveryDays) : it.deliveryDate ?? dim("—"),
-	])
-	return [
-		head,
-		table(rows, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"]),
-		`${dim("итого")}  ${bold(money(basketTotal(b)))}`,
-	].join("\n")
-}
-```
-
-- [ ] **Step 4: `src/commands/basket.ts`**
+- [ ] **Step 3: `src/commands/basket.ts`**
 
 ```ts
 // basket.ts — мультикорзина. Своей корзины у обёртки нет: каждая позиция
@@ -3373,16 +3700,18 @@ export function basketBlock(id: string, b: Basket): string {
 // пересылает изменения. `ref` для добавления непрозрачен: он пришёл от сайта
 // в offers и уходит обратно как есть.
 
-import { ProviderError, TOOL } from "../sdk/index.ts"
-import { bold, dim, money } from "../sdk/render.ts"
-import type { Basket } from "../sdk/contract.ts"
-import { need, one, qtyOf, refOf } from "../core/args.ts"
-import { invoke, type InvokeResult } from "../core/invoke.ts"
+import { ProviderError, TOOL, basketTotal, bold, dim, money, need, parseRef, renderBasket } from "../sdk/index.ts"
+import type { Basket } from "../sdk/index.ts"
+import { one, qtyOf } from "../core/args.ts"
+import { invoke, passNoise, type InvokeResult } from "../core/invoke.ts"
 import { lineOf } from "../core/lastpart.ts"
-import { fanout, passNoise, report } from "../core/partial.ts"
-import { basketBlock, basketTotal, hint } from "../core/render.ts"
+import { fanout, report } from "../core/partial.ts"
+import { hint } from "../core/render.ts"
 import { parseBasket } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
+
+/** Заголовок блока: чья это корзина. Саму таблицу рисует renderBasket из SDK. */
+const title = (id: string, b: Basket): string => bold(id) + (b.url ? dim(`  ${b.url}`) : "")
 
 export async function cmdBasket(ctx: Ctx): Promise<Output> {
 	const sub = ctx.args[0]
@@ -3402,7 +3731,7 @@ async function listBaskets(ctx: Ctx): Promise<Output> {
 		json: { providers: Object.fromEntries(f.got.map(g => [g.provider, g.value])), total, errors: f.failures },
 		code,
 		render: () => [
-			...f.got.map(g => basketBlock(g.provider, g.value)),
+			...f.got.map(g => `${title(g.provider, g.value)}\n${renderBasket(g.value)}`),
 			`${dim("всего по всем сайтам")}  ${bold(money(total))}`,
 			hint(`${TOOL} basket set <provider> <ID> --qty <n> · ${TOOL} basket rm <provider> <ID>`),
 		].join("\n\n"),
@@ -3421,7 +3750,7 @@ async function addToBasket(ctx: Ctx): Promise<Output> {
 		ref = line.ref! // lineOf не отдаёт строку без ref
 	} else {
 		providerId = need(target, `номер строки из ${TOOL} part или имя провайдера`)
-		ref = refOf(ctx.flags)
+		ref = parseRef(ctx.flags.ref)
 	}
 
 	const p = await one(ctx, providerId, "basket")
@@ -3452,23 +3781,23 @@ function afterChange(ctx: Ctx, id: string, r: InvokeResult): Output {
 	passNoise(id, r, ctx.warn)
 	if (!r.ok) throw new ProviderError(r.error.code, `${id}: ${r.error.message}`)
 	const basket: Basket = parseBasket(r.json, id)
-	return { json: { provider: id, basket }, render: () => basketBlock(id, basket) }
+	return { json: { provider: id, basket }, render: () => `${title(id, basket)}\n${renderBasket(basket)}` }
 }
 ```
 
-- [ ] **Step 5: Подключить в `src/app.ts`**
+- [ ] **Step 4: Подключить в `src/app.ts`**
 
 Импорт `import { cmdBasket } from "./commands/basket.ts"` и строка `basket: cmdBasket,` в таблице команд.
 
-- [ ] **Step 6: Зелёные тесты**
+- [ ] **Step 5: Зелёные тесты**
 
 Run: `bun test test/commands/basket.test.ts && bun run typecheck`
 Expected: PASS, 11 тестов.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/commands/basket.ts src/core/render.ts src/app.ts test/commands/basket.test.ts
+git add src/commands/basket.ts src/app.ts test/commands/basket.test.ts
 git commit -m "feat(commands): multi-provider basket with add by row number
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -3480,15 +3809,14 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Create: `src/core/garage.ts`
 - Create: `src/commands/garage.ts`
-- Modify: `src/core/args.ts` (`intFlag`, `strFlag`)
-- Modify: `src/core/render.ts` (`garageTable`)
+- Modify: `src/core/render.ts` (`garageCols`)
 - Modify: `src/app.ts` (команда `garage`)
 - Test: `test/core/garage.test.ts`
 - Test: `test/commands/garage.test.ts`
 
 **Interfaces:**
-- Consumes: `readJson`/`writeJson`, `brandKey`, `positiveInt`.
-- Produces: `GARAGE_FILE = "garage.json"`, типы `GarageCar`, `Garage`; `loadGarage()`, `saveGarage(g)`, `addCar(g, car)`, `removeCar(g, id)`, `setMain(g, id)`; `intFlag(flags, name)`, `strFlag(flags, name)`; `garageTable(g)`; `cmdGarage(ctx)`.
+- Consumes: `readJson`/`writeJson`, `brandKey`/`need`/`intFlag`/`positiveInt`/`renderCars` из `sdk/index.ts`.
+- Produces: `GARAGE_FILE = "garage.json"`, типы `GarageCar`, `Garage`; `loadGarage()`, `saveGarage(g)`, `addCar(g, car): {garage, car}`, `removeCar(g, id)`, `setMain(g, id)`, `mergeImported(g, provider, cars): {garage, added, updated}` (её пишет Step 4, зовёт задача 13); `garageCols(g): Col<GarageCar>[]`; `cmdGarage(ctx)`.
 
 - [ ] **Step 1: Тест хранилища гаража**
 
@@ -3549,7 +3877,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { GARAGE_FILE, type Garage } from "../../src/core/garage.ts"
 import { readJson } from "../../src/core/store.ts"
@@ -3639,7 +3967,7 @@ Expected: FAIL, `Cannot find module '../../src/core/garage.ts'`.
 // обёртка никому их не рассылает.
 
 import { ProviderError, brandKey } from "../sdk/index.ts"
-import type { Car } from "../sdk/contract.ts"
+import type { Car } from "../sdk/index.ts"
 import { readJson, writeJson } from "./store.ts"
 
 export const GARAGE_FILE = "garage.json"
@@ -3726,58 +4054,42 @@ export function mergeImported(g: Garage, provider: string, cars: Car[]): { garag
 }
 ```
 
-- [ ] **Step 5: `intFlag` и `strFlag` в `src/core/args.ts`**
+- [ ] **Step 5: Колонки гаража в `src/core/render.ts`**
+
+Своей таблицы машин у обёртки нет: `renderCars` из SDK плюс две колонки.
+Дописать в `src/core/render.ts`:
 
 ```ts
-/** Целое ≥ 0: год, пробег. Ноль пробега законен, поэтому не positiveInt. */
-export function intFlag(flags: Flags, name: string): number | undefined {
-	const v = flags[name]
-	if (v === undefined) return undefined
-	if (v === true || v === "") throw new ProviderError("bad_args", `--${name}: нужно значение`)
-	const n = Number(v)
-	if (!Number.isInteger(n) || n < 0) throw new ProviderError("bad_args", `--${name}: нужно целое число не меньше 0, а не «${v}»`)
-	return n
-}
+import type { Col } from "../sdk/index.ts"
+import type { Garage, GarageCar } from "./garage.ts"
 
-export function strFlag(flags: Flags, name: string): string | undefined {
-	const v = flags[name]
-	if (v === true) throw new ProviderError("bad_args", `--${name}: нужно значение`)
-	return v === "" ? undefined : v
-}
+/** ★ — основная машина; «СВЯЗИ» — сайты, откуда машина импортирована. */
+export const garageCols = (g: Garage): Col<GarageCar>[] => [
+	{ head: "ID", cell: c => `${g.mainId === c.id ? yellow("★") : " "}${c.id}` },
+	{ head: "СВЯЗИ", cell: c => dim(Object.keys(c.refs ?? {}).join(", ")) },
+]
 ```
 
-- [ ] **Step 6: `garageTable` в `src/core/render.ts`**
+Таблица рисуется вызовом `renderCars(g.cars, garageCols(g))`.
 
-```ts
-import type { Garage } from "./garage.ts"
-
-/** ★ — основная машина. Колонка «СВЯЗИ» — сайты, откуда машина импортирована. */
-export function garageTable(g: Garage): string {
-	if (!g.cars.length) return "гараж пуст"
-	return table(g.cars.map(c => [
-		`${g.mainId === c.id ? yellow("★") : " "}${c.id}`,
-		bold([c.brand, c.model].filter(Boolean).join(" ")),
-		c.modification ?? c.engine ?? dim("—"),
-		c.year ? String(c.year) : dim("—"),
-		c.vin ?? dim("—"),
-		c.odometer ? `${c.odometer.toLocaleString("ru-RU")} км` : dim("—"),
-		dim(Object.keys(c.refs ?? {}).join(", ")),
-	]), ["ID", "АВТОМОБИЛЬ", "МОДИФИКАЦИЯ", "ГОД", "VIN", "ПРОБЕГ", "СВЯЗИ"])
-}
-```
-
-- [ ] **Step 7: `src/commands/garage.ts`**
+- [ ] **Step 6: `src/commands/garage.ts`**
 
 ```ts
 // garage.ts — гараж целиком локальный: ни одна из этих подкоманд не ходит в
 // сеть. Импорт с сайта — отдельная подкоманда, и её пользователь зовёт сам.
 
-import { ProviderError, TOOL, positiveInt } from "../sdk/index.ts"
-import { bold, dim } from "../sdk/render.ts"
-import { intFlag, need, strFlag } from "../core/args.ts"
+import { ProviderError, TOOL, bold, dim, intFlag, need, positiveInt, renderCars } from "../sdk/index.ts"
+import type { Flags } from "../sdk/index.ts"
 import { addCar, loadGarage, removeCar, saveGarage, setMain } from "../core/garage.ts"
-import { garageTable, hint } from "../core/render.ts"
+import { garageCols, hint } from "../core/render.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
+
+/** Строковый флаг: пустая строка и голый `--brand` — не значение. */
+const strFlag = (flags: Flags, name: string): string | undefined => {
+	const v = flags[name]
+	if (v === true) throw new ProviderError("bad_args", `--${name}: нужно значение`)
+	return v === "" ? undefined : v
+}
 
 export async function cmdGarage(ctx: Ctx): Promise<Output> {
 	const sub = ctx.args[0]
@@ -3792,7 +4104,7 @@ async function showGarage(): Promise<Output> {
 	const g = await loadGarage()
 	return {
 		json: g,
-		render: () => [garageTable(g), hint(`${TOOL} garage add --brand <марка> --model <модель> · ${TOOL} garage import <provider>`)].join("\n"),
+		render: () => [renderCars(g.cars, garageCols(g)), hint(`${TOOL} garage add --brand <марка> --model <модель> · ${TOOL} garage import <provider>`)].join("\n"),
 	}
 }
 
@@ -3802,43 +4114,43 @@ async function addToGarage(ctx: Ctx): Promise<Output> {
 	const { garage, car } = addCar(await loadGarage(), {
 		brand, model,
 		modification: strFlag(ctx.flags, "modification"),
-		year: intFlag(ctx.flags, "year"),
+		year: intFlag("year", ctx.flags.year),
 		engine: strFlag(ctx.flags, "engine"),
 		vin: strFlag(ctx.flags, "vin"),
-		odometer: intFlag(ctx.flags, "odometer"),
+		odometer: intFlag("odometer", ctx.flags.odometer),
 	})
 	await saveGarage(garage)
-	return { json: { ok: true, car }, render: () => `${bold(`${car.brand} ${car.model}`)} добавлена под номером ${car.id}\n${garageTable(garage)}` }
+	return { json: { ok: true, car }, render: () => `${bold(`${car.brand} ${car.model}`)} добавлена под номером ${car.id}\n${renderCars(garage.cars, garageCols(garage))}` }
 }
 
 async function dropFromGarage(ctx: Ctx): Promise<Output> {
 	const id = positiveInt("id машины", need(ctx.args[1], "id машины — колонка ID в adoc garage"))
 	const garage = removeCar(await loadGarage(), id)
 	await saveGarage(garage)
-	return { json: { ok: true, removed: id }, render: () => `${dim(`машина ${id} удалена`)}\n${garageTable(garage)}` }
+	return { json: { ok: true, removed: id }, render: () => `${dim(`машина ${id} удалена`)}\n${renderCars(garage.cars, garageCols(garage))}` }
 }
 
 async function chooseMain(ctx: Ctx): Promise<Output> {
 	const id = positiveInt("id машины", need(ctx.args[1], "id машины — колонка ID в adoc garage"))
 	const garage = setMain(await loadGarage(), id)
 	await saveGarage(garage)
-	return { json: { ok: true, mainId: id }, render: () => garageTable(garage) }
+	return { json: { ok: true, mainId: id }, render: () => renderCars(garage.cars, garageCols(garage)) }
 }
 ```
 
-- [ ] **Step 8: Подключить в `src/app.ts`**
+- [ ] **Step 7: Подключить в `src/app.ts`**
 
 Импорт `import { cmdGarage } from "./commands/garage.ts"` и строка `garage: cmdGarage,` в таблице команд.
 
-- [ ] **Step 9: Зелёные тесты**
+- [ ] **Step 8: Зелёные тесты**
 
 Run: `bun test test/core/garage.test.ts test/commands/garage.test.ts && bun run typecheck`
 Expected: PASS, 15 тестов.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/core/garage.ts src/commands/garage.ts src/core/args.ts src/core/render.ts src/app.ts test/core/garage.test.ts test/commands/garage.test.ts
+git add src/core/garage.ts src/commands/garage.ts src/core/render.ts src/app.ts test/core/garage.test.ts test/commands/garage.test.ts
 git commit -m "feat(commands): local garage with list, add, rm and main
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -3863,7 +4175,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```ts
 import { mergeImported } from "../../src/core/garage.ts"
-import type { Car } from "../../src/sdk/contract.ts"
+import type { Car } from "../../src/sdk/index.ts"
 
 const fromSite = (over: Partial<Car> = {}): Car =>
 	({ brand: "SKODA", model: "OCTAVIA III", year: 2017, vin: "TMBAG7NE0H0000001", ref: { carId: 1 }, ...over })
@@ -3941,7 +4253,7 @@ describe("adoc garage import", () => {
 этого файла надо завести аккаунты — добавить туда:
 
 ```ts
-import { accountStore } from "../../src/sdk/account.ts"
+import { accountStore } from "../../src/sdk/index.ts"
 // в beforeEach, после установки ADOC_CONFIG_DIR:
 await accountStore("alpha").save({ token: "t", user: "pavel" })
 await accountStore("beta").save({ token: "t", user: "pavel" })
@@ -3958,9 +4270,8 @@ Expected: FAIL — `неизвестная подкоманда гаража: im
 
 ```ts
 import { one } from "../core/args.ts"
-import { invoke } from "../core/invoke.ts"
 import { mergeImported } from "../core/garage.ts"
-import { passNoise } from "../core/partial.ts"
+import { invoke, passNoise } from "../core/invoke.ts"
 import { parseCars } from "../core/validate.ts"
 ```
 
@@ -3982,7 +4293,7 @@ async function importGarage(ctx: Ctx): Promise<Output> {
 	await saveGarage(garage)
 	return {
 		json: { ok: true, provider: p.id, added, updated, garage },
-		render: () => `${dim(`с ${p.id}: добавлено ${added}, дополнено ${updated}`)}\n${garageTable(garage)}`,
+		render: () => `${dim(`с ${p.id}: добавлено ${added}, дополнено ${updated}`)}\n${renderCars(garage.cars, garageCols(garage))}`,
 	}
 }
 ```
@@ -4007,12 +4318,13 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `src/commands/passthrough.ts`
+- Modify: `src/app.ts` (`COMMAND_NAMES`)
 - Modify: `src/main.ts`
 - Test: `test/commands/passthrough.test.ts`
 
 **Interfaces:**
-- Consumes: `discover()`, `configDir()`, `CONFIG_DIR_ENV`.
-- Produces: `passthrough(argv: string[]): Promise<number | null>` — `null`, если первым словом стоит не провайдер.
+- Consumes: `discover()` из `registry.ts`, `COMMAND_NAMES` из `app.ts`, `configDir()`/`CONFIG_DIR_ENV`/`yellow` из `sdk/index.ts`.
+- Produces: `passthrough(argv: string[]): Promise<number | null>` — `null`, если первым словом стоит не провайдер или имя занято командой обёртки; `COMMAND_NAMES: string[]` в `app.ts`.
 
 - [ ] **Step 1: Тест**
 
@@ -4020,10 +4332,10 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```ts
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 
 const MAIN = join(import.meta.dir, "..", "..", "src", "main.ts")
@@ -4102,13 +4414,23 @@ Expected: FAIL — `неизвестная команда: alpha`.
 // появление у него новой команды не должно требовать правок здесь. stdio
 // наследуется целиком — это тот же самый разговор, только имя бинаря короче.
 
-import { CONFIG_DIR_ENV, configDir } from "../sdk/config.ts"
+import { CONFIG_DIR_ENV, TOOL, configDir, yellow } from "../sdk/index.ts"
+import { COMMAND_NAMES } from "../app.ts"
 import { discover } from "../core/registry.ts"
+
+/** Имена, которые провайдеру не отдаются ни при каких обстоятельствах. */
+const RESERVED = new Set([...COMMAND_NAMES, "help"])
 
 /** Код возврата провайдера или null, если первым словом стоит не его id. */
 export async function passthrough(argv: string[]): Promise<number | null> {
 	const id = argv[0]
 	if (!id || id.startsWith("-")) return null
+	// Своя команда всегда старше: провайдер с именем команды обёртки
+	// (исполняемый adoc-part в PATH) не должен молча перехватывать `adoc part`.
+	if (RESERVED.has(id)) {
+		process.stderr.write(`${yellow(`${TOOL}: провайдер «${id}» называется как команда обёртки — команда важнее; сам провайдер доступен как ${TOOL}-${id}`)}\n`)
+		return null
+	}
 	// Только discover: describe здесь не нужен, а лишний запуск провайдера
 	// стоил бы задержки на каждой проброшенной команде.
 	const entry = (await discover()).find(p => p.id === id)
@@ -4122,7 +4444,16 @@ export async function passthrough(argv: string[]): Promise<number | null> {
 }
 ```
 
-- [ ] **Step 4: `src/main.ts`**
+- [ ] **Step 4: `COMMAND_NAMES` в `src/app.ts`**
+
+Рядом с таблицей команд:
+
+```ts
+/** Имена команд обёртки: их не отдаёт провайдеру проброс. */
+export const COMMAND_NAMES = Object.keys(COMMANDS)
+```
+
+- [ ] **Step 5: `src/main.ts`**
 
 ```ts
 #!/usr/bin/env bun
@@ -4130,7 +4461,7 @@ export async function passthrough(argv: string[]): Promise<number | null> {
 
 import { run } from "./app.ts"
 import { passthrough } from "./commands/passthrough.ts"
-import { emit } from "./sdk/out.ts"
+import { emit } from "./sdk/index.ts"
 
 const argv = process.argv.slice(2)
 
@@ -4144,35 +4475,31 @@ if (r.stderr) process.stderr.write(r.stderr)
 await emit(process.stdout, r.stdout, r.code)
 ```
 
-- [ ] **Step 5: Зелёные тесты**
+- [ ] **Step 6: Зелёные тесты**
 
 Run: `bun test test/commands/passthrough.test.ts && bun run typecheck`
-Expected: PASS, 7 тестов.
+Expected: PASS, 8 тестов.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/commands/passthrough.ts src/main.ts test/commands/passthrough.test.ts
+git add src/commands/passthrough.ts src/app.ts src/main.ts test/commands/passthrough.test.ts
 git commit -m "feat(commands): passthrough of provider commands with inherited stdio
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
-### Task 15: README и скилл под новую картину мира
+### Task 15: README, скилл и правка спеки
 
 **Files:**
-- Modify: `README.md`
-- Modify: `skills/adoc/SKILL.md`
+- Modify: `README.md` (переписывается целиком)
+- Modify: `skills/adoc/SKILL.md` (переписывается целиком)
+- Modify: `docs/superpowers/specs/2026-09-01-multi-provider-design.md` (строка про колонки корзины)
 
 **Interfaces:** нет.
 
-- [ ] **Step 1: README — переписать сверху вниз**
-
-Порядок разделов: сначала агрегатор, провайдеры вторыми. Убрать раздел «Где это
-сейчас» целиком — агрегатор уже есть, «следующего шага» больше нет.
-
-Первый абзац:
+- [ ] **Step 1: `README.md` целиком**
 
 ````markdown
 # adoc
@@ -4187,15 +4514,28 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 $ adoc part n90954802
 N90954802 · VAG · autodoc, armtek
 
-#  ПРОВАЙДЕР  БРЕНД  НАЗВАНИЕ  ЦЕНА   НАЛИЧИЕ  СРОК    ПРОДАВЕЦ  РЕЙТИНГ
-1  armtek     VAG    Болт      380 ₽  3 шт     2 дня   armtek    4.5★ (10)
-2  autodoc    VAG    Болт      407 ₽  12 шт    1 день  Москва    4.9★ (56)
+ПРОВАЙДЕР  #  БРЕНД  НАЗВАНИЕ  ЦЕНА    НАЛИЧИЕ  СРОК    ПРОДАВЕЦ  РЕЙТИНГ
+armtek     1  VAG    Болт      380 ₽   3 шт     2 дня   armtek    4.5★ (10)
+autodoc    2  VAG    Болт      407 ₽   12 шт    1 день  Москва    4.9★ (56)
 ```
-````
 
-Раздел «Команды» — таблица обёртки целиком:
+Ни autodoc, ни armtek не документируют свой API, а `adoc` — неофициальный
+клиент. Вся полученная информация может быть неточной, неполной и
+устаревшей — [docs/autodoc-api.md](docs/autodoc-api.md),
+[docs/armtek-api.md](docs/armtek-api.md).
 
-```markdown
+## Установка
+
+```sh
+$ bun install -g github:pashokitsme/adoc
+$ gh skill install pashokitsme/adoc adoc
+```
+
+Ставятся три бинаря: `adoc` — обёртка, `adoc-autodoc` и `adoc-armtek` —
+провайдеры. Обычно нужен только первый.
+
+## Команды
+
 | команда | что делает |
 |---|---|
 | `part <артикул> [бренд]` | предложения всех сайтов одной таблицей, сортировка по цене |
@@ -4224,11 +4564,24 @@ N90954802 · VAG · autodoc, armtek
 | `--page <n>` | страница выдачи у `search` |
 | `--analogs` | добавить блок аналогов в `part` |
 | `--qty <n>`, `--ref <json>` | количество и предложение для `basket` |
-```
 
-Раздел «Как это устроено»:
+Флаг со значением пишется `--flag value` или `--flag=value`, и значение
+обязательно: `--limit --json` — это `bad_args`, а не лимит «--json».
+Переключатель значения не берёт: `--json=true` — то же, что `--json`,
+`--json=false` — то же, что флага нет, всё остальное — `bad_args`.
 
-```markdown
+Актуальный список всегда печатает сам бинарь: `adoc --help`, а по сайтам —
+`adoc providers`.
+
+## Порядок: артикул → бренд
+
+Один артикул выпускают разные производители, и цена, срок и отзывы у них
+разные. `adoc part <артикул>` сначала спрашивает у всех сайтов список брендов,
+и если бренд не один — печатает таблицу вариантов с колонкой «ГДЕ» и выходит с
+кодом `2`. Повтори с брендом: `adoc part n90954802 VAG`.
+
+## Как это устроено
+
 `adoc` — обёртка, каждый сайт — отдельная программа. Обёртка находит их сама:
 встроенные лежат в `src/providers/*/main.ts`, чужие — это любые исполняемые
 файлы `adoc-<id>` в `PATH`, на любом языке. Разговор всегда один и тот же:
@@ -4239,45 +4592,159 @@ N90954802 · VAG · autodoc, armtek
 `errors` в `--json`, остальные печатаются. Exit `1` — только когда не ответил
 никто; exit `2` — «уточни бренд» со списком вариантов.
 
+| код | когда |
+|---|---|
+| `0` | успех; пустой результат — тоже успех |
+| `1` | ошибка; при агрегации — когда не ответил ни один сайт |
+| `2` | бренд не определён однозначно; варианты — в `error.items` |
+
 Свои файлы обёртки — `~/.config/adoc/garage.json` (гараж живёт локально, а не
 на сайтах) и `last-part.json` (последняя выдача `part`, чтобы работало
 `basket add <n>`; живёт сутки). Аккаунты пишут сами провайдеры:
 `~/.config/adoc/accounts/<id>.json`, права `600`. Каталог переопределяется
-`$ADOC_CONFIG_DIR`.
+`$ADOC_CONFIG_DIR`, иначе берётся `$XDG_CONFIG_HOME/adoc`.
+
+## Авторизация
+
+```sh
+$ adoc login autodoc      # диалог в терминале, пароль без эха
+$ adoc accounts           # кто авторизован у всех сайтов сразу
+$ adoc logout autodoc     # забыть аккаунт
 ```
 
-Раздел «Свой сайт»: ссылка на `docs/contract.md`, три предложения — исполняемый
-`adoc-<id>` в `PATH`, обязателен `describe`, файл аккаунта свой.
+Пароль вводится только с терминала и на диск не пишется. `adoc login` не
+печатает токены никогда; а вот у провайдера напрямую — `adoc autodoc login
+--json` — в stdout уходит сохранённый аккаунт целиком, вместе с токенами: не
+логируй этот вывод и никуда его не пересылай.
 
-Разделы про autodoc и armtek оставить как есть, но переписать вводные фразы:
-это теперь «провайдеры, у которых сверх контракта есть свои команды», примеры
-команд поменять на `adoc autodoc goods 408` и `adoc armtek vstel`. Раздел
-«Протокол `--json`» оставить целиком — он про контракт и не устарел, только
-заменить в примерах `adoc-autodoc` на `adoc autodoc`. Раздел «Разработка»
-дополнить строкой про `ADOC_PROVIDERS_DIR`:
+Имя, email и телефон обёртка показывает **как есть, без маскировки** — это
+личные данные владельца аккаунта, он их и видит.
 
-```markdown
+## Провайдер autodoc
+
+Свои команды сверх контракта:
+
+| команда | что делает | вход |
+|---|---|---|
+| `goods <categoryId> [--page <n>] [--sort <id>] [--limit <n>]` | товары внутри категории (id даёт `search`) | |
+| `info <артикул> [brandId \| --brand <имя>]` | карточка: рейтинг, гистограмма, наличие | |
+| `prices <артикул> [brandId \| --brand <имя>]` | сырые предложения продавцов (`originals`) | да |
+| `analogs <артикул> [brandId \| --brand <имя>]` | сырые аналоги | да |
+| `favorites [listId]` | избранное; без аргумента — списки | да |
+| `orders` | заказы | да |
+| `profile` | сводка по аккаунту | да |
+| `garage [parts <carId> \| main <carId>]` | гараж сайта: список, подборка под машину, основная | да |
+| `get <путь> [k=v ...] [--auth]` | произвольный GET к `web.autodoc.ru` | |
+| `post <путь> [k=v ...] [--auth]` | произвольный POST к `web.autodoc.ru` | |
+
+```sh
+$ adoc autodoc goods 408
+$ adoc autodoc info n90954802 --brand VAG
+```
+
+Есть вход без пароля: в консоли браузера на сайте с открытой сессией —
+`copy(JSON.stringify(sessionStorage))`, вставка — в `adoc autodoc login
+--paste`. Старый `token.json` от версии 1 переносится в
+`accounts/autodoc.json` автоматически при первом запуске.
+
+`brandId` у собственных команд необязателен: если производитель один, он
+подставляется сам. Контрактные `offers` и `reviews` берут бренд только флагом
+`--brand`.
+
+## Провайдер armtek
+
+| команда | что делает | вход |
+|---|---|---|
+| `info <артикул> --brand <имя>` | карточка: цены по складам, сроки, оценки | |
+| `vstel [поиск]` | точки выдачи; текущая помечена ★ | |
+| `raw <METHOD> <путь> [k=v ...] [--body <json>]` | произвольный вызов `rest/ru`: идёт с токеном аккаунта и любым методом, то есть умеет и писать | да |
+
+Точка выдачи (`vstel`) — не украшение: от неё зависят цена, срок и наличие в
+выдаче поиска. Без входа берётся московская по умолчанию, после `login` —
+точка аккаунта.
+
+```sh
+$ adoc login armtek       # телефон 7XXXXXXXXXX или e-mail и пароль, ввод с терминала
+$ ARMTEK_PHONE=7… ARMTEK_PASSWORD=… adoc armtek login   # без терминала, обе переменные обязательны
+$ adoc armtek vstel москва
+```
+
+В `~/.config/adoc/accounts/armtek.json` (права `600`) лежат токены, сбытовая
+организация, точка выдачи и коды клиента — персональных данных там нет,
+профиль каждый раз спрашивается у сайта.
+
+## Свой сайт
+
+Провайдер — это исполняемый файл `adoc-<id>` в `PATH` на любом языке. От него
+требуется отвечать на `describe`, `login`, `logout`, `whoami`, `search`,
+`brands` и `offers` в форме [контракта](docs/contract.md), печатать с `--json`
+ровно один JSON-объект в stdout и хранить свой аккаунт в
+`$ADOC_CONFIG_DIR/accounts/<id>.json`. Обёртка подхватит его сама, без единой
+правки в своём коде: `adoc providers` покажет его в списке, `adoc part` начнёт
+его спрашивать. На TypeScript всё, кроме самого сайта, делает
+[SDK](src/sdk/index.ts): `defineProvider` + `runProvider`.
+
+## Протокол `--json`
+
+С `--json` в stdout — ровно один JSON-объект и ничего больше; подсказки идут в
+stderr. Это и есть язык, на котором обёртка говорит с провайдером.
+
+```console
+$ adoc autodoc brands 0986452041 --json
+{"items":[{"brand":"BOSCH","article":"0986452041","name":"Фильтр масляный","rating":{"average":3.5714,"count":7},"extra":{"manufacturerId":30}}]}
+
+$ adoc part 0986452041 --json | jq '.offers[0]'
+{"provider":"armtek","article":"0986452041","brand":"BOSCH","price":380,"currency":"RUB","ref":{…}}
+```
+
+Ошибка приходит тем же способом — телом `{"error":{"code","message"}}` в stdout
+(без `--json` — текстом в stderr). Коды: `auth`, `http`, `notfound`, `tty`,
+`timeout`, `bad_args`, `internal` — все с кодом возврата `1`; `ambiguous` — с
+`2` и списком брендов в `error.items`.
+
+Формы ответов, типы и правила для провайдеров — [docs/contract.md](docs/contract.md).
+
+## Разработка
+
+```sh
+$ bun test
+$ bun run typecheck
+```
+
 Тесты не ходят в сеть и не трогают настоящий конфиг: `ADOC_CONFIG_DIR` уводит
 конфиг во временный каталог, `ADOC_PROVIDERS_DIR` подменяет весь набор
-провайдеров фикстурами из `test/fixtures/providers`.
+провайдеров фикстурами из `test/fixtures/providers`, а провайдеры читают
+записанные ответы вместо сети — autodoc через `ADOC_FIXTURES`, armtek через
+подменённый транспорт (`test/fixtures/armtek-cli.ts`).
+
+```sh
+$ ADOC_FIXTURES=test/fixtures/autodoc/http adoc autodoc info n90954802
 ```
 
-- [ ] **Step 2: SKILL — переписать под агрегатор**
+Имя файла фикстуры — метод и путь запроса, где `/` заменены на `_`:
+`GET /api/goods-service/goods/info` → `GET__api_goods-service_goods_info.json`.
+````
 
-`skills/adoc/SKILL.md`, новый `description` во фронтматтере:
+- [ ] **Step 2: `skills/adoc/SKILL.md` целиком**
 
-```yaml
+````markdown
+---
+name: adoc
 description: Use when looking up a car part by number or by name across parts shops (autodoc.ru, armtek.ru) — price, availability, delivery time, rating, reviews, analogues — or when working with the user's basket on those sites and their local garage. Also covers why those sites cannot be scraped and how to reach endpoints the CLI has no command for.
-```
+---
+# adoc
 
-Содержание, по разделам:
+CLI-агрегатор магазинов запчастей: одна команда спрашивает все подключённые
+сайты сразу. Бинарь — `adoc`, справка `adoc --help`, список сайтов
+`adoc providers`. Сейчас подключены autodoc.ru и armtek.ru; карты их API —
+`docs/autodoc-api.md` и `docs/armtek-api.md` рядом со скиллом.
 
-1. **Что это.** `adoc` — обёртка над несколькими магазинами; `adoc providers`
-   показывает, какие подключены. Полная справка — `adoc --help`, справка сайта
-   — `adoc <сайт> --help`.
-2. **Что вызывать** — таблица:
+**Не лезь на эти сайты браузером.** Оба — Angular-SPA, не поднимаются ни
+`ofetch`/obscura, ни Playwright: пустой `body`, вид «сайт мёртв». Данные только
+через `adoc`.
 
-```markdown
+## Что вызывать
+
 | Задача | Команда |
 |---|---|
 | Есть артикул → цены, сроки, наличие везде | `adoc part <артикул> [бренд]` |
@@ -4287,46 +4754,162 @@ description: Use when looking up a car part by number or by name across parts sh
 | Отзывы и оценки | `adoc reviews <артикул> [бренд]` |
 | Корзины всех сайтов | `adoc basket` |
 | Положить строку из выдачи `part` | `adoc basket add <#> [--qty <n>]` |
+| Убрать / изменить | `adoc basket rm <сайт> <ID>` · `adoc basket set <сайт> <ID> --qty <n>` |
 | Машины пользователя | `adoc garage` |
 | Кто авторизован | `adoc accounts` |
 | Команда конкретного сайта | `adoc <сайт> <команда> …` |
+
+Машине — `--json`: ровно один JSON-объект в stdout, дальше `jq`. Без него
+таблица для человека; цвет гаснет сам при пайпе. Ошибка в `--json` приходит
+телом `{"error":{"code":"…","message":"…"}}`, без `--json` — текстом в stderr.
+
+Флаг со значением пишется `--flag value` или `--flag=value`, и значение
+обязательно: `--limit --json` — это `bad_args`, а не лимит «--json».
+Переключатель значения не берёт: `--json=true` — то же, что `--json`,
+`--json=false` — то же, что флага нет.
+
+## Обязательный порядок: артикул → бренд
+
+Один артикул = много производителей, цена/отзывы/наличие разные. `adoc part`
+сам делает первый шаг: спрашивает у всех сайтов, кто выпускает артикул.
+
+Брендов оказалось несколько или названный не нашёлся → выход код **2** и тело
+`{"error":{"code":"ambiguous","items":[…]}}` со списком, где у каждого варианта
+в `extra.providers` — сайты, у которых он есть. Это не ошибка, а «уточни»:
+бери бренд из `items` и повтори `adoc part <артикул> <бренд>`.
+
+Коды: `0` — нашлось (пустой список тоже `0`), `2` — уточни бренд, `1` —
+всё остальное.
+
+## Частичный отказ — это не провал
+
+Сайт, ответивший ошибкой, уезжает жёлтой строкой в stderr и полем `errors` в
+`--json`; выдача остальных печатается как обычно. Смотри, что пришло, а не
+только на stderr. Exit `1` при агрегации значит «не ответил никто».
+
+Строка `armtek: нужен вход — adoc login armtek` означает ровно это: у сайта нет
+аккаунта. Остальные сайты в этой же выдаче — рабочие.
+
+## Корзина
+
+`adoc basket` — корзины всех сайтов блоками, итог по каждому и общий. Колонка
+`#` — номер строки, колонка `ID` — идентификатор позиции, его и передавать в
+`basket set`/`basket rm` вместе с именем сайта.
+
+`adoc basket add <#>` берёт строку из последней выдачи `adoc part` (она живёт
+сутки в `~/.config/adoc/last-part.json`) и кладёт её в корзину того сайта, чьё
+это предложение. Кэш протух — команда попросит повторить `part`, не выдумывай
+номера. Для скриптов есть точная форма: `adoc basket add <сайт> --ref <json>`,
+где `ref` — объект из `adoc part --json`, скопированный **как есть**.
+
+## Гараж
+
+`adoc garage` — спрашивай первым, когда пользователь говорит «моя машина» без
+модели: там марка, модель, модификация, год, VIN. Гадать не надо. `★` —
+основная машина. Гараж живёт локально, в `~/.config/adoc/garage.json`, а не на
+сайтах; `adoc garage import <сайт>` забирает машины с сайта и сливает по VIN.
+
+VIN и id машин — личные данные. Пользователю показывай, в сторонние запросы не
+тащи, не публикуй.
+
+## Авторизация — дело пользователя
+
+Вход = пароль, вводит только человек: `adoc login <сайт>` читает с терминала
+без эха. **Никогда не проси пароль в переписке и не суй в команду** —
+аргументом он не принимается нарочно, чтоб не осел в истории шелла и в `ps`.
+
+Нужен вход, аккаунта нет → скажи пользователю запустить `adoc login <сайт>`
+самому, жди. Проверка безопасна: `adoc accounts` печатает по строке на сайт.
+`ok:true` — аккаунт есть и токен годен; `ok:false` — входа нет или токен
+протух, лечится тем же `login`. Email и телефон показываются **как есть, без
+маскировки** — это личные данные пользователя: показал ему и забыл, наружу не
+отправляй.
+
+Файлы аккаунтов — `~/.config/adoc/accounts/<сайт>.json`, права 600. **Не читай
+их и не печатай**: там токены. По той же причине не запускай `adoc <сайт>
+login --json` — он печатает токены в stdout; у обёртки `adoc login` их не
+печатает никогда.
+
+## Ловушки
+
+1. **`search` у autodoc отдаёт товары первой подходящей категории, а не всё
+   подряд.** Остальные найденные категории — в `extra.categories`; по ним ходи
+   `adoc autodoc goods <categoryId>`. Полнотекстового поиска по товарам нет —
+   текст в `find-goods` даст `totalCount: 0`, это не баг.
+2. **Оценки ≠ отзывы.** `4.91★ (56)` — это оценки, «отзывов: 35» — тексты.
+   Оценка без текста в ленту не идёт. Не смешивай.
+3. **У armtek цена, срок и наличие зависят от точки выдачи.** Текущую покажет
+   `adoc armtek vstel`; без входа она московская по умолчанию.
+4. **`describe` помечает `offers` как `auth: false`, но autodoc без токена
+   всё равно отдаёт `auth`.** Верь коду ошибки, а не полю `auth`.
+5. **Регистр параметров важен** в `adoc autodoc get`: почти везде PascalCase
+   (`Article`, `ManufacturerId`, `PageNumber`), но поиск по артикулу —
+   `article` со строчной. Сверяйся с `docs/autodoc-api.md`, не с интуицией.
+6. **Артикул регистронезависим** — `n90954802` = `N90954802`, пробелы и дефисы
+   тоже не важны, и у обёртки, и у сайтов.
+
+## Свои команды сайтов
+
+`adoc <сайт> <команда>` пробрасывается сайту как есть, вместе с `--help`.
+
+- **autodoc**: `goods <categoryId>`, `info <артикул> [--brand]`, `prices`,
+  `analogs`, `favorites`, `orders`, `profile`, `garage [parts|main]`,
+  `get <путь>`, `post <путь>`. Эндпоинт без команды — через `get`/`post`.
+- **armtek**: `info <артикул> --brand <имя>`, `vstel [поиск]`,
+  `raw <METHOD> <путь>` (умеет и писать, нужен вход).
+
+## Когда API молчит
+
+404 или поле пропало → сайт поменял фронт. В `docs/autodoc-api.md` и
+`docs/armtek-api.md` есть воспроизводимый способ снять карту заново: качай
+чанки Angular-бандла, грепай пути, методы, имена параметров. Надёжнее, чем
+гадать URL-ы.
+````
+
+- [ ] **Step 3: Правка спеки про колонки корзины**
+
+В `docs/superpowers/specs/2026-09-01-multi-provider-design.md`, раздел
+«`basket` — мультикорзина», заменить в пункте 1
+
+```
+   Вывод блоками по провайдерам: таблица `#  АРТИКУЛ  БРЕНД  НАЗВАНИЕ  ЦЕНА
+   КОЛ  СУММА  СРОК`, итог по провайдеру, общий итог по всем внизу.
 ```
 
-3. **Обязательный порядок: артикул → бренд.** Тот же текст, что сейчас, но про
-   обёртку: exit `2` и тело `{"error":{"code":"ambiguous","items":[…]}}`, где у
-   каждого варианта в `extra.providers` — сайты, у которых он есть.
-4. **Частичный отказ.** Жёлтая строка в stderr и `errors` в `--json` — это не
-   провал команды: смотри, что пришло от остальных. Exit `1` — только когда не
-   ответил никто.
-5. **Гараж.** Живёт локально в `~/.config/adoc/garage.json`, а не на сайтах;
-   `adoc garage import <сайт>` забирает машины с сайта. VIN и id машин —
-   личные данные: показывай пользователю, в сторонние запросы не тащи.
-6. **Авторизация — дело пользователя.** Как сейчас, но команды `adoc login
-   <сайт>`, `adoc whoami`, `adoc logout <сайт>`. Добавить: **не запускай
-   `adoc <сайт> login --json`** — там токены; у обёртки `adoc login` их не
-   печатает никогда.
-7. **Ловушки** — переписать под обёртку, сохранив по сути нынешние 1, 2, 4, 5:
-   - `search` у autodoc отдаёт товары первой подходящей категории; остальные —
-	 в `extra.categories`, дальше `adoc autodoc goods <categoryId>`.
-   - Оценки ≠ отзывы: `4.91★ (56)` — оценки, «отзывов: 35» — тексты.
-   - У armtek цена и срок зависят от точки выдачи: `adoc armtek vstel`.
-   - Регистр параметров важен в `adoc autodoc get`.
-   - Артикул регистронезависим, пробелы и дефисы не важны — и у обёртки тоже.
-8. **Разделы по сайтам** — по абзацу: свои команды autodoc (`goods`, `info`,
-   `prices`, `analogs`, `favorites`, `orders`, `profile`, `garage parts`, `get`,
-   `post`) и armtek (`info`, `vstel`, `raw`), их карты API.
+на
 
-Убрать из скилла всё, что говорит «бинарь — `adoc-autodoc`, `adoc` пока то же
-самое»: теперь `adoc` — обёртка, а `adoc-autodoc` — тот же провайдер, к которому
-обёртка ходит сама.
+```
+   Вывод блоками по провайдерам: таблица `#  ID  АРТИКУЛ  БРЕНД  НАЗВАНИЕ
+   ЦЕНА  КОЛ  СУММА  СРОК`, итог по провайдеру, общий итог по всем внизу.
+```
 
-- [ ] **Step 3: Проверить и закоммитить**
+и в пункте 4
 
-Run: `bun test && bun run typecheck`
+```
+4. `basket set` и `basket rm` — проброс провайдеру с его `itemId` (колонка
+   `#` в выводе корзины показывает и порядковый номер, и `itemId`).
+```
+
+на
+
+```
+4. `basket set` и `basket rm` — проброс провайдеру с его `itemId`: колонка `#`
+   в выводе корзины — порядковый номер, колонка `ID` — сам `itemId`. Двумя
+   колонками, а не одной: у autodoc `itemId` длинный и склеенный, в одной
+   ячейке с номером он нечитаем, а копировать его приходится целиком.
+```
+
+- [ ] **Step 4: Сверить README со справкой**
+
+Run: `bun test && bun run typecheck && bun src/main.ts --help`
+Сверить список команд и флагов в выводе `--help` с таблицами README. Разошлись
+— поправить README: справку читают чаще.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add README.md skills/adoc/SKILL.md
-git commit -m "docs: README and skill for the aggregator
+git add README.md skills/adoc/SKILL.md docs/superpowers/specs/2026-09-01-multi-provider-design.md
+git commit -m "docs: README, skill and spec for the aggregator
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -4339,9 +4922,10 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `src/core/help.ts`
 - Modify: `src/app.ts` (справка через `helpText`, `--json` без команды)
 - Test: `test/commands/help.test.ts`
+- Test: `test/core/app.test.ts` (набор провайдеров — фикстуры)
 
 **Interfaces:**
-- Consumes: `Loaded` из `registry.ts`, `TOOL`, `bold`/`dim`.
+- Consumes: `Loaded` из `registry.ts`, `TOOL`/`bold`/`dim` из `sdk/index.ts`.
 - Produces: `helpText(loaded: Loaded | null): string`.
 
 - [ ] **Step 1: Тест**
@@ -4354,7 +4938,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 
 let dir: string
@@ -4426,8 +5010,7 @@ Expected: FAIL — справка статична, имени `alpha` в ней
 // каждый сайт собирается из его describe: обёртка не знает заранее, какие
 // провайдеры установлены и что они умеют, и врать об этом не должна.
 
-import { TOOL } from "../sdk/config.ts"
-import { bold, dim } from "../sdk/render.ts"
+import { TOOL, bold, dim } from "../sdk/index.ts"
 import type { Loaded } from "./registry.ts"
 
 type Row = { usage: string; about: string }
@@ -4523,19 +5106,194 @@ export function helpText(loaded: Loaded | null): string {
 - [ ] **Step 5: Зелёные тесты**
 
 Run: `bun test && bun run typecheck`
-Expected: PASS — все тесты плана A (213) и плана B.
+Expected: PASS — все тесты плана A и плана B.
 
-- [ ] **Step 6: Сверить README с реальной справкой**
+- [ ] **Step 6: Направить `test/core/app.test.ts` на фикстуры**
+
+С этой задачи `run(["--help"])` снимает `describe`, а фикстуры провайдеров уже
+есть (задача 3). Заменить в `beforeEach` пустой каталог на них:
+
+```ts
+env = {
+	[CONFIG_DIR_ENV]: dir,
+	[PROVIDERS_DIR_ENV]: join(import.meta.dir, "..", "fixtures", "providers"),
+}
+```
+
+и дописать проверку, что справка теперь знает про сайты:
+
+```ts
+	test("справка перечисляет найденные сайты", async () => {
+		const r = await run(["--help"])
+		expect(r.stdout).toContain("alpha")
+		expect(r.stdout).toContain("beta")
+	})
+```
+
+Настоящих `autodoc`/`armtek`, настоящего `~/.config/adoc` и `PATH` ни один тест
+плана после этого не касается: у каждого свои `ADOC_CONFIG_DIR` и
+`ADOC_PROVIDERS_DIR`, и то же окружение уходит в `Bun.spawn`.
+
+- [ ] **Step 7: Сверить справку с README**
 
 Run: `bun src/main.ts --help`
-Сверить список команд и флагов с таблицами в README из задачи 15; разошлись —
-поправить README, а не справку: справку читают чаще.
+Сверить список команд и флагов с таблицами README из задачи 15. Разошлись —
+править `helpText`: README в этой задаче не трогается, он уже написан и
+закоммичен отдельно.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/core/help.ts src/app.ts test/commands/help.test.ts README.md
+git add src/core/help.ts src/app.ts test/commands/help.test.ts test/core/app.test.ts
 git commit -m "feat(core): describe-driven help for the aggregator
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 17: Контрактный тест встроенных провайдеров
+
+**Files:**
+- Test: `test/core/contract.test.ts`
+
+**Interfaces:**
+- Consumes: `invoke(bin, args, opts)` из `core/invoke.ts`, `parseDescribe`/`parseBrands`/`parseOffers` из `core/validate.ts`, `articleKey` и `accountStore` из `sdk/index.ts`.
+- Produces: ничего — это проверка, а не код.
+
+Спека §«Тесты» требует контрактного теста на каждого встроенного провайдера:
+`describe` валиден по форме, `brands` и `offers` — тоже, и всё это без сети, на
+записанных ответах. Проверяются настоящие `autodoc` и `armtek` — но тем же
+способом, каким с ними говорит агрегатор: `invoke` и валидаторы контракта. Это
+единственный тест плана, который запускает не фикстуру, а живой провайдер.
+
+Фикстурный режим у провайдеров разный, и это часть их устройства: у autodoc
+свой `call()` с `ADOC_FIXTURES` (каталог записанных ответов), у armtek —
+подменяемый транспорт, поэтому он гоняется через `test/fixtures/armtek-cli.ts`
+и `ARMTEK_FIXTURES` (карта «кусок пути или queryType → файл»).
+
+- [ ] **Step 1: Тест**
+
+`test/core/contract.test.ts`:
+
+```ts
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { CONFIG_DIR_ENV, accountStore, articleKey } from "../../src/sdk/index.ts"
+import { invoke } from "../../src/core/invoke.ts"
+import { parseBrands, parseDescribe, parseOffers } from "../../src/core/validate.ts"
+
+const root = join(import.meta.dir, "..", "..")
+const armtekFix = (name: string): string => join(root, "test", "fixtures", "armtek", name)
+
+/** Гостевой токен нужен armtek на любой запрос; точная выдача — одна страница. */
+const armtekRoutes = {
+	"auth-microservice/v1/guest": armtekFix("guest-token.json"),
+	"queryType:2": armtekFix("search-exact-bosch.json"),
+}
+
+type Case = {
+	id: string
+	bin: string[]
+	env: Record<string, string>
+	article: string
+	brand: string
+	/** Нужен ли провайдеру аккаунт, чтобы отдать offers. */
+	account?: () => Promise<void>
+}
+
+const cases: Case[] = [
+	{
+		id: "autodoc",
+		bin: ["bun", join(root, "src", "providers", "autodoc", "main.ts")],
+		env: { ADOC_FIXTURES: join(root, "test", "fixtures", "autodoc", "http") },
+		article: "n90954802",
+		brand: "VAG",
+		// originals без токена отвечает auth — токен фиктивный, сеть всё равно
+		// подменена фикстурами.
+		account: () => accountStore("autodoc").save({ access_token: "a.b.c", refresh_token: "r", expires_at: Math.floor(Date.now() / 1000) + 3600 }),
+	},
+	{
+		id: "armtek",
+		bin: ["bun", join(root, "test", "fixtures", "armtek-cli.ts")],
+		env: { ARMTEK_FIXTURES: JSON.stringify(armtekRoutes) },
+		article: "0986452041",
+		brand: "BOSCH",
+	},
+]
+
+let dir: string
+beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), "adoc-contract-")); process.env[CONFIG_DIR_ENV] = dir })
+afterEach(async () => { delete process.env[CONFIG_DIR_ENV]; await rm(dir, { recursive: true, force: true }) })
+
+for (const c of cases) {
+	describe(`контракт: ${c.id}`, () => {
+		test("describe проходит валидацию агрегатора", async () => {
+			const r = await invoke(c.bin, ["describe"], { env: c.env })
+			expect(r.ok).toBe(true)
+			if (!r.ok) return
+			const d = parseDescribe(r.json, c.id)
+			expect(d.contract).toBe(1)
+			expect(d.commands.map(x => x.name)).toEqual(expect.arrayContaining(["login", "logout", "whoami", "search", "brands", "offers"]))
+			// Подкоманда именуется двумя словами через пробел — на это имя
+			// агрегатор ориентируется в справке.
+			if (d.capabilities.includes("basket")) expect(d.commands.map(x => x.name)).toContain("basket add")
+		})
+
+		test("brands: форма контракта и тот же артикул", async () => {
+			const r = await invoke(c.bin, ["brands", c.article], { env: c.env })
+			expect(r.ok).toBe(true)
+			if (!r.ok) return
+			const items = parseBrands(r.json, c.id)
+			expect(items.length).toBeGreaterThan(0)
+			expect(items.some(b => articleKey(b.article) === articleKey(c.article))).toBe(true)
+			expect(items.some(b => b.brand === c.brand)).toBe(true)
+		})
+
+		test("offers: форма контракта, цена и ref для корзины", async () => {
+			await c.account?.()
+			const r = await invoke(c.bin, ["offers", c.article, "--brand", c.brand], { env: c.env })
+			expect(r.ok).toBe(true)
+			if (!r.ok) return
+			const items = parseOffers(r.json, c.id)
+			expect(items.length).toBeGreaterThan(0)
+			for (const o of items) {
+				expect(o.price).toBeGreaterThan(0)
+				expect(o.currency).toBe("RUB")
+				// Провайдер с capability basket обязан отдавать ref в каждом
+				// предложении: без него `adoc basket add` нечем позвать.
+				expect(o.ref).toBeDefined()
+			}
+		})
+
+		test("неизвестная команда — bad_args, а не молчание", async () => {
+			const r = await invoke(c.bin, ["нетакой"], { env: c.env })
+			expect(r.ok).toBe(false)
+			if (r.ok) return
+			expect(r.error.code).toBe("bad_args")
+		})
+	})
+}
+```
+
+- [ ] **Step 2: Запустить**
+
+Run: `bun test test/core/contract.test.ts`
+Expected: PASS, 8 тестов (по четыре на провайдера). Тест падает ровно в двух
+случаях: провайдер сломал форму ответа или у него пропал фикстурный режим —
+оба раза это настоящая поломка контракта, а не теста.
+
+Если `offers` у autodoc отвечает `auth` — значит перестал работать фиктивный
+токен: в фикстурном режиме `auth.ts` не ходит за refresh (`if
+(process.env.ADOC_FIXTURES) return null`), проверять надо его, а не тест.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add test/core/contract.test.ts
+git commit -m "test(core): contract test for bundled providers on recorded fixtures
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -4559,6 +5317,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 11. `adoc logout autodoc` — `accounts` показывает «входа нет», файла `accounts/autodoc.json` нет.
 12. Выключить сеть и повторить `adoc part n90954802` — обе жёлтые строки в stderr, exit `1`, паники нет.
 13. `ls ~/.config/adoc` — `garage.json`, `last-part.json`, `accounts/`, ничего лишнего; временных `.tmp` не осталось.
+14. Положить в `PATH` пустой исполняемый `adoc-part` и убедиться, что `adoc part n90954802` по-прежнему выполняет команду обёртки, а в stderr одна жёлтая строка про совпадение имён.
 
 ## Самопроверка плана
 
@@ -4569,20 +5328,21 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 | Архитектура: три бинаря, `bin` в package.json | задача 1 |
 | Обнаружение провайдеров: встроенные, `adoc-*` в PATH, приоритет встроенного | задача 3 |
 | `adoc providers` с версией контракта, capabilities и статусом аккаунта; битый `describe` не в агрегации | задачи 3, 6 |
-| Вызов провайдера: spawn, `--json`, мусор в stdout, stderr наружу, stdin только для login, таймаут 30 с и SIGTERM, перенос exit-кода, параллельность | задача 4 |
+| Вызов провайдера: spawn, `--json`, мусор в stdout с предупреждением, stderr наружу (включая `describe`), stdin только для login, таймаут 30 с и SIGTERM, перенос exit-кода, параллельность | задачи 4, 5 |
 | Хранилище: `garage.json`, `last-part.json`, перечисление и удаление `accounts/*.json`, атомарная запись | задачи 2, 8, 12 |
 | `part`: ключ артикула, склейка брендов, exit 2, свои написания бренда сайтам, точные против аналогов, сортировка, `--limit`, форма `--json` | задачи 7, 8 |
 | `search`: склейка по (артикул, бренд), порядок, минимальная цена, подсказка про `part`, форма `--json` | задачи 7, 9 |
-| Частичный отказ: жёлтая строка, `errors`, exit 1 только когда упали все, exit 2 только за бренд | задачи 5, 8–11 |
+| Частичный отказ: жёлтая строка, `errors`, exit 1 только когда упали все, exit 2 только за бренд | задачи 5, 7 (`emptyResult`), 8–11 |
 | `basket`: блоки по сайтам, итоги, `add <n>` из `last-part.json`, протухший кэш, `add <provider> --ref`, `set`/`rm`, печать тронутой корзины | задача 11 |
 | `reviews`: те же шаги брендов, блоки по сайтам, форма `--json` | задача 10 |
 | `garage`: список со звездой, `add`, `main`, `rm`, `import` со слиянием по VIN | задачи 12, 13 |
 | `login`/`logout`/`accounts`/`whoami` | задача 6 |
-| `<provider> <cmd> …` — проброс, включая `--help` | задача 14 |
+| `<provider> <cmd> …` — проброс, включая `--help`; имя команды обёртки провайдеру не отдаётся | задача 14 |
 | `--help`: справка обёртки плюс строка на провайдера из `describe` | задача 16 |
 | Флаги `--json`, `--only`, `--skip`, `--limit`, `--page`, `--analogs` | задачи 1, 3, 8, 9 |
 | Тесты: `core/part`, `core/search`, `core/invoke`, `core/garage`, `core/basket`, фикстурный провайдер | задачи 3–13 (`core/part` и `core/search` разложены на `merge.test.ts` плюс `commands/part.test.ts` и `commands/search.test.ts`) |
-| Документация: README и SKILL под мультипровайдер | задача 15 |
+| Тесты: контрактный тест встроенных провайдеров на фикстурах | задача 17 |
+| Документация: README, SKILL и правка спеки | задача 15 |
 
 Не закрыто нарочно и почему:
 
@@ -4590,19 +5350,42 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - **`docs/contract.md` и `docs/armtek-api.md`** — написаны планами A и C; план B их только читает.
 - **Импорт гаража «с сайтов, у которых он есть»** во множественном числе — команда адресная, по одному сайту за раз (`garage import <provider>`), как и в таблице команд спеки.
 
-**2. Поиск заглушек.** Ни одного «TBD», «аналогично задаче N», «добавить обработку ошибок». Все шаги с кодом содержат код целиком; каждый тест выписан. Единственные ссылки на чужой код — на существующие файлы `src/sdk/*`, которые план не переписывает.
+**2. Поиск заглушек.** Ни одного «TBD», «аналогично задаче N», «добавить обработку ошибок». Все шаги с кодом содержат код целиком — включая помощники фикстуры (`auth`, `load`, `store`), которых не хватало в первой редакции. Задача 15 больше не отсылает к существующему тексту: README и SKILL выписаны целиком, как код.
 
 **3. Согласованность типов.** Сквозная проверка имён:
 
 - `ProviderEntry`/`Provider`/`BadProvider`/`Loaded` объявлены в задаче 3 и в этих же именах используются задачами 4, 5, 6, 14, 16.
-- `invoke(bin, args, opts)` берёт `string[]`, а не `Provider`, — чтобы `registry.ts` мог его звать без цикла импортов; так он и зовётся везде.
-- `InvokeResult` — размеченное объединение по `ok`; все потребители (`fanout`, `afterChange`, `cmdLogin`, `cmdLogout`, `importGarage`) проверяют `r.ok` до чтения `r.json`.
-- `Fanout<T>` с полями `got`/`failures`/`asked` — одно имя у `partial.ts`, `part`, `search`, `reviews`, `basket`, `accounts`.
-- `OfferRow = Offer & {provider}` объявлен в `merge.ts`; `offersTable`, `saveLastPart` и `splitOffers` говорят про него же.
+- `invoke(bin, args, opts)` берёт `string[]`, а не `Provider`, — чтобы `registry.ts` мог его звать без цикла импортов; `InvokeOpts` в блоке Interfaces задачи 4 совпадает с кодом (`timeoutMs`, `interactive`, `env`).
+- `InvokeResult` — размеченное объединение по `ok`; все потребители (`fanout`, `afterChange`, `cmdLogin`, `cmdLogout`, `importGarage`, контрактный тест) проверяют `r.ok` до чтения `r.json`.
+- `passNoise` живёт в `invoke.ts` (задача 4) — там же, где `InvokeResult`, и потому доступна `registry.load()`, которая идёт раньше `partial.ts`.
+- `Fanout<T>` с полями `got`/`failures`/`asked` — одно имя у `partial.ts`, `brand.ts`, `part`, `search`, `reviews`, `basket`, `accounts`; `Resolved.step` — тот же тип.
+- `OfferRow = Offer & {provider}` объявлен в `merge.ts`; `renderOffers(rows, [providerCol])`, `saveLastPart` и `splitOffers` говорят про него же.
 - `MergedBrand.spelling` читается только в `part` и `reviews`, оба через `brand.spelling[p.id]!` после фильтра `brand.providers.includes(p.id)` — ключ гарантированно есть.
+- `Col<T>` из `sdk/render.ts` — единственный способ добавить колонку; `providerCol`, `whereCol<T>()`, `garageCols(g)` возвращают именно его.
 - `Ctx.pick(cap?)` и `Ctx.load()` — единственные способы добраться до провайдеров; `one(ctx, id, cap?)` ходит через `ctx.load()`.
-- `Output = {json, render, code?}` — форма возврата всех девяти команд; печатает только `app.ts`.
-- Имена файлов-констант: `LAST_PART_FILE`, `GARAGE_FILE`, `PROVIDERS_DIR_ENV`, `INVOKE_TIMEOUT_MS`, `MAX_AGE_MS` — объявлены по одному разу и импортируются из своего модуля и в тестах.
+- `Output = {json, render, code?}` — форма возврата всех девяти команд и `emptyResult`; печатает только `app.ts`.
+- Имена файлов-констант: `LAST_PART_FILE`, `GARAGE_FILE`, `PROVIDERS_DIR_ENV`, `INVOKE_TIMEOUT_MS`, `MAX_AGE_MS`, `COMMAND_NAMES` — объявлены по одному разу и импортируются из своего модуля.
+
+**4. Что изменилось после предполётной проверки** (`.superpowers/sdd/2026-09-02-b-aggregator/preflight.md`):
+
+- Фикстура `makeFake` получила недостающие `auth`/`load`/`store`, из-за которых её импорты висели неиспользованными, а задача 11 не собиралась без дописывания руками (F1).
+- `parseDescribe` проверяет обязательные поля до `commands`, и тексты ошибок совпадают с тем, что ждут тесты задач 3 и 4 (F2).
+- `test/fixtures/sleepy.ts` стал модулем — `tsc` больше не падает TS1375 (F3), и он вынесен из каталога провайдеров, чтобы не тормозить `load()`.
+- Блок Interfaces задачи 4 приведён к коду: `env?` в `InvokeOpts` (F4). Задача 12 объявляет `mergeImported` в Produces (F5).
+- `test/core/app.test.ts` с первого же теста работает во временном `ADOC_CONFIG_DIR` и своём `ADOC_PROVIDERS_DIR`; после задачи 16 он смотрит на фикстуры. Ни один тест плана не касается настоящих провайдеров, настоящего конфига и `PATH` (F6).
+- README принадлежит задаче 15 и только ей; задача 16 его не коммитит (F7).
+- Пять почти дословных копий рендеров исчезли: `renderProducts`/`renderBrands`/`renderOffers`/`renderBasket`/`renderCars` принимают `cols`, а обёртка передаёт свои колонки (F8). `garageTable`, `basketBlock`, `productsTable`, `offersTable`, `brandsWhereTable` не заводятся.
+- `parseRef`, `need` и `intFlag` переехали в `sdk/cli.ts` и переиспользуются вместо копий в `core/args.ts` (F9).
+- Общий блок «ничего не нашлось» вынесен в `brand.ts` как `emptyResult`, код возврата считает `allFailed`, а не арифметика в команде (F10).
+- Удаление аккаунта отличает ENOENT от прочих ошибок: `logout` больше не может отрапортовать успех на неудалённых токенах (F11). Мёртвый `removeFile` убран.
+- `registry.load(warn)` прогоняет ответ `describe` через `passNoise` — предупреждения и stderr провайдера доходят до человека (F12).
+- Все `expect(...).rejects` в задаче 8 идут с `await` (F13).
+- `cmdLogin` объявлен исключением из инварианта «app.ts ничего не печатает», а тело `login` теперь не разбирается вовсе: успех берётся из кода возврата, `display` — отдельным `whoami` (F14). Добавлен тест «токен не уходит ни в stdout, ни в stderr».
+- Задача 15 выписывает README и SKILL дословно и правит строку спеки про колонки корзины (F15, F17); само расхождение записано в разделе «Отступления от спеки».
+- Появилась задача 17 — контрактный тест встроенных провайдеров на записанных ответах, которого требует спека §«Тесты» (F16).
+- Проброс не отдаёт провайдеру имя команды обёртки и говорит об этом в stderr; на это есть тест (F18).
+- `providersTable` и `accountsTable` покрыты тестами задачи 5 (F19).
+- Правило импортов: `src/core/`, `src/commands/`, `src/app.ts` и `src/main.ts` берут SDK только через `sdk/index.ts`, и задача 1 доводит его до полной поверхности (F20).
 
 ## Что дальше
 
