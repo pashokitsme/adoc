@@ -60,7 +60,7 @@ const guestReply = () => envelope({ accessToken: jwt({ exp: now() + 3600 }) })
 
 describe("объявление провайдера", () => {
 	test("умеет ровно то, что реализовано", () => {
-		expect([...armtek.capabilities].sort()).toEqual(["analogs", "basket", "garage", "reviews"])
+		expect([...armtek.capabilities].sort()).toEqual(["analogs", "basket", "garage", "orders", "reviews"])
 		expect(armtek.id).toBe("armtek")
 	})
 })
@@ -69,7 +69,7 @@ describe("search", () => {
 	test("отдаёт товары, итог и страницу", async () => {
 		const search = await fixture("search-list.json")
 		const seen = route([["/guest", guestReply], ["/search", () => search]])
-		const r = await armtek.search(makeCtx(null), "фильтр масляный")
+		const r = await armtek.search(makeCtx(null), "фильтр масляный", { car: null })
 
 		expect(r.items.length).toBe(search.data.articlesData.length)
 		expect(r.total).toBe(557)
@@ -83,8 +83,98 @@ describe("search", () => {
 	test("--limit режет выдачу", async () => {
 		const search = await fixture("search-list.json")
 		route([["/guest", guestReply], ["/search", () => search]])
-		const r = await armtek.search(makeCtx(null, { limit: 1 }), "болт")
+		const r = await armtek.search(makeCtx(null, { limit: 1 }), "болт", { car: null })
 		expect(r.items).toHaveLength(1)
+	})
+})
+
+describe("search с машиной", () => {
+	test("ref с идентификатором TecDoc уводит поиск в by-category", async () => {
+		const auto = await fixture("autocomplete.json")
+		const byCat = await fixture("search-by-category.json")
+		const seen = route([
+			["/guest", guestReply],
+			["autocomplete/search", () => auto],
+			["search/by-category", () => byCat],
+		])
+		const warns: string[] = []
+		const r = await armtek.search(makeCtx(null, { warn: m => warns.push(m) }), "фильтр масляный", { car: { modificationId: 58759 } })
+
+		const call = seen.find(c => c.url.includes("by-category"))!
+		expect(call.body.query).toBe("filtry-maslyanye-8963")
+		expect(call.body.linkingTargetId).toBe(58759)
+		expect(call.body.linkingTargetType).toBe("P")
+		expect(r.total).toBe(392)
+		expect(r.extra).toMatchObject({ category: { alias: "filtry-maslyanye-8963" } })
+		expect(warns).toEqual([])
+	})
+
+	test("ref без идентификатора — предупреждение и обычный поиск", async () => {
+		const search = await fixture("search-list.json")
+		const seen = route([["/guest", guestReply], ["v1/search", () => search]])
+		const warns: string[] = []
+		const r = await armtek.search(makeCtx(null, { warn: m => warns.push(m) }), "фильтр масляный", { car: { transportId: 7 } })
+
+		expect(seen.some(c => c.url.includes("by-category"))).toBe(false)
+		expect(warns[0]).toContain("TecDoc")
+		expect(r.items.length).toBeGreaterThan(0)
+	})
+
+	test("категории под запрос нет — предупреждение и обычный поиск", async () => {
+		const search = await fixture("search-list.json")
+		route([
+			["/guest", guestReply],
+			["autocomplete/search", () => envelope({ category: [], suggest: [], brands: [] })],
+			["v1/search", () => search],
+		])
+		const warns: string[] = []
+		const r = await armtek.search(makeCtx(null, { warn: m => warns.push(m) }), "фильтр масляный", { car: { modificationId: 58759 } })
+		expect(warns[0]).toContain("категории не нашлось")
+		expect(r.items.length).toBeGreaterThan(0)
+	})
+})
+
+describe("info", () => {
+	test("карточка: цена «от», минимальный срок, склады и ссылка", async () => {
+		const card = await fixture("search-card-bosch.json")
+		const rating = await fixture("reviews-rating.json")
+		const seen = route([["/guest", guestReply], ["v1/search", () => card], ["get-rating-by-artids", () => rating]])
+		const { info } = await armtek.info(makeCtx(null), "0986452041", "BOSCH")
+
+		expect(seen.find(c => c.url.includes("v1/search"))!.body.typeView).toBe("card")
+		expect(info).toMatchObject({ article: "0 986 452 041", brand: "BOSCH", currency: "RUB" })
+		expect(info.url).toStartWith("https://armtek.ru/product/")
+		expect(info.stock!.length).toBeGreaterThan(0)
+		expect(info.price).toBeGreaterThan(0)
+	})
+
+	test("чужой бренд — notfound", async () => {
+		const card = await fixture("search-card-bosch.json")
+		route([["/guest", guestReply], ["v1/search", () => card]])
+		expect(armtek.info(makeCtx(null), "0986452041", "NOSUCH")).rejects.toThrow(ProviderError)
+	})
+})
+
+describe("orders", () => {
+	test("пустой список — не ошибка", async () => {
+		const empty = await fixture("orders-empty.json")
+		route([["order/report", () => empty]])
+		expect((await armtek.orders!(makeCtx(loggedIn()))).items).toEqual([])
+	})
+
+	test("заказ с позициями и ссылкой на карточку", async () => {
+		const orders = await fixture("orders.json")
+		route([["order/report", () => orders]])
+		const r = await armtek.orders!(makeCtx(loggedIn()))
+		expect(r.items).toHaveLength(1)
+		expect(r.items[0]).toMatchObject({
+			id: "1234567", date: "2026-08-30", status: "В работе", total: 1184, currency: "RUB",
+			url: "https://armtek.ru/profile/orders/card?orderId=1234567",
+		})
+		expect(r.items[0]!.items![0]).toMatchObject({
+			article: "0 986 452 041", brand: "BOSCH", qty: 2, price: 592, sum: 1184,
+			url: "https://armtek.ru/product/filtr-maslyanyy-bosch-0-986-452-041-55469",
+		})
 	})
 })
 

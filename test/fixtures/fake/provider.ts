@@ -9,6 +9,7 @@
 //   NOREVIEWS=1    в describe нет capability reviews (метод при этом есть)
 //   NOBASKET=1     в describe нет capability basket (метод при этом есть)
 //   NOGARAGE=1     в describe нет capability garage (метод при этом есть)
+//   NOORDERS=1     в describe нет capability orders (метод при этом есть)
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -68,9 +69,9 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		ref: { line: `${id}-${n}` },
 	})
 
-	const spec = defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket"]>({
+	const spec = defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket", "orders"]>({
 		id, name: `Fake ${id}`, site: `https://${id}.example`,
-		capabilities: ["reviews", "garage", "analogs", "basket"],
+		capabilities: ["reviews", "garage", "analogs", "basket", "orders"],
 
 		login: async ctx => {
 			const user = knob(id, "LOGIN") ?? await ctx.prompt("Логин > ")
@@ -112,6 +113,35 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			// Аналог — другой артикул: обёртка обязана унести его в отдельную таблицу.
 			if (analogs && hit.length) items.push({ ...toOffer(hit[0]!, 9), article: "AN-1", brand: "ANALOG", price: data.price + 50, analog: true })
 			return { items }
+		},
+
+		info: async (_ctx, article, brand) => {
+			await gate()
+			const hit = find(article).filter(r => brandKey(r.brand) === brandKey(brand))[0]
+			if (!hit) throw new ProviderError("notfound", `${id}: ${article} (${brand}) не найден`)
+			return { info: {
+				article: hit.article, brand: hit.brand, name: hit.name, price: hit.price, currency: "RUB",
+				deliveryDays: 2, rating: { average: 4.5, count: 10, histogram: [8, 1, 1, 0, 0] },
+				url: `https://${id}.example/part/${hit.article}`,
+				stock: [{ code: "S1", name: "склад", quantity: 3 }],
+			} }
+		},
+
+		analogs: async (_ctx, article, brand) => {
+			await gate()
+			const hit = find(article).filter(r => brandKey(r.brand) === brandKey(brand))
+			if (!hit.length) return { items: [] }
+			return { items: [{ ...toOffer(hit[0]!, 9), article: "AN-1", brand: "ANALOG", price: data.price + 50, analog: true, analogOf: { article, brand } }] }
+		},
+
+		orders: async ctx => {
+			auth(ctx.account)
+			await gate()
+			return { items: [{
+				id: `${id}-1`, date: "2026-01-02", status: "выдан", total: data.price * 2, currency: "RUB",
+				url: `https://${id}.example/orders/1`,
+				items: [{ article: data.article, brand: data.brand, name: "Болт", qty: 2, price: data.price, sum: data.price * 2 }],
+			}] }
 		},
 
 		reviews: async () => {
@@ -162,5 +192,6 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 	if (knob(id, "NOREVIEWS")) off.add("reviews")
 	if (knob(id, "NOBASKET")) off.add("basket")
 	if (knob(id, "NOGARAGE")) off.add("garage")
+	if (knob(id, "NOORDERS")) off.add("orders")
 	return off.size ? { ...spec, capabilities: spec.capabilities.filter(c => !off.has(c)) } : spec
 }

@@ -153,17 +153,18 @@ export function need(v: string | undefined, what: string): string {
 }
 
 /**
- * `--ref <json>` — непрозрачный объект сайта: пришёл в `offers`, уходит обратно
- * в `basket add`. Ни SDK, ни обёртка внутрь не смотрят.
+ * Непрозрачный объект сайта в argv: `--ref` пришёл из `offers` и уходит в
+ * `basket add`, `--car` пришёл из `garage export` и уходит в `search`. Ни SDK,
+ * ни обёртка внутрь не смотрят; имя флага нужно только для текста ошибки.
  */
-export function parseRef(v: string | true | undefined): Record<string, unknown> {
-	if (typeof v !== "string" || !v) throw new ProviderError("bad_args", "нужен --ref <json> из выдачи offers")
+export function parseRef(v: string | true | undefined, name = "ref", from = "offers"): Record<string, unknown> {
+	if (typeof v !== "string" || !v) throw new ProviderError("bad_args", `нужен --${name} <json> из выдачи ${from}`)
 	try {
 		const o = JSON.parse(v) as unknown
 		if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error()
 		return o as Record<string, unknown>
 	} catch {
-		throw new ProviderError("bad_args", "--ref должен быть JSON-объектом")
+		throw new ProviderError("bad_args", `--${name} должен быть JSON-объектом`)
 	}
 }
 

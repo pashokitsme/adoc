@@ -8,10 +8,10 @@ import type { Ctx, ProviderSpec } from "./define.ts"
 import { ProviderError, errorBody, exitCode, type ErrorMapper } from "./errors.ts"
 import { HttpError } from "./http.ts"
 import { emit } from "./out.ts"
-import { bold, dim, fields, red, renderBasket, renderBrands, renderCars, renderDisplay, renderOffers, renderProducts, renderReviews } from "./render.ts"
+import { bold, dim, fields, red, renderBasket, renderBrands, renderCars, renderDisplay, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews } from "./render.ts"
 import { TOOL } from "./config.ts"
 
-const CONTRACT_VALUE_FLAGS = ["brand", "page", "limit", "qty", "ref"]
+const CONTRACT_VALUE_FLAGS = ["brand", "page", "limit", "qty", "ref", "car"]
 
 // Мапперу провайдера — первое слово; HttpError из SDK не должен уезжать в
 // internal, а всё незнакомое toProviderError и так сведёт к internal.
@@ -38,10 +38,13 @@ function contractCommands<A>(spec: ProviderSpec<A>): Command[] {
 		{ name: "login", usage: "login", about: "войти (диалог в терминале, если провайдер не берёт данные иначе)", auth: false },
 		{ name: "logout", usage: "logout", about: "забыть аккаунт", auth: false },
 		{ name: "whoami", usage: "whoami", about: "кто авторизован", auth: false },
-		{ name: "search", usage: "search <текст> [--page <n>] [--limit <n>]", about: "поиск по названию", auth: false },
+		{ name: "search", usage: "search <текст> [--car <json>] [--page <n>] [--limit <n>]", about: "поиск по названию; --car — ref машины из `garage export`", auth: false },
 		{ name: "brands", usage: "brands <артикул>", about: "кто выпускает артикул", auth: false },
 		{ name: "offers", usage: "offers <артикул> --brand <имя> [--analogs]", about: "предложения: цена, наличие, срок", auth: false },
+		{ name: "info", usage: "info <артикул> --brand <имя>", about: "карточка: оценки, цена от, наличие", auth: false },
+		{ name: "analogs", usage: "analogs <артикул> --brand <имя>", about: "только аналоги, без точных совпадений", auth: false },
 	]
+	if (spec.orders) c.push({ name: "orders", usage: "orders", about: "заказы на сайте", auth: true })
 	if (spec.reviews) c.push({ name: "reviews", usage: "reviews <артикул> --brand <имя> [--page <n>] [--limit <n>]", about: "оценки и отзывы", auth: false })
 	if (spec.garageExport) c.push({ name: "garage export", usage: "garage export", about: "машины из гаража сайта", auth: true })
 	if (spec.basket) c.push(
@@ -100,7 +103,10 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 			return { json: d ? { ok: true, display: d } : { ok: false }, render: () => renderDisplay(d) }
 		}
 		case "search": {
-			const r = await spec.search(ctx, need(rest.join(" ") || undefined, "текст запроса"))
+			// --car отсутствует — ищем без машины; пустая строка тоже не машина,
+			// иначе `--car ""` уехало бы в parseRef и упало непонятной ошибкой.
+			const car = ctx.flags.car === undefined || ctx.flags.car === "" ? null : parseRef(ctx.flags.car, "car", "`garage export`")
+			const r = await spec.search(ctx, need(rest.join(" ") || undefined, "текст запроса"), { car })
 			return { json: r, render: () => renderProducts(r.items) }
 		}
 		case "brands": {
@@ -110,6 +116,19 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 		case "offers": {
 			const r = await spec.offers(ctx, need(rest[0], "артикул"), brandFlag(), { analogs: ctx.flags.analogs === true })
 			return { json: r, render: () => renderOffers(r.items) }
+		}
+		case "info": {
+			const r = await spec.info(ctx, need(rest[0], "артикул"), brandFlag())
+			return { json: r, render: () => renderInfo(r.info) }
+		}
+		case "analogs": {
+			const r = await spec.analogs(ctx, need(rest[0], "артикул"), brandFlag())
+			return { json: r, render: () => renderOffers(r.items) }
+		}
+		case "orders": {
+			if (!spec.orders) break
+			const r = await spec.orders(ctx)
+			return { json: r, render: () => renderOrders(r.items) }
 		}
 		case "reviews": {
 			if (!spec.reviews) break

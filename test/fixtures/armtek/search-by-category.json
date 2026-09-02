@@ -1,0 +1,133 @@
+{
+  "_note": "Записано живьём 2026-09-02: search/by-category с linkingTargetId=58759 (SKODA OCTAVIA III 1.8 TSI, TecDoc). Оставлены две строки.",
+  "data": {
+    "typeView": "list",
+    "cacheKey": "CACHE",
+    "searchByVin": true,
+    "articlesData": [
+      {
+        "ARTID": 9609471,
+        "RSTP": "0",
+        "ID": "",
+        "AN_ID": 0,
+        "CHARG": "",
+        "MATERIAL_ID": "0",
+        "SUGGESTIONS": [
+          {
+            "ARTID": 9609471,
+            "PARNR": "0",
+            "PRICES1": "301.00",
+            "PRICER1": "301.00",
+            "PRICEW1": "301.00",
+            "PRICEREC": "0.00",
+            "NUMZAK": "1",
+            "PROPS": 31,
+            "RVALUE": "13",
+            "COLOR": 1,
+            "DLVDT": "20260902143000",
+            "ORDDT": "20260902130000",
+            "RDPRF": "1",
+            "AUTH_DEALER": "",
+            "SCALES": "",
+            "WAERS": "RUB",
+            "XSPEC": "",
+            "KEYZAK": "MOV0000019",
+            "VENSL": 100,
+            "MINBM": 1,
+            "TYPE": "BEST",
+            "PRICEP": "317.00",
+            "NAME": "фильтр масляный!\\Audi A3/A4 1.8TFSi 11>",
+            "PROMO_PLKEY": "",
+            "WRNTDT": "",
+            "CHARG": "",
+            "GSORT": 10,
+            "KWMENG": 0,
+            "POSNR": 0,
+            "STOCKS": [],
+            "PROMO": []
+          }
+        ],
+        "PIN": "20-50730-SX",
+        "BRAND": "STELLOX",
+        "PHOTO": [
+          "https://img.armtek.ru/img/article/960/9609471/230x230/9609471_0.webp"
+        ],
+        "NAME": "Фильтр масляный STELLOX 20-50730-SX Audi A3/A4 1.8TFSi 11>",
+        "BRAND_ICON": "https://img.armtek.ru/img/uploader/assortment/236/bc83fa3ca29b58a479a9ae063e90b236/images/stellox-sx_144110001761729782.webp",
+        "BRAND_ALIAS": "stellox-5538",
+        "BRAND_ID": 5538,
+        "ARTICLE_ALIAS": "filtr-maslyanyy-stellox-20-50730-sx-audi-a3a4-18tfsi-11-9609471",
+        "FAV_ID": null,
+        "REC": true,
+        "REVIEW_COUNT": null,
+        "RATING": null,
+        "GARANT": "",
+        "FAV": false
+      },
+      {
+        "ARTID": 12250120,
+        "RSTP": "0",
+        "ID": "",
+        "AN_ID": 0,
+        "CHARG": "",
+        "MATERIAL_ID": "0",
+        "SUGGESTIONS": [
+          {
+            "ARTID": 12250120,
+            "PARNR": "0",
+            "PRICES1": "584.00",
+            "PRICER1": "584.00",
+            "PRICEW1": "584.00",
+            "PRICEREC": "0.00",
+            "NUMZAK": "1",
+            "PROPS": 20,
+            "RVALUE": "1",
+            "COLOR": 1,
+            "DLVDT": "20260902143000",
+            "ORDDT": "20260902130000",
+            "RDPRF": "1",
+            "AUTH_DEALER": "",
+            "SCALES": "",
+            "WAERS": "RUB",
+            "XSPEC": "S",
+            "KEYZAK": "MOV0000019",
+            "VENSL": 100,
+            "MINBM": 1,
+            "TYPE": "BEST",
+            "PRICEP": "648.00",
+            "NAME": "фильтр масляный! АКПП\\ Audi A3/TT,VW Jetta3/4/Eos/Golf5/6/Passat/Tiguan/Touran 03>",
+            "PROMO_PLKEY": "",
+            "WRNTDT": "",
+            "CHARG": "",
+            "GSORT": 10,
+            "KWMENG": 0,
+            "POSNR": 0
+          }
+        ],
+        "PIN": "20-50744-SX",
+        "BRAND": "STELLOX",
+        "PHOTO": [
+          "https://img.armtek.ru/img/article/122/12250120/230x230/12250120_0.webp"
+        ],
+        "NAME": "Фильтр масляный STELLOX 20-50744-SX Audi A3/TT, VW Jetta3/4/Eos/Golf5/6/Passat/Tiguan/Touran 03>",
+        "BRAND_ICON": "https://img.armtek.ru/img/uploader/assortment/236/bc83fa3ca29b58a479a9ae063e90b236/images/stellox-sx_144110001761729782.webp",
+        "BRAND_ALIAS": "stellox-5538",
+        "BRAND_ID": 5538,
+        "ARTICLE_ALIAS": "filtr-maslyanyy-stellox-20-50744-sx-audi-a3tt-vw-jetta34eosgolf56passattiguantouran-03-12250120",
+        "FAV_ID": null,
+        "REC": true,
+        "REVIEW_COUNT": null,
+        "RATING": null,
+        "GARANT": "",
+        "FAV": false
+      }
+    ],
+    "pagination": {
+      "currentPage": 1,
+      "perPage": 36,
+      "totalCount": 392,
+      "pageCount": 11
+    }
+  },
+  "arr_messages": []
+}

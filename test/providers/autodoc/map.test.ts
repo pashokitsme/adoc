@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { basketAddBody, categoryIds, toBasket, toBrandHits, toCars, toOffers, toProducts, toReviews } from "../../../src/providers/autodoc/map.ts"
+import {
+	basketAddBody, bestCategory, cardUrl, carQuery, categoryIds, priceUrl, reviewsUrl, toBasket,
+	toBrandHits, toCars, toInfo, toOffers, toOrders, toProducts, toReviews,
+} from "../../../src/providers/autodoc/map.ts"
 
 // Фикстуры лежат одним набором в http/: имя файла — метод и путь вызова,
 // так их читает и фикстурный режим api.ts. Второй копии этих же ответов
@@ -13,6 +16,8 @@ const FILES: Record<string, string> = {
 	"find-goods": "POST__api_catalog-universal-service_catalog-universal-goods_find-goods",
 	"garage-cars": "GET__api_garage-service_garage_cars",
 	"basket-items": "GET__api_basket-service_basket_items",
+	"goods-price": "GET__api_goods-service_goods_price",
+	orders: "GET__api_order-service_orders_items",
 }
 
 const fx = async (n: string) => {
@@ -25,7 +30,8 @@ describe("toBrandHits", () => {
 	test("производитель + рейтинг из info", async () => {
 		const hits = toBrandHits((await fx("manufacturers")).items, new Map([[657, await fx("goods-info")]]))
 		expect(hits).toEqual([{ brand: "VAG", article: "N90954802", name: "Болт", rating: { average: 4.9107, count: 56 },
-			images: ["https://images.autodoc.ru/goods/657/N90954802/med.webp"], extra: { manufacturerId: 657 } }])
+			images: ["https://images.autodoc.ru/goods/657/N90954802/med.webp"],
+			url: "https://www.autodoc.ru/man/657/part/n90954802", extra: { manufacturerId: 657 } }])
 	})
 })
 
@@ -77,7 +83,7 @@ describe("toCars", () => {
 	test("ref с carId и modificationId", async () => {
 		expect(toCars((await fx("garage-cars")).cars, 10)[0]).toEqual({
 			brand: "SKODA", model: "OCTAVIA III лифтбек (5E3)", year: 2017, engine: "1.8 TSI", vin: "XXX", odometer: undefined,
-			ref: { carId: 10, modificationId: 58759, main: true },
+			ref: { carId: 10, modificationId: 58759, modelId: 11195, brandName: "SKODA", main: true },
 		})
 	})
 })
@@ -86,11 +92,67 @@ describe("basket", () => {
 	test("toBasket", async () => {
 		const b = toBasket(await fx("basket-items"))
 		expect(b.total).toBe(814)
-		expect(b.items[0]).toMatchObject({ id: "555", article: "N 909 548 02", brand: "VAG", price: 407, quantity: 2, sum: 814, deliveryDays: 3 })
-		expect(b.items[0]!.extra).toMatchObject({ priceType: 2, hash: "H2" })
+		// артикул, производитель и поставщик приходят вложенными в priceItem
+		expect(b.items[0]).toMatchObject({
+			id: "555", article: "N 909 548 02", brand: "VAG", price: 407, quantity: 2, sum: 814, deliveryDays: 3,
+			seller: "TOT · Оптовый склад", url: "https://www.autodoc.ru/man/657/part/n90954802",
+		})
+		expect(b.items[0]!.extra).toMatchObject({ priceType: 2, hash: "E1D05586" })
+		expect(b.url).toBe("https://www.autodoc.ru/cart")
 	})
 	test("basketAddBody — форма фронта", () => {
 		expect(basketAddBody({ priceId: 1, partnerId: 2, directionToManufacturerId: 3, article: "n1", partName: "Болт", priceType: 2, price: 407, deliveryDays: 3, minimalQuantity: 1, hash: "h", manufacturerId: 657 }, 2))
 			.toEqual({ priceId: 1, partnerId: 2, directionToManufacturerId: 3, article: "n1", partName: "Болт", quantity: 2, price: 407, priceType: 2, description: "", deliveryDays: 3 })
+	})
+})
+
+describe("ссылки", () => {
+	test("карточка, отзывы и прайс-лист", () => {
+		expect(cardUrl(30, "0986452041")).toBe("https://www.autodoc.ru/man/30/part/0986452041")
+		// сайт приводит артикул в адресе к нижнему регистру — и в canonical тоже
+		expect(cardUrl(657, "N90954802")).toBe("https://www.autodoc.ru/man/657/part/n90954802")
+		expect(reviewsUrl(30, "0986452041")).toBe("https://www.autodoc.ru/man/30/part/0986452041/reviews")
+		expect(priceUrl(30, "0986452041")).toBe("https://www.autodoc.ru/price/30/0986452041")
+	})
+})
+
+describe("поиск с учётом машины", () => {
+	test("категория выбирается по совпадению слов, а не по порядку подсказки", () => {
+		const cats = [{ id: 1, title: "Станки для заклепки тормозных колодок" }, { id: 2, title: "Колодки тормозные" }]
+		expect(bestCategory(cats, "тормозные колодки").id).toBe(2)
+		expect(bestCategory([{ id: 1, title: "Фильтры масляные" }], "фильтр масляный").id).toBe(1)
+		// ничья — за первой
+		expect(bestCategory([{ id: 1, title: "Свечи зажигания" }, { id: 2, title: "Свечи зажигания" }], "свеча зажигания").id).toBe(1)
+	})
+
+	test("фильтр включается только при всех трёх параметрах", () => {
+		expect(carQuery({ brandName: "SKODA", modelId: 11195, modificationId: 58759 }))
+			.toEqual({ BrandName: "SKODA", Model: 11195, ModificationId: 58759 })
+		expect(carQuery({ brandName: "SKODA", modificationId: 58759 })).toBeUndefined()
+		expect(carQuery({ modelId: 11195, modificationId: 58759 })).toBeUndefined()
+		expect(carQuery(null)).toBeUndefined()
+	})
+})
+
+describe("toInfo", () => {
+	test("карточка: рейтинг с гистограммой, цена «от», характеристики", async () => {
+		const info = toInfo(await fx("goods-info"), await fx("goods-price"))
+		expect(info).toMatchObject({ article: "N90954802", brand: "VAG", name: "Болт", price: 317, currency: "RUB", deliveryDays: 0 })
+		expect(info.rating).toEqual({ average: 4.9107, count: 56, histogram: [54, 1, 0, 0, 1] })
+		expect(info.url).toBe("https://www.autodoc.ru/man/657/part/n90954802")
+		expect(info.stock).toEqual([{ code: "autodoc", name: "на складе", quantity: 4 }])
+		expect(info.description).toBe("Резьба: M14x1,5; Длина: 52 мм")
+		expect(info.extra).toMatchObject({ manufacturerId: 657, categoryId: 4558 })
+	})
+})
+
+describe("toOrders", () => {
+	test("позиция заказа как заказ: статус, сумма, товар со ссылкой", async () => {
+		const orders = toOrders((await fx("orders")).items)
+		expect(orders).toHaveLength(2)
+		expect(orders[0]).toMatchObject({ id: "185465447", date: "2026-09-01T11:18:18.31", status: "Закуплено", total: 912, currency: "RUB", url: "https://www.autodoc.ru/my/orders" })
+		expect(orders[0]!.items![0]).toMatchObject({ article: "n90954802", brand: "VAG", qty: 6, price: 152, sum: 912, url: "https://www.autodoc.ru/man/657/part/n90954802" })
+		// «0001-01-01» — пустое значение SAP, а не первый век
+		expect(orders[1]!.date).toBe("")
 	})
 })

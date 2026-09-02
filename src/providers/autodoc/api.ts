@@ -98,10 +98,11 @@ export type Manufacturer = { id: number; name: string; logoUrl?: string; imageUr
 export type Rating = { average: number; quantity: number; ratings?: number[] }
 
 export type SearchHit = { article: string; goodsName: string; manufacturer: Manufacturer; imageUrl?: string }
+export type GoodsProperty = { name: string; value: string; unit?: string }
 export type GoodsInfo = {
 	article: string; name: string; fullName?: string; categoryId?: number
 	manufacturer: Manufacturer; rating: Rating; inStock?: number
-	isFavorite?: boolean; imageUrls?: string[]
+	isFavorite?: boolean; imageUrls?: string[]; items?: GoodsProperty[]
 }
 export type GoodsPrice = { minimalPrice: number; minimalDeliveryDays: number }
 export type Review = {
@@ -119,7 +120,21 @@ export type Reviews = {
 export type Suggestion = { title: string; subtitle?: string; routeUrl?: string }
 export type CatalogGood = {
 	article: string; name: string; manufacturer: Manufacturer
-	price?: number; quantity?: number; rating?: Rating; isFavorite?: boolean
+	price?: number; quantity?: number; rating?: Rating; isFavorite?: boolean; imageUrl?: string
+}
+
+/** Строка ответа orders/items — позиция заказа, а не заказ. */
+export type OrderRow = {
+	id: number | string
+	price?: number; quantity?: number; total?: number
+	description?: string
+	number?: number
+	status?: { name?: string; text?: string; id?: number; groupId?: number }
+	goods?: { manufacturerId: number; manufacturerName: string; goodsName?: string; article: string }
+	createDate?: string
+	waitInShopDate?: string | null
+	deliveryStatusName?: string | null
+	isCancelable?: boolean
 }
 
 // --- публичное ------------------------------------------------------------
@@ -147,11 +162,21 @@ export const suggest = (SearchText: string) =>
 		query: { SearchText }, body: {},
 	})
 
-/** Товары внутри категории. Без CategoryId эндпоинт всегда отдаёт 0. */
-export const categoryGoods = (CategoryId: number, opts: { PageNumber?: number; SortingId?: number } = {}) =>
-	call<{ totalCount: number; items: CatalogGood[]; sorting?: { id: number; name: string }[] }>(
+/**
+ * Товары внутри категории. Без CategoryId эндпоинт всегда отдаёт 0.
+ *
+ * `PageNumber` тут нумеруется **с нуля** — так зовёт эту ручку сам сайт.
+ * `BrandName`/`Model`/`ModificationId` — фильтр по машине; `Model` это id
+ * модели числом, а не её название, и фильтр включается только когда пришли все
+ * три (замеры — в notes/providers-v2.md).
+ */
+export const categoryGoods = (CategoryId: number, opts: {
+	PageNumber?: number; SortingId?: number; MaxResultCount?: number
+	BrandName?: string; Model?: string | number; ModificationId?: number
+} = {}) =>
+	call<{ totalCount: number; categoryName?: string; items: CatalogGood[]; sorting?: { id: number; name: string }[] }>(
 		"POST", "/api/catalog-universal-service/catalog-universal-goods/find-goods",
-		{ query: { CategoryId, PageNumber: 1, ...opts }, body: {} },
+		{ query: { CategoryId, PageNumber: 0, ...opts }, body: {} },
 	)
 
 // --- требует токена -------------------------------------------------------
@@ -174,9 +199,12 @@ export const basketUpdate = (body: { id: number | string; quantity: number; desc
 export const basketDelete = (body: { items: { id: number | string; priceType?: number; hash?: string }[]; deleteAll: false }) =>
 	call<unknown>("DELETE", "/api/basket-service/basket/items", { body, auth: true })
 export const basketCount = () => call<unknown>("GET", "/api/basket-service/basket/count", { auth: true })
+export type FavoriteList = { id: number; name?: string; goodsCount?: number }
+export type FavoriteGood = { article?: string; goodsName?: string; manufacturerId?: number; manufacturerName?: string; price?: number }
+
 export const favorites = (Id?: number) =>
-	call<unknown>("GET", "/api/favorite-service/favorites/favorites", { query: { Id }, auth: true })
-export const favoriteLists = () => call<unknown>("GET", "/api/favorite-service/favorites/lists", { auth: true })
+	call<{ items?: FavoriteGood[] }>("GET", "/api/favorite-service/favorites/favorites", { query: { Id }, auth: true })
+export const favoriteLists = () => call<{ items?: FavoriteList[] }>("GET", "/api/favorite-service/favorites/lists", { auth: true })
 export const addFavorite = (Article: string, ManufacturerId: number, ListId?: number) =>
 	call<unknown>("POST", "/api/favorite-service/favorites/favorite", {
 		query: { Article, ManufacturerId, ListId }, body: {}, auth: true,
@@ -222,8 +250,9 @@ export const garageSetMain = (carId: number) =>
 	call<unknown>("PUT", `/api/garage-service/garage/main-car/${carId}`, { body: {}, auth: true })
 
 export const orders = (q: { BeginDate?: string; EndDate?: string; Statuses?: string } = {}) =>
-	call<unknown>("GET", "/api/order-service/orders/items", { query: q, auth: true })
-export const profile = () => call<unknown>("GET", "/api/client-service/profile/account-summary", { auth: true })
+	call<{ dateFrom?: string; dateTo?: string; items?: OrderRow[] }>("GET", "/api/order-service/orders/items", { query: q, auth: true })
+export type AccountSummary = { balanceAmount?: number; bonusAmount?: number; certificateCount?: number }
+export const profile = () => call<AccountSummary>("GET", "/api/client-service/profile/account-summary", { auth: true })
 
 /** Произвольный путь — чтобы дотянуться до всего, что есть в autodoc-api.md. */
 export const raw = (method: "GET" | "POST" | "PUT" | "DELETE", path: string, query: Query, auth: boolean) =>

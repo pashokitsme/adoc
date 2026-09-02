@@ -1,7 +1,7 @@
 // provider.ts — autodoc.ru как провайдер контракта. Вся сайтоспецифика — в
 // api.ts/auth.ts/map.ts; здесь только склейка вызовов и свои команды.
 
-import { ProviderError, defineProvider, type Display } from "../../sdk/index.ts"
+import { ProviderError, defineProvider, positiveInt, type Display } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import { ApiError } from "./api.ts"
 import * as auth from "./auth.ts"
@@ -9,7 +9,10 @@ import type { Tokens } from "./auth.ts"
 import { resolveBrand } from "./brand.ts"
 import type { Brand } from "./brand.ts"
 import { commands } from "./commands.ts"
-import { basketAddBody, categoryIds, toBasket, toBrandHits, toCars, toOffers, toProducts, toReviews, type AutodocRef } from "./map.ts"
+import {
+	SITE, basketAddBody, bestCategory, carQuery, categoryIds, reviewsUrl, toBasket, toBrandHits, toCars,
+	toInfo, toOffers, toOrders, toProducts, toReviews, type AutodocRef,
+} from "./map.ts"
 
 function display(t: Tokens): Display {
 	const c = auth.decodeClaims(t.access_token)
@@ -26,6 +29,10 @@ function display(t: Tokens): Display {
 // имя нельзя пускать в toOffers: там оно ключ склейки «оригинал или аналог».
 const brandLabel = (b: Brand, given: string): string => b.name || given
 
+/** Числовой флаг: тот же разбор, что у контрактных --page/--limit в run.ts. */
+const numFlag = (name: string, v: string | true | undefined): number | undefined =>
+	v === undefined ? undefined : positiveInt(`--${name}`, v)
+
 // «Аналогов нет» — это 404 и только он. Отозванный токен, 5xx или обрыв сети
 // должны валить команду: молча отдать оригиналы без аналогов значит соврать
 // агрегатору, что аналогов у детали не бывает.
@@ -37,9 +44,9 @@ const noAnalogs = (e: unknown): null => {
 	throw e
 }
 
-export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "basket"]>({
-	id: "autodoc", name: "Autodoc", site: "https://www.autodoc.ru",
-	capabilities: ["reviews", "garage", "analogs", "basket"],
+export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "basket", "orders"]>({
+	id: "autodoc", name: "Autodoc", site: SITE,
+	capabilities: ["reviews", "garage", "analogs", "basket", "orders"],
 	valueFlags: ["sort"],
 	mapError: e => {
 		if (e instanceof ApiError) return new ProviderError(e.status === 401 ? "auth" : e.status === 404 ? "notfound" : "http", e.message)
@@ -86,13 +93,25 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		return access ? display({ ...ctx.account, access_token: access }) : null
 	},
 
-	search: async (ctx, text) => {
+	// Поиск повторяет путь сайта: подсказка выбирает категорию, товары внутри
+	// категории отдаёт find-goods. Машина — те же три параметра, что шлёт сама
+	// страница категории; PageNumber у неё нумеруется с нуля.
+	search: async (ctx, text, { car }) => {
 		const s = await api.suggest(text)
 		const cats = categoryIds(s.items ?? [])
 		if (!cats.length) return { items: [], total: 0, extra: { categories: [] } }
-		const first = cats[0]!
-		const r = await api.categoryGoods(first.id, { PageNumber: ctx.page })
-		return { items: toProducts(r.items ?? [], first.title).slice(0, ctx.limit), total: r.totalCount, extra: { categories: cats } }
+		const best = bestCategory(cats, text)
+		const q = carQuery(car)
+		if (car && !q) ctx.warn("autodoc: в ref машины нет brandName/modelId/modificationId — ищу без машины")
+		const r = await api.categoryGoods(best.id, {
+			PageNumber: ctx.page - 1, MaxResultCount: ctx.limit,
+			SortingId: numFlag("sort", ctx.flags.sort), ...q,
+		})
+		return {
+			items: toProducts(r.items ?? [], r.categoryName ?? best.title),
+			total: r.totalCount,
+			extra: { categories: cats, category: { id: best.id, title: r.categoryName ?? best.title }, car: q ?? null },
+		}
 	},
 
 	brands: async (_ctx, article) => {
@@ -114,14 +133,31 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		return { items }
 	},
 
+	info: async (_ctx, article, brand) => {
+		const b = await resolveBrand(article, brand)
+		const [inf, price] = await Promise.all([api.goodsInfo(article, b.id), api.goodsPrice(article, b.id).catch(() => null)])
+		return { info: toInfo(inf, price) }
+	},
+
+	// Только аналоги: точные строки живут в offers, и дублировать их здесь
+	// значит заставить агрегатора отличать одно от другого руками.
+	analogs: async (_ctx, article, brand) => {
+		const b = await resolveBrand(article, brand)
+		const name = brandLabel(b, brand)
+		const an = await api.analogs(article, b.id).catch(noAnalogs)
+		return { items: an ? toOffers(an, article, name, true) : [] }
+	},
+
 	reviews: async (ctx, article, brand) => {
 		const b = await resolveBrand(article, brand)
 		const [r, info] = await Promise.all([
 			api.reviews(article, b.id, { PageNumber: ctx.page, MaxResultCount: ctx.limit }),
 			api.goodsInfo(article, b.id).catch(() => null),
 		])
-		return toReviews(r, info)
+		return toReviews(r, info, reviewsUrl(b.id, info?.article ?? article))
 	},
+
+	orders: async () => ({ items: toOrders((await api.orders()).items ?? []) }),
 
 	garageExport: async () => {
 		const [list, top] = await Promise.all([api.garageCars(), api.garageTopCar().catch(() => null)])

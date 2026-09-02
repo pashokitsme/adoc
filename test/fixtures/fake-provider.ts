@@ -32,6 +32,8 @@ export const fake = defineProvider<Account, ["reviews", "garage", "basket"]>({
 		if (article !== "N1" || brand !== "VAG") return { items: [] }
 		return { items: analogs ? [offer, { ...offer, article: "X2", analog: true }] : [offer] }
 	},
+	info: async (_ctx, article, brand) => ({ info: { article, brand, name: "Болт", price: 407, currency: "RUB", url: "https://fake.example/part/n1" } }),
+	analogs: async (_ctx, article, brand) => ({ items: article === "N1" && brand === "VAG" ? [{ ...offer, article: "X2", analog: true }] : [] }),
 	reviews: async () => ({ total: 1, items: [{ text: "ок", rating: 5 }] }),
 	garageExport: async () => ({ cars: [{ brand: "SKODA", model: "OCTAVIA", ref: { carId: 1 } }] }),
 	basket: {

@@ -6,7 +6,7 @@
 import { CONTRACT_VERSION, ProviderError } from "../sdk/index.ts"
 import type { Basket, BasketItem, BrandHit, Capability, Car, Command, Describe, Display, Offer, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/index.ts"
 
-const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket"]
+const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket", "orders"]
 
 const fail = (who: string, what: string): never => {
 	throw new ProviderError("internal", `${who}: ${what}`)

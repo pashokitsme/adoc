@@ -207,3 +207,49 @@ describe("runProvider", () => {
 		expect(r.out).toContain("offers <артикул> --brand")
 	})
 })
+
+describe("info, analogs, orders и --car", () => {
+	test("info — карточка и одна её форма в JSON", async () => {
+		const r = await run(["info", "N1", "--brand", "VAG", "--json"])
+		expect(r.code).toBe(0)
+		expect(r.json().info).toMatchObject({ article: "N1", brand: "VAG", name: "Болт" })
+		const human = await run(["info", "N1", "--brand", "VAG"])
+		expect(human.out).toContain("Болт")
+		expect(human.out).toContain("https://fake.example/part/n1")
+	})
+
+	test("info без --brand — bad_args", async () => {
+		const r = await run(["info", "N1", "--json"])
+		expect(r.code).toBe(1)
+		expect(r.json().error.code).toBe("bad_args")
+	})
+
+	test("analogs — только аналоги", async () => {
+		const r = await run(["analogs", "N1", "--brand", "VAG", "--json"])
+		expect(r.json().items.every((o: { analog?: boolean }) => o.analog)).toBe(true)
+	})
+
+	test("orders нет у провайдера без capability — bad_args", async () => {
+		const r = await run(["orders", "--json"])
+		expect(r.code).toBe(1)
+		expect(r.json().error.code).toBe("bad_args")
+	})
+
+	test("--car доезжает до провайдера объектом", async () => {
+		const r = await run(["search", "болт", "--car", '{"carId":1}', "--json"])
+		expect(r.code).toBe(0)
+		expect(r.json().items).toHaveLength(1)
+	})
+
+	test("--car не JSON — bad_args с именем своего флага", async () => {
+		const r = await run(["search", "болт", "--car", "1", "--json"])
+		expect(r.code).toBe(1)
+		expect(r.json().error.message).toContain("--car")
+	})
+
+	test("describe объявляет info и analogs", async () => {
+		const names = (await run(["describe", "--json"])).json().commands.map((c: { name: string }) => c.name)
+		expect(names).toEqual(expect.arrayContaining(["info", "analogs"]))
+		expect(names).not.toContain("orders")
+	})
+})
