@@ -35,12 +35,20 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 | флаг | значение | где |
 |---|---|---|
 | `--json` | нет (переключатель) | все команды |
-| `--brand <имя>` | да | `offers`, `reviews` |
+| `--brand <имя>` | да | `offers`, `info`, `analogs`, `reviews` |
 | `--page <n>` | да | `search`, `reviews`; по умолчанию `1` |
 | `--limit <n>` | да | `search`, `reviews`; по умолчанию `10` |
 | `--analogs` | нет (переключатель) | `offers`, при capability `analogs` |
+| `--car <json>` | да | `search` |
 | `--qty <n>` | да | `basket add`, `basket set` |
 | `--ref <json>` | да | `basket add` |
+
+`--car` — непрозрачный `Car.ref` из `garage export` **этого же провайдера**:
+провайдер сам решает, что в нём лежит и как искать под машину. Провайдер,
+который так не умеет или которому не хватает полей в `ref`, обязан сказать это
+в stderr и ответить обычной выдачей — это не ошибка. Агрегатор передаёт каждому
+провайдеру его собственный ref; машине без ref для этого провайдера он ищет без
+машины.
 
 Флаг со значением пишется **`--flag value` или `--flag=value`**. Значение
 обязательно: если следующий токен начинается с `--` или его нет вовсе, это
@@ -69,9 +77,11 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 | `login` | `{account, display}` | `LoginResult` |
 | `logout` | `{ok: true, had: boolean}` | — |
 | `whoami` | `{ok: false}` или `{ok: true, display}` | `WhoamiResult` |
-| `search <текст> [--page <n>] [--limit <n>]` | `{items, total?, extra?}` | `SearchResult` |
+| `search <текст> [--car <json>] [--page <n>] [--limit <n>]` | `{items, total?, extra?}` | `SearchResult` |
 | `brands <артикул>` | `{items}` | `BrandsResult` |
 | `offers <артикул> --brand <имя> [--analogs]` | `{items}` | `OffersResult` |
+| `info <артикул> --brand <имя>` | `{info}` | `InfoResult` |
+| `analogs <артикул> --brand <имя>` | `{items}` | `OffersResult` |
 
 `login` обычно ведёт диалог через терминал (логин, пароль без эха). Если
 провайдеру нужно что-то спросить, а tty нет, он обязан ответить
@@ -102,6 +112,24 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 потому что у одного артикула бывает несколько производителей с разной ценой,
 разными отзывами и разным наличием.
 
+`info` — карточка детали: то, что сайт показывает до перехода к предложениям
+(оценки, цена «от», минимальный срок, склады, характеристики). Все поля кроме
+`article`, `brand` и `name` необязательны: провайдер отдаёт то, что у сайта
+есть, и не выдумывает остального.
+
+`analogs` — **только аналоги**, без точных совпадений: каждая строка идёт с
+`analog: true`. Провайдер может собрать её из своего `offers --analogs`,
+отфильтровав точные строки. Capability `analogs` при этом остаётся флагом
+«умеет аналоги»: команда обязательна для всех, и провайдер, который аналогов не
+знает, отвечает пустым списком и пишет об этом в stderr.
+
+**Ссылки — часть ответа, а не украшение.** Провайдер обязан заполнять `url`
+везде, где сайт даёт адрес: `Product.url` и `BrandHit.url` — карточка детали,
+`Offer.url` — страница предложения (или та же карточка, если отдельной нет),
+`Reviews.url` — страница отзывов, `BasketItem.url` — карточка позиции корзины,
+`Basket.url` — сама корзина, `Order.url` — заказ или список заказов. Смысл
+команды — открыть сайт на нужной странице, а не повторять поиск руками.
+
 ## Необязательные команды и capabilities
 
 `describe.capabilities` — что провайдер умеет сверх обязательного минимума.
@@ -116,6 +144,12 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 | `basket` | `basket add --ref <json> [--qty <n>]` | `Basket` |
 | `basket` | `basket set <itemId> --qty <n>` | `Basket` |
 | `basket` | `basket rm <itemId>` | `Basket` |
+| `orders` | `orders` | `{items}` (`OrdersResult`) |
+
+`orders` — заказы на сайте. Сайт, у которого нет страницы отдельного заказа,
+кладёт в `Order.url` адрес списка заказов; сайт, который считает заказом каждую
+позицию (так делает autodoc), отдаёт по одному `Order` на позицию — так их
+показывает и отменяет он сам.
 
 Провайдер с `basket` обязан отдавать `ref` в каждом `Offer`: это непрозрачный
 JSON-объект, который `basket add` принимает обратно как есть. Что внутри — дело
@@ -131,7 +165,7 @@ JSON-объект, который `basket add` принимает обратно
 
 ```json
 {"contract":1,"id":"autodoc","name":"Autodoc","site":"https://www.autodoc.ru",
- "capabilities":["reviews","garage","analogs","basket"],
+ "capabilities":["reviews","garage","analogs","basket","orders"],
  "commands":[{"name":"brands","usage":"brands <артикул>","about":"кто выпускает артикул","auth":false},
              {"name":"basket add","usage":"basket add --ref <json> [--qty <n>]","about":"положить предложение (ref из offers)","auth":true}]}
 ```
@@ -165,7 +199,7 @@ autodoc: `offers` в его `describe` идёт с `auth: false`, но эндп�
 
 export const CONTRACT_VERSION = 1 as const
 
-export type Capability = "reviews" | "garage" | "analogs" | "basket"
+export type Capability = "reviews" | "garage" | "analogs" | "basket" | "orders"
 
 export type Rating = { average: number; count: number }
 
@@ -194,6 +228,7 @@ export type BrandHit = {
 	name?: string
 	rating?: Rating
 	images?: string[]
+	url?: string // карточка этого артикула у этого бренда на сайте
 	extra?: Record<string, unknown>
 }
 
@@ -225,6 +260,7 @@ export type Review = {
 	cons?: string
 	text: string
 	purchased?: boolean
+	url?: string // сам отзыв, если сайт его адресует
 }
 
 export type Reviews = {
@@ -232,6 +268,23 @@ export type Reviews = {
 	rating?: Rating & { histogram?: number[] } // от 5★ к 1★
 	summary?: { pros: string[]; cons: string[] }
 	items: Review[]
+	url?: string // страница отзывов на сайте
+}
+
+/** Карточка товара: то, что сайт показывает до перехода к предложениям. */
+export type Info = {
+	article: string
+	brand: string
+	name: string
+	url?: string // карточка на сайте
+	rating?: Rating & { histogram?: number[] } // от 5★ к 1★
+	images?: string[]
+	price?: number // «от», если сайт её даёт
+	currency?: "RUB"
+	deliveryDays?: number // минимальный срок, если сайт его даёт
+	stock?: { code: string; name?: string; quantity?: number }[]
+	description?: string
+	extra?: Record<string, unknown>
 }
 
 export type BasketItem = {
@@ -245,6 +298,7 @@ export type BasketItem = {
 	seller?: string
 	deliveryDays?: number
 	deliveryDate?: string
+	url?: string // карточка товара этой позиции
 	extra?: Record<string, unknown>
 }
 
@@ -264,6 +318,27 @@ export type Car = {
 	vin?: string
 	odometer?: number
 	ref: Record<string, unknown>
+}
+
+export type OrderItem = {
+	article: string
+	brand: string
+	name: string
+	qty: number
+	price: number
+	sum?: number
+	url?: string
+}
+
+export type Order = {
+	id: string
+	date: string // ISO
+	status: string
+	total: number
+	currency: string
+	url?: string
+	items?: OrderItem[]
+	extra?: Record<string, unknown>
 }
 
 export type Command = { name: string; usage: string; about: string; auth: boolean }
@@ -287,6 +362,8 @@ export type SearchResult = { items: Product[]; total?: number; extra?: Record<st
 export type BrandsResult = { items: BrandHit[] }
 export type OffersResult = { items: Offer[] }
 export type CarsResult = { cars: Car[] }
+export type InfoResult = { info: Info }
+export type OrdersResult = { items: Order[] }
 ```
 
 ## Ошибки и exit-коды
@@ -381,7 +458,23 @@ refresh_token, expires_at}`). `logout` файл удаляет.
 
 ```console
 $ adoc-autodoc brands n90954802 --json
-{"items":[{"brand":"VAG","article":"N90954802","name":"Болт","rating":{"average":4.9107,"count":56},"images":["https://images.autodoc.ru/goods/657/N90954802/med_00_657_N90954802_cdede454-e15d-4fdc-a8e8-22fdf16642fa.webp"],"extra":{"manufacturerId":657}}]}
+{"items":[{"brand":"VAG","article":"N90954802","name":"Болт","rating":{"average":4.9107,"count":56},"images":["https://images.autodoc.ru/goods/657/N90954802/med.webp"],"url":"https://www.autodoc.ru/man/657/part/n90954802","extra":{"manufacturerId":657}}]}
+```
+
+Карточка детали:
+
+```console
+$ adoc-autodoc info 0986452041 --brand bosch --json
+{"info":{"article":"0986452041","brand":"BOSCH","name":"Фильтр масляный","url":"https://www.autodoc.ru/man/30/part/0986452041","rating":{"average":3.5714,"count":7,"histogram":[4,0,1,0,2]},"price":596,"currency":"RUB","deliveryDays":0,"stock":[{"code":"autodoc","name":"на складе","quantity":99}],"description":"Высота: 87 мм; …"}}
+```
+
+Поиск с учётом машины — `ref` берётся из `garage export` того же провайдера:
+
+```console
+$ adoc-autodoc garage export --json | jq -c .cars[0].ref
+{"carId":19119290,"modificationId":58759,"modelId":11195,"brandName":"SKODA","main":true}
+$ adoc-autodoc search "фильтр масляный" --car '{"carId":19119290,"modificationId":58759,"modelId":11195,"brandName":"SKODA"}' --json | jq .total
+36
 ```
 
 Предложения без входа — ошибка `auth`, exit `1`:
@@ -446,8 +539,9 @@ export const fake = defineProvider<Account, ["reviews", "garage", "basket"]>({
 // …
 ```
 
-Дальше — `whoami`, `search`, `brands`, `offers` и, по capabilities, `reviews`,
-`garageExport`, `basket`; свои команды — в `commands`. Полный рабочий пример:
+Дальше — `whoami`, `search`, `brands`, `offers`, `info`, `analogs` и, по
+capabilities, `reviews`, `garageExport`, `orders`, `basket`; свои команды — в
+`commands`. Полный рабочий пример:
 `test/fixtures/fake-provider.ts` (провайдер без сети, на нём гоняются тесты
 SDK). Публичная поверхность SDK — `src/sdk/index.ts`:
 
@@ -459,7 +553,9 @@ SDK). Публичная поверхность SDK — `src/sdk/index.ts`:
 - `HttpError`, `fetchJson` — fetch с таймаутом (пользоваться необязательно);
 - `articleKey`, `brandKey` — нормализация для склейки;
 - `accountStore`, `configDir`, `CONFIG_DIR_ENV`, `TOOL` — файл аккаунта;
-- `render` — таблицы и цвета для вывода человеку;
+- `render` — таблицы и цвета для вывода человеку (`renderProducts`,
+  `renderOffers`, `renderInfo`, `renderReviews`, `renderBasket`, `renderCars`,
+  `renderOrders`, а из мелочей — `table`, `fields`, `link`, `money`, `days`);
 - все типы из `contract.ts`.
 
 Контекст вызова `ctx`: `ctx.account` (уже прочитанный аккаунт или `null`),
@@ -469,7 +565,8 @@ SDK). Публичная поверхность SDK — `src/sdk/index.ts`:
 `secret` — без эха; без tty оба бросают `tty`), `ctx.warn()` (строка в stderr).
 
 Флаги своих команд, которые принимают значение, объявляются в `valueFlags`;
-контрактные (`--brand`, `--page`, `--limit`, `--qty`, `--ref`) SDK добавляет сам.
+контрактные (`--brand`, `--page`, `--limit`, `--qty`, `--ref`, `--car`) SDK
+добавляет сам.
 
 ### На другом языке
 
