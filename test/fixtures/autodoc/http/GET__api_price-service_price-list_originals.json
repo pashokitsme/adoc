@@ -1,0 +1,10 @@
+{"items":[
+ {"id":"5","title":"Рекомендованные партнёрами аналоги","goods":[
+  {"article":"2098001pcs2","displayArticle":"2098-001-PCS2","name":"Болты","manufacturer":{"name":"FEBEST","id":5216},"minimalPrice":916,"minimalDeliveryDays":2,"imageUrl":"https://images.autodoc.ru/goods/5216/2098001pcs2/m.webp","rating":{"average":4.8,"quantity":4},"isOriginal":true,
+   "items":[{"price":916,"quantity":60,"deliveryDays":2,"deliveryDate":"2026-09-04T00:00:00","supplier":{"name":"Дистрибьютор","description":"Склад дистрибьютора"},"directionToManufacturerId":1,"minimalQuantity":1,"partnerId":2,"priceType":2,"hash":"H1","id":101}]}]},
+ {"id":"6","title":"Все предложения N90954802","goods":[
+  {"article":"n90954802","displayArticle":"N 909 548 02","name":"Болт","manufacturer":{"name":"VAG","id":657},"minimalPrice":407,"minimalDeliveryDays":1,"imageUrl":"https://images.autodoc.ru/goods/657/n90954802/m.webp","rating":{"average":4.9,"quantity":56},"isOriginal":true,
+   "items":[
+    {"price":407,"quantity":100,"deliveryDays":3,"deliveryDate":"2026-09-07T00:00:00","supplier":{"name":"Дилер","description":"Склад дилера"},"directionToManufacturerId":544130,"minimalQuantity":1,"partnerId":6727,"priceType":2,"hash":"H2","id":2670855866},
+    {"price":428,"quantity":20,"deliveryDays":2,"deliveryDate":"2026-09-04T00:00:00","supplier":{"name":"MEX","description":"Оптовый склад"},"directionToManufacturerId":544130,"minimalQuantity":1,"partnerId":6727,"priceType":2,"hash":"H3","id":2670855867}]}]}
+]}

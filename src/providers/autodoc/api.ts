@@ -5,8 +5,36 @@
 // ошибку приходится опознавать по статусу, а не по JSON.
 
 import { currentToken } from "./auth.ts"
+// только типы: цикл api ↔ map существует лишь на уровне типов и стирается при сборке
+import type { Originals, RawBasket } from "./map.ts"
 
-export const BASE = "https://web.autodoc.ru"
+/**
+ * База API. Переопределяется только тестами (`ADOC_AUTODOC_BASE`), чтобы
+ * поднять локальный сервер и проверить поведение на зависшем ответе.
+ * Принимается только localhost: по этому адресу уходит Bearer-токен, и
+ * переменная окружения не должна уметь увести его на чужой хост.
+ */
+function localBase(v: string | undefined): string | undefined {
+	if (!v) return undefined
+	try {
+		const host = new URL(v).hostname
+		return host === "localhost" || host === "127.0.0.1" || host === "[::1]" ? v : undefined
+	} catch {
+		return undefined
+	}
+}
+export const BASE = localBase(process.env.ADOC_AUTODOC_BASE) ?? "https://web.autodoc.ru"
+
+/**
+ * Потолок ожидания сети. Без него зависший ответ держал бы процесс до
+ * умолчаний ОС, а агрегатор не отличил бы «сайт молчит» от «команда думает».
+ * `ADOC_TIMEOUT_MS` — только для тестов.
+ */
+export const TIMEOUT_MS = Number(process.env.ADOC_TIMEOUT_MS) || 20_000
+
+/** Обрыв по таймеру: fetch отдаёт его как TimeoutError, отмену — как AbortError. */
+export const isTimeout = (e: unknown): boolean =>
+	e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
 
 export class ApiError extends Error {
 	constructor(readonly status: number, readonly path: string, readonly body: string) {
@@ -23,6 +51,17 @@ async function call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, 
 	body?: unknown
 	auth?: boolean
 } = {}): Promise<T> {
+	// Фикстурный режим: ответы читаются с диска, сеть не трогаем совсем.
+	// Имя файла — метод и путь: `<METHOD>_<путь с _ вместо />.json`.
+	const fixtures = process.env.ADOC_FIXTURES
+	if (fixtures) {
+		if (opts.auth && !(await currentToken())) throw new ApiError(401, path, "")
+		const name = `${method}_${path.replace(/\//g, "_")}.json`
+		const f = Bun.file(`${fixtures}/${name}`)
+		if (!(await f.exists())) throw new ApiError(404, path, `нет фикстуры ${name}`)
+		return JSON.parse(await f.text()) as T
+	}
+
 	const url = new URL(BASE + path)
 	for (const [k, v] of Object.entries(opts.query ?? {})) {
 		if (v !== undefined && v !== "") url.searchParams.set(k, String(v))
@@ -40,6 +79,7 @@ async function call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, 
 		method,
 		headers,
 		body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+		signal: AbortSignal.timeout(TIMEOUT_MS),
 	})
 	const text = await res.text()
 	if (!res.ok) throw new ApiError(res.status, path, text)
@@ -81,11 +121,6 @@ export type CatalogGood = {
 	article: string; name: string; manufacturer: Manufacturer
 	price?: number; quantity?: number; rating?: Rating; isFavorite?: boolean
 }
-export type Offer = {
-	price?: number; deliveryDays?: number; quantity?: number
-	partnerName?: string; distributorName?: string; name?: string
-	manufacturer?: Manufacturer; article?: string
-}
 
 // --- публичное ------------------------------------------------------------
 
@@ -122,16 +157,22 @@ export const categoryGoods = (CategoryId: number, opts: { PageNumber?: number; S
 // --- требует токена -------------------------------------------------------
 
 export const offers = (Article: string, ManufacturerId: number) =>
-	call<unknown>("GET", "/api/price-service/price-list/originals", {
+	call<Originals>("GET", "/api/price-service/price-list/originals", {
 		query: { Article, ManufacturerId, LoadAnalogs: false }, auth: true,
 	})
 
 export const analogs = (Article: string, ManufacturerId: number) =>
-	call<unknown>("GET", "/api/price-service/price-list/analogs", {
+	call<Originals>("GET", "/api/price-service/price-list/analogs", {
 		query: { Article, ManufacturerId }, auth: true,
 	})
 
-export const basket = () => call<unknown>("GET", "/api/basket-service/basket/items", { auth: true })
+export const basket = () => call<RawBasket>("GET", "/api/basket-service/basket/items", { auth: true })
+export const basketAdd = (body: Record<string, unknown>) =>
+	call<unknown>("POST", "/api/basket-service/basket/items", { body, auth: true })
+export const basketUpdate = (body: { id: number | string; quantity: number; description?: string; priceType?: number; hash?: string }) =>
+	call<unknown>("PUT", "/api/basket-service/basket/items", { body, auth: true })
+export const basketDelete = (body: { items: { id: number | string; priceType?: number; hash?: string }[]; deleteAll: false }) =>
+	call<unknown>("DELETE", "/api/basket-service/basket/items", { body, auth: true })
 export const basketCount = () => call<unknown>("GET", "/api/basket-service/basket/count", { auth: true })
 export const favorites = (Id?: number) =>
 	call<unknown>("GET", "/api/favorite-service/favorites/favorites", { query: { Id }, auth: true })

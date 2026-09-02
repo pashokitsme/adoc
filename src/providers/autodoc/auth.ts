@@ -7,9 +7,10 @@
 // чужой колбэк с `could not find matching config for state` и код наружу не
 // отдаёт. Подробности и проверка — в autodoc-api.md.
 
-import { mkdir, chmod, readFile, writeFile, unlink } from "node:fs/promises"
-import { dirname, join } from "node:path"
-import { homedir } from "node:os"
+import { readFile, unlink } from "node:fs/promises"
+import { join } from "node:path"
+import { accountStore, configDir, decodeClaims as jwtClaims } from "../../sdk/index.ts"
+import { TIMEOUT_MS } from "./api.ts"
 
 export const AUTH = "https://login.autodoc.ru"
 export const CLIENT_ID = "Angular"
@@ -26,26 +27,31 @@ export type Tokens = {
 	expires_at: number // unix seconds
 }
 
-const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
-export const TOKEN_PATH = join(configHome, "adoc", "token.json")
-export async function loadTokens(): Promise<Tokens | null> {
+export const ACCOUNT_ID = "autodoc"
+const store = () => accountStore<Tokens>(ACCOUNT_ID)
+
+export const loadTokens = (): Promise<Tokens | null> => store().load()
+export const saveTokens = (t: Tokens): Promise<void> => store().save(t)
+export const clearTokens = (): Promise<void> => store().clear()
+
+/**
+ * До версии 2 токен лежал в <config>/token.json. Переносим в accounts/autodoc.json,
+ * только если нового файла ещё нет; тогда старый удаляем, чтобы refresh-токен не
+ * жил в двух местах. Когда новый файл уже есть, старый не трогаем: его содержимое
+ * могло бы затереть свежий вход.
+ */
+export async function migrateLegacyToken(): Promise<boolean> {
+	const legacy = join(configDir(), "token.json")
+	if (await store().load()) return false
+	let t: Tokens
 	try {
-		return JSON.parse(await readFile(TOKEN_PATH, "utf8")) as Tokens
+		t = JSON.parse(await readFile(legacy, "utf8")) as Tokens
 	} catch {
-		return null
+		return false
 	}
-}
-
-export async function saveTokens(t: Tokens): Promise<void> {
-	await mkdir(dirname(TOKEN_PATH), { recursive: true })
-	// mode в writeFile действует только при создании, поэтому chmod следом —
-	// он чинит файл, созданный прошлой версией с правами по umask
-	await writeFile(TOKEN_PATH, JSON.stringify(t, null, 2), { mode: 0o600 })
-	await chmod(TOKEN_PATH, 0o600) // содержит refresh-токен от живого аккаунта
-}
-
-export async function clearTokens(): Promise<void> {
-	try { await unlink(TOKEN_PATH) } catch { /* уже нет */ }
+	await saveTokens(t)
+	try { await unlink(legacy) } catch { /* уже нет */ }
+	return true
 }
 
 // --- разбор токена --------------------------------------------------------
@@ -71,16 +77,7 @@ export type Claims = {
 	iat?: number
 }
 
-export function decodeClaims(accessToken: string): Claims | null {
-	const part = accessToken.split(".")[1]
-	if (!part) return null
-	try {
-		// не atob: он отдаёт байты как Latin-1 и портит кириллицу в именах
-		return JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Claims
-	} catch {
-		return null
-	}
-}
+export const decodeClaims = (accessToken: string): Claims | null => jwtClaims<Claims>(accessToken)
 
 // --- обмен и обновление ---------------------------------------------------
 
@@ -89,6 +86,7 @@ async function tokenRequest(body: Record<string, string>): Promise<Tokens> {
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded" },
 		body: new URLSearchParams(body).toString(),
+		signal: AbortSignal.timeout(TIMEOUT_MS),
 	})
 	const text = await res.text()
 	if (!res.ok) throw new Error(`token endpoint вернул ${res.status}: ${text.slice(0, 300)}`)
@@ -119,6 +117,8 @@ export async function currentToken(): Promise<string | null> {
 	const t = await loadTokens()
 	if (!t) return null
 	if (t.expires_at - 60 > Math.floor(Date.now() / 1000)) return t.access_token
+	// в фикстурном режиме сети нет: протухший токен считаем отсутствующим
+	if (process.env.ADOC_FIXTURES) return null
 	if (!t.refresh_token) return null
 	let fresh: Tokens
 	try {
