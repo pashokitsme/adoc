@@ -2,11 +2,12 @@
 // отзывы привязаны к производителю, а не к номеру детали. Спрашиваются только
 // сайты с capability reviews — и только те, у кого этот бренд нашёлся.
 
-import { cyan, dim, heading, need, renderReviews } from "../sdk/index.ts"
+import { dim, need, renderReviews } from "../sdk/index.ts"
 import { limitOf, pageOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
-import { fanout, report } from "../core/partial.ts"
+import { allFailed, fanout, report } from "../core/partial.ts"
+import { blockTitle, linkList } from "../core/render.ts"
 import { parseReviews } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -59,7 +60,14 @@ export async function cmdReviews(ctx: Ctx): Promise<Output> {
 		// пришлось бы складывать разные выборки разных покупателей, и вышло бы
 		// число, которого нет ни у кого.
 		render: () => f.got.length
-			? f.got.map(g => `${heading(`${g.provider} · ${brand.brand} ${cyan(article)}`)}\n${renderReviews(g.value)}`).join("\n")
-			: "отзывов нет",
+			? f.got.map(g => [
+				// Адрес страницы отзывов — сразу за именем сайта: за ним и идут.
+				`\n${blockTitle(g.provider, `· ${brand.brand} ${article}`, g.value.url)}`,
+				renderReviews(g.value),
+				// Отзывы в блоке не пронумерованы, поэтому список ссылок называет
+				// себя иначе: порядок в нём — порядок отзывов выше.
+				...linkList(g.value.items, 1, "ссылки на отзывы"),
+			].join("\n")).join("\n")
+			: allFailed(f) ? "ни один сайт не ответил" : "отзывов нет",
 	}
 }

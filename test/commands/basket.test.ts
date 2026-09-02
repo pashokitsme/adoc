@@ -179,4 +179,12 @@ describe("adoc basket", () => {
 	test("неизвестная подкоманда", async () => {
 		expect(JSON.parse((await run(["basket", "нетакой", "--json"])).stdout).error.message).toContain("нетакой")
 	})
+
+	test("адрес корзины в заголовке, ссылки позиций — под таблицей", async () => {
+		await run(["part", "n90954802"])
+		await run(["basket", "add", "1"])
+		const r = await run(["basket"])
+		expect(r.stdout).toContain("beta  https://beta.example/basket")
+		expect(r.stdout).toContain("1  https://beta.example/p/N%20909%20548%2002")
+	})
 })

@@ -95,4 +95,11 @@ describe("adoc reviews", () => {
 		expect(j.errors).toEqual([])
 		expect(r.stderr).toContain("beta")
 	})
+
+	test("адрес страницы отзывов в заголовке блока, ссылки отзывов — под ним", async () => {
+		const r = await run(["reviews", "n90954802"])
+		expect(r.stdout).toContain("alpha · VAG n90954802  https://alpha.example/r/n90954802")
+		expect(r.stdout).toContain("ссылки на отзывы")
+		expect(r.stdout).toContain("https://alpha.example/r/n90954802#1")
+	})
 })

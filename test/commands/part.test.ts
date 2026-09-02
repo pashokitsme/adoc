@@ -259,4 +259,23 @@ describe("adoc part", () => {
 		expect(r.code).toBe(1)
 		expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
 	})
+
+	test("ссылки на карточки идут списком под таблицей, номера — те же", async () => {
+		const r = await run(["part", "n90954802"])
+		expect(r.stdout).toContain("ссылки")
+		expect(r.stdout).toContain("1  https://beta.example/p/N%20909%20548%2002")
+		expect(r.stdout).toContain("2  https://alpha.example/p/N90954802")
+	})
+
+	test("у аналогов свой список ссылок, нумерация продолжает основную", async () => {
+		const r = await run(["part", "n90954802", "--analogs"])
+		expect(r.stdout).toContain("3  https://beta.example/p/AN-1")
+	})
+
+	test("в «уточни бренд» у каждого варианта свои ссылки по сайтам", async () => {
+		const r = await run(["part", "MULTI-1"])
+		expect(r.code).toBe(2)
+		expect(r.stderr).toContain("alpha  https://alpha.example/p/MULTI-1")
+		expect(r.stderr).toContain("beta   https://beta.example/p/MULTI-1")
+	})
 })

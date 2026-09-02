@@ -19,7 +19,7 @@ import { VALUE_FLAGS, helpText } from "./core/help.ts"
 import type { MergedBrand } from "./core/merge.ts"
 import { blame, failureLine } from "./core/partial.ts"
 import { discover, load, select, type Loaded } from "./core/registry.ts"
-import { hint, whereCol } from "./core/render.ts"
+import { hint, linkList, numCol, whereCol } from "./core/render.ts"
 
 type Handler = (ctx: Ctx) => Promise<Output>
 
@@ -44,6 +44,9 @@ const COMMANDS: Record<string, Handler> = {
  */
 export const COMMAND_NAMES = [...Object.keys(COMMANDS), "help"]
 
+/** Команды, которые начинаются с шага «артикул → бренд» и умеют спросить «уточни». */
+const BRAND_COMMANDS = new Set(["part", "reviews"])
+
 export type RunResult = { stdout: string; stderr: string; code: number }
 
 export async function run(argv: string[]): Promise<RunResult> {
@@ -51,11 +54,16 @@ export async function run(argv: string[]): Promise<RunResult> {
 	// сыром argv, иначе ошибка разбора уехала бы машинному вызову текстом.
 	const json = argv.some(a => a === "--json" || a === "--json=true")
 	let stderr = ""
+	// Имя команды нужно и обработчику ошибки: подсказка «повтори с брендом»
+	// обязана звать ту команду, которую человек и набрал, а не всегда `part`.
+	// До разбора argv его ещё нет — тогда и подсказка достанется `part`.
+	let ran = "part"
 	const warn = (line: string): void => { stderr += line.endsWith("\n") ? line : `${line}\n` }
 
 	try {
 		const { args, flags } = parseArgv(argv, VALUE_FLAGS)
 		const [name, ...rest] = args
+		if (name && BRAND_COMMANDS.has(name)) ran = name
 		const ctx = makeCtx(rest, flags, json, warn)
 
 		// `help` — то же слово без дефисов: проброс его провайдеру и так не
@@ -109,7 +117,12 @@ export async function run(argv: string[]): Promise<RunResult> {
 		// «Уточни бренд» — не ошибка, а список: человеку нужна таблица с
 		// колонкой «где», а не одна строка красным.
 		const table = e instanceof Ambiguous
-			? `${renderBrands(e.brands, [whereCol<MergedBrand>()])}\n${hint(`повтори с брендом: ${TOOL} part <артикул> <бренд> или --brand <бренд>`)}\n`
+			? `${[
+				renderBrands(e.brands, [numCol(e.brands), whereCol<MergedBrand>()]),
+				...linkList(e.brands),
+				"",
+				hint(`повтори с брендом: ${TOOL} ${ran} <артикул> <бренд> или --brand <бренд>`),
+			].join("\n")}\n`
 			: ""
 		return { stdout: "", stderr: `${stderr}${red(body.error.message)}\n${table}`, code }
 	}

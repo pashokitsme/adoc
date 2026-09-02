@@ -3,7 +3,8 @@
 // правил в проекте быть не должно, иначе part и search разъедутся.
 
 import { articleKey, brandKey } from "../sdk/index.ts"
-import type { BrandHit, Offer, Product, Rating } from "../sdk/index.ts"
+import type { Offer, Product, Rating } from "../sdk/index.ts"
+import type { BrandHitL } from "./delta.ts"
 
 export type Per<T> = { provider: string; items: T[] }
 export type OfferRow = Offer & { provider: string }
@@ -17,17 +18,23 @@ export type MergedBrand = {
 	providers: string[]
 	/** Провайдер → его собственное написание бренда; ему же и отправляем. */
 	spelling: Record<string, string>
+	/** Провайдер → карточка этого бренда у него: страница, которую хотят открыть. */
+	urls: Record<string, string>
 	name?: string
 	rating?: Rating
 }
 
-export type MergedProduct = Product & { providers: string[]; prices: Record<string, number> }
+/**
+ * Один товар у двух сайтов — две страницы, и обе нужны: `urls` хранит адрес
+ * каждого сайта отдельно, а не первый попавшийся.
+ */
+export type MergedProduct = Product & { providers: string[]; prices: Record<string, number>; urls: Record<string, string> }
 
 /** Из двух оценок убедительнее та, за которой больше голосов. */
 const better = (a: Rating | undefined, b: Rating | undefined): Rating | undefined =>
 	!a ? b : !b ? a : b.count > a.count ? b : a
 
-export function mergeBrands(article: string, per: Per<BrandHit>[]): MergedBrand[] {
+export function mergeBrands(article: string, per: Per<BrandHitL>[]): MergedBrand[] {
 	const want = articleKey(article)
 	const by = new Map<string, MergedBrand>()
 	for (const { provider, items } of per) {
@@ -39,12 +46,14 @@ export function mergeBrands(article: string, per: Per<BrandHit>[]): MergedBrand[
 			if (!cur) {
 				by.set(key, {
 					key, brand: hit.brand, article: hit.article, providers: [provider], spelling: { [provider]: hit.brand },
+					urls: hit.url ? { [provider]: hit.url } : {},
 					...(hit.name ? { name: hit.name } : {}), ...(hit.rating ? { rating: hit.rating } : {}),
 				})
 				continue
 			}
 			if (!cur.providers.includes(provider)) cur.providers.push(provider)
 			cur.spelling[provider] ??= hit.brand
+			if (hit.url) cur.urls[provider] ??= hit.url
 			cur.name ??= hit.name
 			cur.rating = better(cur.rating, hit.rating)
 		}
@@ -76,10 +85,14 @@ export function mergeProducts(per: Per<Product>[]): MergedProduct[] {
 			const key = `${articleKey(p.article)}|${brandKey(p.brand)}`
 			const cur = by.get(key)
 			if (!cur) {
-				by.set(key, { ...p, providers: [provider], prices: p.price === undefined ? {} : { [provider]: p.price } })
+				by.set(key, {
+					...p, providers: [provider], prices: p.price === undefined ? {} : { [provider]: p.price },
+					urls: p.url ? { [provider]: p.url } : {},
+				})
 				continue
 			}
 			if (!cur.providers.includes(provider)) cur.providers.push(provider)
+			if (p.url) cur.urls[provider] ??= p.url
 			if (p.price !== undefined) {
 				cur.prices[provider] = p.price
 				// В колонке «ОТ» — минимум по сайтам.
