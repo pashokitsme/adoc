@@ -4,7 +4,7 @@
 // беден. Поэтому здесь блок на сайт, как у reviews.
 
 import { need, renderInfo } from "../sdk/index.ts"
-import { limitOf } from "../core/args.ts"
+import { brandOf, limitOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
@@ -15,7 +15,7 @@ import type { Ctx, Output } from "../core/ctx.ts"
 export async function cmdInfo(ctx: Ctx): Promise<Output> {
 	const article = need(ctx.args[0], "артикул")
 	// Бренд пишут и вторым словом, и флагом — как у part и reviews.
-	const wanted = ctx.args[1] ?? (typeof ctx.flags.brand === "string" ? ctx.flags.brand : undefined)
+	const wanted = brandOf(ctx)
 	const providers = await ctx.pick()
 
 	// Бросает Ambiguous — её ловит и рисует app.ts.

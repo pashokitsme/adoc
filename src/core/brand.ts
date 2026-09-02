@@ -3,7 +3,7 @@
 // отзывы у разных производителей одного артикула разные. Здесь же общий ответ
 // «ничего не нашлось»: обе команды должны считать код возврата одинаково.
 
-import { brandKey, cyan } from "../sdk/index.ts"
+import { brandKey, cyan, dim } from "../sdk/index.ts"
 import type { BrandHit } from "../sdk/index.ts"
 import type { Output } from "./ctx.ts"
 import { Ambiguous } from "./errors.ts"
@@ -20,6 +20,8 @@ export type Resolved = {
 	failures: Failure[]
 	/** Шаг брендов целиком: из него берётся код возврата пустой выдачи. */
 	step: Fanout<BrandHit[]>
+	/** Что за бренд просили: пустой ответ обязан его назвать. */
+	wanted?: string
 }
 
 export async function resolveBrand(
@@ -28,7 +30,7 @@ export async function resolveBrand(
 	// id — чтобы наши собственные отказы называли провайдера, а не `bun`.
 	const step = await fanout(providers, p => invoke(p.bin, ["brands", article], { id: p.id }), parseBrands, warn)
 	const all = mergeBrands(article, step.got.map(g => ({ provider: g.provider, items: g.value })))
-	const base = { all, failures: step.failures, step }
+	const base = { all, failures: step.failures, step, ...(wanted ? { wanted } : {}) }
 
 	if (!all.length) return { brand: null, ...base }
 	if (wanted) {
@@ -52,9 +54,14 @@ export async function resolveBrand(
  */
 export function emptyResult(article: string, r: Resolved, rest: Record<string, unknown>, warn: (line: string) => void): Output {
 	for (const f of r.failures) warn(failureLine(f))
+	// Пробел внутри артикула бывает законным («0 986 452 041» у BOSCH), но чаще
+	// это склеенные в одну кавычку артикул и бренд — и тогда пустой ответ
+	// выглядит как «сайт не знает детали», хотя дело в самом запросе.
+	const glued = /\s/.test(article.trim())
 	return {
 		json: { article, brand: null, ...rest, errors: r.failures },
-		render: () => `по ${cyan(article)} ничего не нашлось`,
+		render: () => `по ${cyan(article)}${r.wanted ? ` (${r.wanted})` : ""} ничего не нашлось`
+			+ (glued ? `\n${dim("в артикуле пробел — если это артикул и бренд, набирать их отдельными словами")}` : ""),
 		code: allFailed(r.step) ? 1 : 0,
 	}
 }

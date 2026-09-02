@@ -65,6 +65,35 @@ describe("adoc part", () => {
 		expect(r.stdout).toContain("basket add")
 	})
 
+	test("бренд вторым словом и флагом — одна и та же дорога", async () => {
+		const word = await part(["n90954802", "vag"])
+		const flag = await part(["n90954802", "--brand", "VAG"])
+		expect(word.j.offers).toEqual(flag.j.offers)
+		expect(word.code).toBe(flag.code)
+	})
+
+	test("бренд назван дважды и по-разному — bad_args, а не молчаливый выбор", async () => {
+		const r = await run(["part", "n90954802", "VAG", "--brand", "BOSCH", "--json"])
+		expect(r.code).toBe(1)
+		expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
+	})
+
+	test("неизвестный бренд — notfound с перечнем известных, а не пустая выдача", async () => {
+		for (const args of [["part", "n90954802", "НЕТАКОГО"], ["part", "n90954802", "--brand", "НЕТАКОГО"]]) {
+			const r = await run([...args, "--json"])
+			expect(r.code).toBe(1)
+			const e = JSON.parse(r.stdout).error as { code: string; message: string; items: { brand: string }[] }
+			expect(e.code).toBe("notfound")
+			expect(e.items.map(i => i.brand)).toContain("VAG")
+		}
+	})
+
+	test("артикул со склеенным брендом — пустой ответ говорит, в чём дело", async () => {
+		const r = await run(["part", "n90954802 VAG"])
+		expect(r.code).toBe(0)
+		expect(r.stdout).toContain("в артикуле пробел")
+	})
+
 	test("бренд неоднозначен — exit 2 и таблица вариантов с колонкой «где»", async () => {
 		const r = await run(["part", "multi1"])
 		expect(r.code).toBe(2)

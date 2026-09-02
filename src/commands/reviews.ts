@@ -3,7 +3,7 @@
 // сайты с capability reviews — и только те, у кого этот бренд нашёлся.
 
 import { dim, need, renderReviews } from "../sdk/index.ts"
-import { limitOf, pageOf } from "../core/args.ts"
+import { brandOf, limitOf, pageOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
@@ -15,7 +15,7 @@ export async function cmdReviews(ctx: Ctx): Promise<Output> {
 	const article = need(ctx.args[0], "артикул")
 	// Бренд пишут и вторым словом, и флагом — как у part: подсказка после
 	// «уточни бренд» зовёт --brand, а руками набирают просто вторым словом.
-	const wanted = ctx.args[1] ?? (typeof ctx.flags.brand === "string" ? ctx.flags.brand : undefined)
+	const wanted = brandOf(ctx)
 	const all = await ctx.pick()
 	// Сайт без отзывов не спрашивается вовсе — в том числе про бренды: его
 	// ответ всё равно некуда деть, а лишний вопрос стоит секунд ожидания.

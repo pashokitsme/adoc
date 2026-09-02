@@ -4,7 +4,7 @@
 // приходят, когда точное уже не устроило (дорого, нет в наличии, долго).
 
 import { TOOL, bold, cyan, dim, need, renderOffers } from "../sdk/index.ts"
-import { limitOf } from "../core/args.ts"
+import { brandOf, limitOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
@@ -17,7 +17,7 @@ import type { Ctx, Output } from "../core/ctx.ts"
 export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 	const article = need(ctx.args[0], "артикул")
 	// Бренд пишут и вторым словом, и флагом — как у part и reviews.
-	const wanted = ctx.args[1] ?? (typeof ctx.flags.brand === "string" ? ctx.flags.brand : undefined)
+	const wanted = brandOf(ctx)
 	const providers = await ctx.pick()
 
 	// Бросает Ambiguous — её ловит и рисует app.ts.

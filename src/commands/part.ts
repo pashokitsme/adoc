@@ -4,7 +4,7 @@
 // склейки, а сайту она чужая.
 
 import { TOOL, bold, cyan, dim, heading, need, renderOffers } from "../sdk/index.ts"
-import { limitOf } from "../core/args.ts"
+import { brandOf, limitOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
@@ -18,7 +18,7 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 	const article = need(ctx.args[0], "артикул")
 	// Бренд пишут и вторым словом, и флагом: подсказка после «уточни бренд»
 	// зовёт --brand, а руками чаще набирают просто «adoc part N123 VAG».
-	const wanted = ctx.args[1] ?? (typeof ctx.flags.brand === "string" ? ctx.flags.brand : undefined)
+	const wanted = brandOf(ctx)
 	const providers = await ctx.pick()
 	// Бросает Ambiguous — её ловит и рисует app.ts.
 	const resolved = await resolveBrand(providers, article, wanted, ctx.warn)
