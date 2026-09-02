@@ -107,17 +107,23 @@ describe("run", () => {
 	test("длинный stderr не режется на пайпе", async () => {
 		// Bun.spawn отдаёт stderr целиком: обрезание за первым буфером видно
 		// только через пайп самой оболочки, поэтому запуск идёт через sh.
+		// Длинный stderr даёт провайдер noisy (NOISY_STDERR_BYTES), а не аргумент:
+		// на Linux один аргумент ограничен 128 КБ (MAX_ARG_STRLEN).
 		const bin = join(import.meta.dir, "..", "..", "src", "main.ts")
-		const cmd = `long=$(head -c 300000 /dev/zero | tr '\\0' x); bun ${JSON.stringify(bin)} "$long" 2>&1 | cat`
+		const cmd = `bun ${JSON.stringify(bin)} part N1 --only noisy 2>&1 | cat`
 		const proc = Bun.spawn(["sh", "-c", cmd], {
-			env: { ...process.env, ...env, NO_COLOR: "1" },
+			env: {
+				...process.env, ...env, NO_COLOR: "1",
+				ADOC_PROVIDERS_DIR: join(import.meta.dir, "..", "fixtures", "odd"),
+				NOISY_STDERR_BYTES: "300000",
+			},
 			stdin: "ignore", stdout: "pipe", stderr: "pipe",
 		})
 		// Код возврата у конвейера — от `cat`, поэтому проверяется только целость
 		// потока: на обрезании остаётся первый буфер (64 КБ).
 		const out = await new Response(proc.stdout).text()
 		await proc.exited
-		expect(out).toContain("неизвестная команда")
+		expect(out).toContain("noisy")
 		expect(out.length).toBeGreaterThan(300_000)
 	})
 })
