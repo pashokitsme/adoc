@@ -1,7 +1,10 @@
 // define.ts — объявление провайдера. Типы делают контракт обязательным:
 // пропущенный offers или reviews при capability "reviews" — ошибка компиляции.
 
-import type { Basket, BrandsResult, Capability, CarsResult, Display, OffersResult, Reviews, SearchResult } from "./contract.ts"
+import type {
+	Basket, BrandsResult, Capability, CarsResult, Display, InfoResult,
+	OffersResult, OrdersResult, Reviews, SearchResult,
+} from "./contract.ts"
 import type { Flags } from "./cli.ts"
 import type { ErrorMapper } from "./errors.ts"
 
@@ -33,6 +36,14 @@ export type BasketOps<A> = {
 	remove(ctx: Ctx<A>, itemId: string): Promise<Basket>
 }
 
+/**
+ * Что знает поиск сверх текста. `car` — ref машины из `garage export` этого же
+ * провайдера, как его отдал сам провайдер; `null` — искать без машины.
+ * Провайдер, который так не умеет, обязан сказать это через `ctx.warn` и
+ * ответить обычной выдачей, а не ошибкой.
+ */
+export type SearchOpts = { car: Record<string, unknown> | null }
+
 export type ProviderBase<A> = {
 	id: string
 	name: string
@@ -43,12 +54,16 @@ export type ProviderBase<A> = {
 
 	login(ctx: Ctx<A>): Promise<{ account: A; display: Display }>
 	whoami(ctx: Ctx<A>): Promise<Display | null>
-	search(ctx: Ctx<A>, text: string): Promise<SearchResult>
+	search(ctx: Ctx<A>, text: string, opts: SearchOpts): Promise<SearchResult>
 	brands(ctx: Ctx<A>, article: string): Promise<BrandsResult>
 	offers(ctx: Ctx<A>, article: string, brand: string, opts: { analogs: boolean }): Promise<OffersResult>
+	info(ctx: Ctx<A>, article: string, brand: string): Promise<InfoResult>
+	/** Только аналоги, без точных совпадений. Не умеет — пустой список и ctx.warn. */
+	analogs(ctx: Ctx<A>, article: string, brand: string): Promise<OffersResult>
 
 	reviews?(ctx: Ctx<A>, article: string, brand: string): Promise<Reviews>
 	garageExport?(ctx: Ctx<A>): Promise<CarsResult>
+	orders?(ctx: Ctx<A>): Promise<OrdersResult>
 	basket?: BasketOps<A>
 	commands?: Record<string, ProviderCommand<A>>
 }
@@ -58,6 +73,7 @@ export type ProviderBase<A> = {
 type Requires<A, C extends Capability> =
 	("reviews" extends C ? { reviews: NonNullable<ProviderBase<A>["reviews"]> } : {}) &
 	("garage" extends C ? { garageExport: NonNullable<ProviderBase<A>["garageExport"]> } : {}) &
+	("orders" extends C ? { orders: NonNullable<ProviderBase<A>["orders"]> } : {}) &
 	("basket" extends C ? { basket: BasketOps<A> } : {})
 
 export type ProviderSpec<A> = ProviderBase<A> & { capabilities: Capability[] }
@@ -67,8 +83,17 @@ export function defineProvider<A, const C extends readonly Capability[]>(
 ): ProviderSpec<A> {
 	// Проверка и в рантайме — для провайдера, собранного без typecheck
 	for (const cap of spec.capabilities) {
-		const has = cap === "reviews" ? !!spec.reviews : cap === "garage" ? !!spec.garageExport : cap === "basket" ? !!spec.basket : true
+		const has = cap === "reviews" ? !!spec.reviews
+			: cap === "garage" ? !!spec.garageExport
+			: cap === "orders" ? !!spec.orders
+			: cap === "basket" ? !!spec.basket
+			: true
 		if (!has) throw new Error(`провайдер ${spec.id} объявил capability ${cap}, но не реализовал её`)
+	}
+	// info и analogs обязательны для всех: агрегатор зовёт их без оглядки на
+	// capabilities, и провайдер без них уронил бы общую выдачу на пустом месте.
+	for (const m of ["search", "brands", "offers", "info", "analogs"] as const) {
+		if (typeof spec[m] !== "function") throw new Error(`провайдер ${spec.id} не реализовал обязательную команду ${m}`)
 	}
 	return { ...spec, capabilities: [...spec.capabilities] }
 }

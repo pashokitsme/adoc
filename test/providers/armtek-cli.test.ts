@@ -18,7 +18,7 @@ afterEach(async () => { await rm(dir, { recursive: true, force: true }) })
 
 async function run(args: string[], routes: Record<string, string>) {
 	const proc = Bun.spawn(["bun", BIN, ...args], {
-		env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ARMTEK_FIXTURES: JSON.stringify(routes) },
+		env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ADOC_LINKS: "list", ARMTEK_FIXTURES: JSON.stringify(routes) },
 		stdin: "ignore", stdout: "pipe", stderr: "pipe",
 	})
 	const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -39,8 +39,10 @@ describe("offers --analogs через CLI", () => {
 
 		// контракт: с --json в stdout ровно один JSON-объект и больше ничего
 		expect(r.out.trim().split("\n")).toHaveLength(1)
-		const j = JSON.parse(r.out) as { items: unknown[] }
-		expect(Object.keys(j)).toEqual(["items"])
+		const j = JSON.parse(r.out) as { items: unknown[]; total?: number }
+		expect(Object.keys(j)).toEqual(["items", "total"])
+		// сайт насчитал больше, чем поместилось на страницу — это и говорит total
+		expect(j.total).toBeGreaterThan(j.items.length)
 		expect(j.items.length).toBeGreaterThan(1)
 
 		// а неполнота выдачи — в stderr, где её не спутать с ответом

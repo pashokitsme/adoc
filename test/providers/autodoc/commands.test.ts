@@ -17,7 +17,7 @@ afterEach(async () => { delete process.env[CONFIG_DIR_ENV]; await rm(dir, { recu
 
 async function run(args: string[], json = true) {
 	const proc = Bun.spawn(["bun", BIN, ...args, ...(json ? ["--json"] : [])], {
-		env: { ...process.env, [CONFIG_DIR_ENV]: dir, ADOC_FIXTURES: FIX, NO_COLOR: "1" }, stdin: "ignore", stdout: "pipe", stderr: "pipe",
+		env: { ...process.env, [CONFIG_DIR_ENV]: dir, ADOC_FIXTURES: FIX, NO_COLOR: "1", ADOC_LINKS: "list" }, stdin: "ignore", stdout: "pipe", stderr: "pipe",
 	})
 	const out = await new Response(proc.stdout).text()
 	return { code: await proc.exited, out, json: () => JSON.parse(out) }
@@ -36,18 +36,16 @@ describe("свои команды autodoc", () => {
 	test("--sort отрицательным — bad_args", async () => {
 		expect((await run(["goods", "408", "--sort", "-1"])).json().error.code).toBe("bad_args")
 	})
-	test("info — карточка и цена", async () => {
-		const r = await run(["info", "n90954802"])
-		expect(r.json().info.rating.quantity).toBe(56)
-		expect(r.json().price.minimalPrice).toBe(317)
+	test("prices — прайс-лист таблицей, сырой ответ в --json", async () => {
+		const r = await run(["prices", "n90954802", "--brand", "vag"])
+		expect(r.json().items[1].goods[0].article).toBe("n90954802")
+		const out = (await run(["prices", "n90954802", "--brand", "vag"], false)).out
+		expect(out).toContain("ЦЕНА")
+		expect(out).toContain("407")
 	})
-	test("info — категория видна и в тексте", async () => {
-		const out = (await run(["info", "n90954802"], false)).out
-		expect(out).toContain("категория")
-		expect(out).toContain("4558")
-	})
-	test("info --brand по имени", async () => {
-		expect((await run(["info", "n90954802", "--brand", "vag"])).code).toBe(0)
+	test("profile — сводка полями", async () => {
+		const out = (await run(["profile"], false)).out
+		expect(out).toContain("баланс")
 	})
 	test("garage — список сайта с основной", async () => {
 		expect((await run(["garage"])).json().mainCarId).toBe(10)

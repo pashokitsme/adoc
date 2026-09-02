@@ -12,7 +12,7 @@ afterEach(async () => { delete process.env[CONFIG_DIR_ENV]; await rm(dir, { recu
 
 async function run(args: string[], env: Record<string, string> = {}) {
 	const proc = Bun.spawn(["bun", BIN, ...args], {
-		env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ...env },
+		env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ADOC_LINKS: "list", ...env },
 		stdin: "ignore", stdout: "pipe", stderr: "pipe",
 	})
 	const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -154,7 +154,7 @@ describe("runProvider", () => {
 	test("большой ответ не режется на пайпе", async () => {
 		// Bun.spawn отдаёт stdout целиком, обрезание видно только через пайп самой оболочки
 		const proc = Bun.spawn(["sh", "-c", `bun ${JSON.stringify(BIN)} big --json | cat`], {
-			env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1" },
+			env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ADOC_LINKS: "list" },
 			stdin: "ignore", stdout: "pipe", stderr: "pipe",
 		})
 		const out = await new Response(proc.stdout).text()
@@ -205,5 +205,51 @@ describe("runProvider", () => {
 		expect(r.code).toBe(0)
 		expect(r.out).toContain("echo <текст>")
 		expect(r.out).toContain("offers <артикул> --brand")
+	})
+})
+
+describe("info, analogs, orders и --car", () => {
+	test("info — карточка и одна её форма в JSON", async () => {
+		const r = await run(["info", "N1", "--brand", "VAG", "--json"])
+		expect(r.code).toBe(0)
+		expect(r.json().info).toMatchObject({ article: "N1", brand: "VAG", name: "Болт" })
+		const human = await run(["info", "N1", "--brand", "VAG"])
+		expect(human.out).toContain("Болт")
+		expect(human.out).toContain("https://fake.example/part/n1")
+	})
+
+	test("info без --brand — bad_args", async () => {
+		const r = await run(["info", "N1", "--json"])
+		expect(r.code).toBe(1)
+		expect(r.json().error.code).toBe("bad_args")
+	})
+
+	test("analogs — только аналоги", async () => {
+		const r = await run(["analogs", "N1", "--brand", "VAG", "--json"])
+		expect(r.json().items.every((o: { analog?: boolean }) => o.analog)).toBe(true)
+	})
+
+	test("orders нет у провайдера без capability — bad_args", async () => {
+		const r = await run(["orders", "--json"])
+		expect(r.code).toBe(1)
+		expect(r.json().error.code).toBe("bad_args")
+	})
+
+	test("--car доезжает до провайдера объектом", async () => {
+		const r = await run(["search", "болт", "--car", '{"carId":1}', "--json"])
+		expect(r.code).toBe(0)
+		expect(r.json().items).toHaveLength(1)
+	})
+
+	test("--car не JSON — bad_args с именем своего флага", async () => {
+		const r = await run(["search", "болт", "--car", "1", "--json"])
+		expect(r.code).toBe(1)
+		expect(r.json().error.message).toContain("--car")
+	})
+
+	test("describe объявляет info и analogs", async () => {
+		const names = (await run(["describe", "--json"])).json().commands.map((c: { name: string }) => c.name)
+		expect(names).toEqual(expect.arrayContaining(["info", "analogs"]))
+		expect(names).not.toContain("orders")
 	})
 })

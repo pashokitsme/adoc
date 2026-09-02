@@ -88,6 +88,9 @@ export function mapHttpError(e: unknown): ProviderError | null {
 	try { text = errorTexts(JSON.parse(e.body)).join("; ") } catch { /* тело не конверт */ }
 	if (e.status === 401) return new ProviderError("auth", text || "armtek: нужен вход")
 	if (e.status === 404) return new ProviderError("notfound", text || `armtek: ${e.url} — не найдено`)
+	// 429 приходит телом с captchaHash: сайт не сломался, а просит подождать.
+	// Без этой ветки человек видел бы простыню с хэшем вместо совета.
+	if (e.status === 429) return new ProviderError("http", "armtek: слишком много запросов подряд — сайт просит подождать и показать капчу; повтори через несколько минут")
 	return new ProviderError("http", text ? `armtek: ${text}` : e.message)
 }
 
@@ -229,6 +232,46 @@ export function search(q: SearchQuery, token: string): Promise<SearchData<RawArt
 			typeView: q.typeView ?? "list",
 			userInfo: { VKORG: vkorg, VSTELS_LIST: [q.vstel ?? DEFAULT_VSTEL] },
 			ZZSIGN: "S",
+		},
+	})
+}
+
+export type SuggestCategory = { ID: string; ALIAS: string; NAME: string; PATH?: { ID: string; NAME: string; ALIAS: string }[] }
+export type Autocomplete = {
+	suggest?: { NAME?: string }[]
+	category?: SuggestCategory[]
+	brands?: { BRAND?: string; BRAND_ALIAS?: string }[]
+	article?: unknown[]
+}
+
+/** Подсказка шапки: категории, бренды и артикулы под введённый текст. */
+export const autocomplete = (query: string, token: string): Promise<Autocomplete> =>
+	call(`search-microservice/v1/autocomplete/search?${new URLSearchParams({ type: "3", query })}`, { token })
+
+/**
+ * Товары внутри категории. Единственная ручка armtek, которая умеет фильтр по
+ * машине: `linkingTargetId` — идентификатор модификации TecDoc, `linkingTargetType`
+ * — «P» для легковых. Свободный поиск такие поля отбивает четырёхсотым, см.
+ * notes/providers-v2.md.
+ */
+export const searchByCategory = (q: {
+	categoryAlias: string
+	page?: number
+	vkorg?: string
+	vstel?: string
+	linkingTargetId?: number
+	linkingTargetType?: string
+}, token: string): Promise<SearchData<RawArticle>> => {
+	const vkorg = q.vkorg ?? DEFAULT_VKORG
+	return call("search-microservice/v1/search/by-category", {
+		token,
+		vkorg,
+		body: {
+			query: q.categoryAlias,
+			page: q.page ?? 1,
+			typeView: "list",
+			userInfo: { VKORG: vkorg, VSTELS_LIST: [q.vstel ?? DEFAULT_VSTEL] },
+			...(q.linkingTargetId ? { linkingTargetId: q.linkingTargetId, linkingTargetType: q.linkingTargetType ?? "P" } : {}),
 		},
 	})
 }
@@ -378,8 +421,6 @@ export type RawGarage = { garageTypes?: unknown[]; transportList?: RawTransport[
 export const garageList = (token: string, clientId: string, vkorg: string): Promise<RawGarage> =>
 	call(`task-selection-microservice/v1/garage/get-transport-list-by-filter?client_id=${encodeURIComponent(clientId)}`, { token, vkorg })
 
-// --- точки выдачи ---------------------------------------------------------
-
 export type RawVstel = {
 	vstel: string
 	vname?: string
@@ -392,6 +433,48 @@ export type RawVstel = {
 	geolon?: string
 	isActive?: boolean
 }
+
+// --- заказы ---------------------------------------------------------------
+
+export type RawOrderItem = {
+	ARTID?: number
+	PIN?: string
+	BRAND?: string
+	NAME?: string
+	ARTICLE_NAME?: string
+	ARTICLE_ALIAS?: string
+	KWMENG?: number | string
+	PRICE?: number | string
+	NETWR?: number | string
+	POSITION_STATUS?: string
+	CHARG?: string
+}
+
+export type RawOrder = {
+	VBELN?: string | number
+	GUID?: string
+	date?: string
+	ORDER_DATE?: string
+	CREDT?: string
+	ORDER_STATUS?: string
+	ORDER_STATUS_ALIAS?: string
+	NETWR?: number | string
+	PAYMENT_STATUS?: string
+	PAYMENT_TYPE?: string
+	ITEMS?: RawOrderItem[]
+}
+
+export type RawOrders = { KEY?: string; PAGE?: number; ORDER?: RawOrder[] }
+
+/**
+ * Список заказов. Дат не шлём: по отдельности `dateFrom` и `dateTo` сервер
+ * принимает, а любую их пару отбивает «Значение не является правильной датой»
+ * — проверено живьём, см. notes/providers-v2.md.
+ */
+export const orderReport = (token: string, vkorg: string, page = 1): Promise<RawOrders> =>
+	call(`order-microservice/v1/order/report?${new URLSearchParams({ page: String(page) })}`, { token, vkorg })
+
+// --- точки выдачи ---------------------------------------------------------
 
 export const vstelList = (token: string, search = ""): Promise<{ paginator: Pagination; items: RawVstel[] }> =>
 	call(`delivery-microservice/v1/custom-vstel/list?${new URLSearchParams({ search, viewAll: "true" })}`, { token })

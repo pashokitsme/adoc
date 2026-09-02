@@ -2,11 +2,32 @@
 // docs/autodoc-api.md и test/fixtures/autodoc/http/*.json.
 
 import { articleKey, brandKey, render } from "../../sdk/index.ts"
-import type { Basket, BasketItem, BrandHit, Car, Offer, Product, Rating, Review, Reviews } from "../../sdk/index.ts"
+import type { Basket, BasketItem, BrandHit, Car, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews } from "../../sdk/index.ts"
 
-import type { Car as ApiCar, CatalogGood, GoodsInfo, Reviews as ApiReviews, SearchHit, Suggestion } from "./api.ts"
+import type { Car as ApiCar, CatalogGood, GoodsInfo, GoodsPrice, OrderRow, Reviews as ApiReviews, SearchHit, Suggestion } from "./api.ts"
 
 const { isoDate } = render
+
+export const SITE = "https://www.autodoc.ru"
+
+/**
+ * Адреса страниц сайта. Сняты не с догадок, а из таблицы маршрутов Angular
+ * (`chunk-*.js`) и из шаблонов, которые эти ссылки строят, — подробности в
+ * notes/providers-v2.md. Артикул в адресе карточки сайт приводит к нижнему
+ * регистру (так же он проставляет canonical), поэтому и мы приводим.
+ */
+export const cardUrl = (manufacturerId: number, article: string): string =>
+	`${SITE}/man/${manufacturerId}/part/${article.toLowerCase()}`
+
+export const reviewsUrl = (manufacturerId: number, article: string): string =>
+	`${cardUrl(manufacturerId, article)}/reviews`
+
+/** Прайс-лист: страница с предложениями продавцов по этой детали. */
+export const priceUrl = (manufacturerId: number, article: string): string =>
+	`${SITE}/price/${manufacturerId}/${article.toLowerCase()}`
+
+export const BASKET_URL = `${SITE}/cart`
+export const ORDERS_URL = `${SITE}/my/orders`
 
 export type OriginalsItem = {
 	id: number; price: number; quantity?: number; deliveryDays?: number; deliveryDate?: string
@@ -40,6 +61,7 @@ export function toBrandHits(hits: SearchHit[], infos: Map<number, GoodsInfo | nu
 			brand: h.manufacturer.name, article: h.article, name: h.goodsName || info?.name,
 			rating: toRating(info?.rating),
 			images: h.imageUrl ? [h.imageUrl] : info?.imageUrls,
+			url: cardUrl(h.manufacturer.id, h.article),
 			extra: { manufacturerId: h.manufacturer.id },
 		}
 	})
@@ -64,7 +86,7 @@ export function toOffers(r: Originals, article: string, brand: string, forceAnal
 					deliveryDays: it.deliveryDays, deliveryDate: isoDate(it.deliveryDate),
 					seller: [it.supplier?.name, it.supplier?.description].filter(Boolean).join(" · ") || undefined,
 					rating: toRating(g.rating), images: g.imageUrl ? [g.imageUrl] : undefined,
-					url: `https://www.autodoc.ru/price/${g.manufacturer.id}/${g.article}`,
+					url: priceUrl(g.manufacturer.id, g.article),
 					ref: ref as unknown as Record<string, unknown>,
 					...(analog ? { analog: true, analogOf: { article, brand } } : {}),
 					extra: { group: group.title, minimalQuantity: it.minimalQuantity, priceType: it.priceType },
@@ -85,14 +107,66 @@ export function categoryIds(s: Suggestion[]): { id: number; title: string }[] {
 	return out
 }
 
+/**
+ * Какая из найденных категорий отвечает на запрос. Подсказка отдаёт их в своём
+ * порядке, и на «тормозные колодки» первыми идут «Станки для заклепки
+ * тормозных колодок» — формально совпадение, по делу мусор.
+ *
+ * Считаем долю слов заголовка, нашедшихся в запросе: у «Колодки тормозные» это
+ * 2 из 2, у станков — 2 из 5. Слова сравниваются по общему префиксу, иначе
+ * «свеча» и «свечи» разошлись бы; четырёх букв хватает и для «колодки» против
+ * «колодок». Ничья — за первым, то есть порядок сайта остаётся значимым.
+ */
+const words = (s: string): string[] =>
+	s.toLowerCase().replace(/ё/g, "е").split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1)
+
+const sameWord = (a: string, b: string): boolean => {
+	const n = Math.min(a.length, b.length)
+	let i = 0
+	while (i < n && a[i] === b[i]) i++
+	return i >= Math.min(4, n)
+}
+
+export function bestCategory<T extends { title: string }>(cats: T[], query: string): T {
+	const q = words(query)
+	let best = cats[0]!
+	let bestScore = -1
+	for (const c of cats) {
+		const t = words(c.title)
+		if (!t.length) continue
+		const hit = t.filter(w => q.some(x => sameWord(w, x))).length
+		const score = hit / t.length
+		if (score > bestScore) { bestScore = score; best = c }
+	}
+	return best
+}
+
+/**
+ * Ref машины → параметры find-goods. Фильтр включается только при всех трёх
+ * значениях, поэтому неполный ref — это `null`, а не половинчатый фильтр,
+ * который молча вернул бы выдачу «по всей марке».
+ */
+export function carQuery(ref: Record<string, unknown> | null):
+	{ BrandName: string; Model: number; ModificationId: number } | undefined {
+	if (!ref) return undefined
+	const brand = ref.brandName
+	const model = ref.modelId
+	const mod = ref.modificationId
+	if (typeof brand !== "string" || !brand || typeof model !== "number" || typeof mod !== "number") return undefined
+	return { BrandName: brand, Model: model, ModificationId: mod }
+}
+
 export const toProducts = (goods: CatalogGood[], category?: string): Product[] =>
 	goods.map(g => ({
 		article: g.article, brand: g.manufacturer?.name ?? "", name: g.name,
 		price: g.price, currency: "RUB", quantity: g.quantity, rating: toRating(g.rating), category,
-		url: g.manufacturer ? `https://www.autodoc.ru/price/${g.manufacturer.id}/${g.article}` : undefined,
+		images: g.imageUrl ? [g.imageUrl] : undefined,
+		// карточка, а не прайс-лист: с неё видно и цену, и отзывы, и применимость
+		url: g.manufacturer ? cardUrl(g.manufacturer.id, g.article) : undefined,
+		extra: g.manufacturer ? { manufacturerId: g.manufacturer.id } : undefined,
 	}))
 
-export function toReviews(r: ApiReviews, info: GoodsInfo | null): Reviews {
+export function toReviews(r: ApiReviews, info: GoodsInfo | null, url?: string): Reviews {
 	const items: Review[] = (r.items ?? []).map(it => ({
 		author: it.clientName, date: isoDate(it.createdDate), rating: it.mark,
 		pros: it.pros || undefined, cons: it.cons || undefined, text: it.content ?? "",
@@ -104,13 +178,114 @@ export function toReviews(r: ApiReviews, info: GoodsInfo | null): Reviews {
 		rating: rating ? { ...rating, histogram: info?.rating?.ratings } : undefined,
 		summary: r.summary ? { pros: r.summary.pros ?? [], cons: r.summary.cons ?? [] } : undefined,
 		items,
+		url,
 	}
+}
+
+/**
+ * Карточка. Характеристики сайт показывает списком «имя — значение, единица»;
+ * складывать их в описание одной строкой — единственный способ показать их в
+ * контрактном `Info`, где для таблицы характеристик места нет.
+ */
+export function toInfo(g: GoodsInfo, price: GoodsPrice | null): Info {
+	const props = (g.items ?? []).map(i => `${i.name}: ${i.value}${i.unit ? ` ${i.unit}` : ""}`)
+	const rating = toRating(g.rating)
+	return {
+		article: g.article,
+		brand: g.manufacturer.name,
+		name: g.fullName || g.name,
+		url: cardUrl(g.manufacturer.id, g.article),
+		rating: rating ? { ...rating, histogram: g.rating?.ratings } : undefined,
+		images: g.imageUrls,
+		price: price?.minimalPrice,
+		currency: price?.minimalPrice === undefined ? undefined : "RUB",
+		deliveryDays: price?.minimalDeliveryDays,
+		// склад у autodoc один и без названия — только общий остаток
+		stock: g.inStock ? [{ code: "autodoc", name: "на складе", quantity: g.inStock }] : undefined,
+		description: props.length ? props.join("; ") : undefined,
+		extra: {
+			manufacturerId: g.manufacturer.id,
+			...(g.categoryId ? { categoryId: g.categoryId } : {}),
+			...(g.items?.length ? { properties: g.items } : {}),
+			offersUrl: priceUrl(g.manufacturer.id, g.article),
+			reviewsUrl: reviewsUrl(g.manufacturer.id, g.article),
+		},
+	}
+}
+
+/** Дата SAP-пустышка: у части позиций createDate приходит первым веком. */
+const orderDate = (v: string | undefined): string | undefined =>
+	v && !v.startsWith("0001") ? v : undefined
+
+/**
+ * Заказы. Ручка отдаёт не заказы, а позиции: у каждой свой id, свой статус и
+ * ровно один товар. Номер заказа лежит в `number`, и позиции с одним номером —
+ * один заказ: ровно так их группирует сам сайт в `orders/ready`, складывая под
+ * одним номером даже позиции разных `orderType`.
+ *
+ * Статус у позиций одного заказа разный (одна уже готова к выдаче, другая ещё
+ * едет на склад), а в контракте он один. Берём самый ранний по `groupId` —
+ * заказ не сделан, пока не доехала самая медленная позиция; полный разбор по
+ * позициям остаётся в `extra`.
+ */
+export function toOrders(rows: OrderRow[]): Order[] {
+	const groups = new Map<string, OrderRow[]>()
+	for (const r of rows) {
+		const key = r.number === undefined ? `id:${r.id}` : String(r.number)
+		const g = groups.get(key)
+		if (g) g.push(r)
+		else groups.set(key, [r])
+	}
+
+	const out: Order[] = []
+	for (const [id, group] of groups) {
+		const byStage = [...group].sort((a, b) => (a.status?.groupId ?? 99) - (b.status?.groupId ?? 99))
+		const dates = group.map(r => orderDate(r.createDate)).filter((v): v is string => !!v).sort()
+		const statuses = [...new Set(group.map(r => r.status?.name).filter((v): v is string => !!v))]
+		out.push({
+			id,
+			date: dates[0] ?? "",
+			status: byStage[0]?.status?.name ?? "",
+			total: group.reduce((s, r) => s + (r.total ?? 0), 0),
+			currency: "RUB",
+			// страницы отдельного заказа у сайта нет — только список
+			url: ORDERS_URL,
+			items: group.map(r => ({
+				article: r.goods?.article ?? "",
+				brand: r.goods?.manufacturerName ?? "",
+				name: r.goods?.goodsName ?? "",
+				qty: r.quantity ?? 1,
+				price: r.price ?? 0,
+				sum: r.total,
+				url: r.goods ? cardUrl(r.goods.manufacturerId, r.goods.article) : undefined,
+			})),
+			extra: {
+				...(statuses.length > 1 ? { statuses } : {}),
+				positions: group.map(r => ({
+					id: String(r.id),
+					status: r.status?.name,
+					statusText: r.status?.text,
+					orderType: r.orderType,
+					deliveryStatus: r.deliveryStatusName ?? undefined,
+					waitInShopDate: r.waitInShopDate ?? undefined,
+					cancelable: r.isCancelable === true,
+				})),
+			},
+		})
+	}
+	// сайт показывает новые заказы первыми; номер растёт, поэтому по нему
+	return out.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0))
 }
 
 export const toCars = (cars: ApiCar[], mainId?: number | null): Car[] =>
 	cars.map(c => ({
 		brand: c.brand, model: c.model, year: c.year, engine: c.engine, vin: c.vin, odometer: c.odometer || undefined,
-		ref: { carId: c.id, modificationId: c.modificationId, main: c.id === mainId },
+		// brandName и modelId нужны поиску с учётом машины: find-goods фильтрует
+		// только когда пришли все три — марка, id модели и id модификации
+		ref: {
+			carId: c.id, modificationId: c.modificationId, modelId: c.modelId,
+			brandName: c.brand, main: c.id === mainId,
+		},
 	}))
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined)
@@ -118,15 +293,30 @@ const numv = (v: unknown): number | undefined => (typeof v === "number" ? v : un
 
 export function toBasket(raw: RawBasket): Basket {
 	const items: BasketItem[] = (raw.items ?? []).map(it => {
-		const man = it.manufacturer as { name?: string } | undefined
+		// Артикул, производитель и поставщик лежат во вложенном priceItem —
+		// плоских полей у позиции корзины нет; читаем и то, и другое, чтобы
+		// команда не разъезжалась с записанными ответами прошлых версий.
+		const pi = it.priceItem as {
+			article?: string; displayArticle?: string
+			manufacturer?: { id?: number; name?: string }
+			supplier?: { name?: string; description?: string }
+		} | undefined
+		const man = (pi?.manufacturer ?? it.manufacturer) as { id?: number; name?: string } | undefined
+		const manId = man?.id ?? numv(it.manufacturerId)
+		const article = str(pi?.article) ?? str(it.article) ?? str(pi?.displayArticle) ?? str(it.displayArticle)
+		const seller = [pi?.supplier?.name, pi?.supplier?.description].filter(Boolean).join(" · ")
 		return {
-			id: String(it.id), article: str(it.displayArticle) ?? str(it.article) ?? "", brand: man?.name ?? str(it.manufacturerName) ?? "",
+			id: String(it.id),
+			article: str(it.displayArticle) ?? str(pi?.displayArticle) ?? article ?? "",
+			brand: man?.name ?? str(it.manufacturerName) ?? "",
 			name: str(it.name), price: it.price, quantity: it.quantity, sum: numv(it.total) ?? it.price * it.quantity,
-			seller: str(it.supplierName), deliveryDays: numv(it.deliveryDays), deliveryDate: isoDate(str(it.deliveryDate)),
+			seller: seller || str(it.supplierName),
+			deliveryDays: numv(it.deliveryDays), deliveryDate: isoDate(str(it.deliveryDate)),
+			url: manId !== undefined && article ? cardUrl(manId, article) : undefined,
 			extra: { priceType: it.priceType, hash: it.hash, description: it.description },
 		}
 	})
-	return { items, total: raw.total, currency: "RUB", url: "https://www.autodoc.ru/basket" }
+	return { items, total: raw.total, currency: "RUB", url: BASKET_URL }
 }
 
 export const basketAddBody = (ref: AutodocRef, qty: number): Record<string, unknown> => ({

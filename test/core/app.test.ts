@@ -1,0 +1,129 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { run } from "../../src/app.ts"
+import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
+import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
+
+let dir: string
+let env: Record<string, string>
+beforeEach(async () => {
+	dir = await mkdtemp(join(tmpdir(), "adoc-app-"))
+	// Набор провайдеров — фикстуры: справка снимает describe, и без своих
+	// сайтов тест дотянулся бы до настоящих.
+	env = {
+		[CONFIG_DIR_ENV]: dir,
+		[PROVIDERS_DIR_ENV]: join(import.meta.dir, "..", "fixtures", "providers"),
+	}
+	Object.assign(process.env, env)
+})
+afterEach(async () => {
+	delete process.env[CONFIG_DIR_ENV]
+	delete process.env[PROVIDERS_DIR_ENV]
+	await rm(dir, { recursive: true, force: true })
+})
+
+describe("run", () => {
+	test("--help печатает справку обёртки", async () => {
+		const r = await run(["--help"])
+		expect(r.code).toBe(0)
+		expect(r.stdout).toContain("part")
+		expect(r.stdout).toContain("providers")
+		// Из этой же справки задача 15 собирает документацию: обе формы itemId
+		// должны быть в ней, иначе про --id узнать неоткуда.
+		expect(r.stdout).toContain("basket set <provider> <id>|--id <id>")
+		expect(r.stdout).toContain("basket rm")
+	})
+
+	test("справка перечисляет найденные сайты", async () => {
+		const r = await run(["--help"])
+		expect(r.stdout).toContain("alpha")
+		expect(r.stdout).toContain("beta")
+	})
+
+	test("без аргументов — та же справка", async () => {
+		const r = await run([])
+		expect(r.code).toBe(0)
+		expect(r.stdout).toContain("part")
+	})
+
+	test("неизвестная команда — bad_args в stderr", async () => {
+		const r = await run(["нетакой"])
+		expect(r.code).toBe(1)
+		expect(r.stdout).toBe("")
+		expect(r.stderr).toContain("неизвестная команда")
+	})
+
+	test("неизвестная команда с --json — тело ошибки в stdout", async () => {
+		const r = await run(["нетакой", "--json"])
+		expect(r.code).toBe(1)
+		expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
+	})
+
+	test("ошибка разбора флагов приходит в том же виде", async () => {
+		const r = await run(["part", "N1", "--limit", "--json"])
+		expect(r.code).toBe(1)
+		expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
+	})
+
+	test("--json без команды и с --help — JSON-ошибка, а не справка", async () => {
+		for (const argv of [["--help", "--json"], ["--json"]]) {
+			const r = await run(argv)
+			expect(r.code).toBe(1)
+			expect(r.stdout.trim().split("\n")).toHaveLength(1)
+			expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
+		}
+	})
+
+	test("унаследованные имена командами не считаются", async () => {
+		// COMMANDS — обычный объект, и `adoc toString` доставал бы из прототипа
+		// функцию: она вернула бы «undefined» с кодом 0 вместо честной ошибки.
+		for (const name of ["toString", "constructor", "valueOf", "hasOwnProperty"]) {
+			const r = await run([name, "--json"])
+			expect(r.code).toBe(1)
+			expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
+		}
+	})
+
+	test("constructor без --json — тоже неизвестная команда", async () => {
+		const r = await run(["constructor"])
+		expect(r.code).toBe(1)
+		expect(r.stdout).toBe("")
+		expect(r.stderr).toContain("неизвестная команда")
+	})
+
+	test("бинарь запускается и печатает справку", async () => {
+		const bin = join(import.meta.dir, "..", "..", "src", "main.ts")
+		const proc = Bun.spawn(["bun", bin, "--help"], {
+			env: { ...process.env, ...env, NO_COLOR: "1", ADOC_LINKS: "list" },
+			stdin: "ignore", stdout: "pipe", stderr: "pipe",
+		})
+		const out = await new Response(proc.stdout).text()
+		expect(await proc.exited).toBe(0)
+		expect(out).toContain("part")
+	})
+
+	test("длинный stderr не режется на пайпе", async () => {
+		// Bun.spawn отдаёт stderr целиком: обрезание за первым буфером видно
+		// только через пайп самой оболочки, поэтому запуск идёт через sh.
+		// Длинный stderr даёт провайдер noisy (NOISY_STDERR_BYTES), а не аргумент:
+		// на Linux один аргумент ограничен 128 КБ (MAX_ARG_STRLEN).
+		const bin = join(import.meta.dir, "..", "..", "src", "main.ts")
+		const cmd = `bun ${JSON.stringify(bin)} part N1 --only noisy 2>&1 | cat`
+		const proc = Bun.spawn(["sh", "-c", cmd], {
+			env: {
+				...process.env, ...env, NO_COLOR: "1", ADOC_LINKS: "list",
+				ADOC_PROVIDERS_DIR: join(import.meta.dir, "..", "fixtures", "odd"),
+				NOISY_STDERR_BYTES: "300000",
+			},
+			stdin: "ignore", stdout: "pipe", stderr: "pipe",
+		})
+		// Код возврата у конвейера — от `cat`, поэтому проверяется только целость
+		// потока: на обрезании остаётся первый буфер (64 КБ).
+		const out = await new Response(proc.stdout).text()
+		await proc.exited
+		expect(out).toContain("noisy")
+		expect(out.length).toBeGreaterThan(300_000)
+	})
+})

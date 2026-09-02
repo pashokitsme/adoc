@@ -2,15 +2,16 @@
 // рендер → exit-код. С --json в stdout ровно один объект.
 
 import { accountStore } from "./account.ts"
-import { hasTTY, parseArgv, positiveInt, readLine, readSecret } from "./cli.ts"
+import { hasTTY, intFlag, need, parseArgv, parseRef, positiveInt, readLine, readSecret } from "./cli.ts"
 import { CONTRACT_VERSION, type Basket, type Command, type Describe } from "./contract.ts"
 import type { Ctx, ProviderSpec } from "./define.ts"
 import { ProviderError, errorBody, exitCode, type ErrorMapper } from "./errors.ts"
 import { HttpError } from "./http.ts"
-import { bold, dim, fields, red, renderBasket, renderBrands, renderCars, renderDisplay, renderOffers, renderProducts, renderReviews } from "./render.ts"
+import { emit } from "./out.ts"
+import { bold, dim, fields, red, renderBasket, renderBrands, renderCars, renderDisplay, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews } from "./render.ts"
 import { TOOL } from "./config.ts"
 
-const CONTRACT_VALUE_FLAGS = ["brand", "page", "limit", "qty", "ref"]
+const CONTRACT_VALUE_FLAGS = ["brand", "page", "limit", "qty", "ref", "car"]
 
 // Мапперу провайдера — первое слово; HttpError из SDK не должен уезжать в
 // internal, а всё незнакомое toProviderError и так сведёт к internal.
@@ -27,14 +28,6 @@ const needTTY = (read: (q: string) => Promise<string>) => async (q: string): Pro
 	return await read(q)
 }
 
-function num(name: string, v: string | true | undefined, def: number): number {
-	if (v === undefined) return def
-	if (v === true || v === "") throw new ProviderError("bad_args", `--${name}: нужно значение`)
-	const n = Number(v)
-	if (!Number.isFinite(n) || n < 0) throw new ProviderError("bad_args", `--${name}: нужно неотрицательное число, а не «${v}»`)
-	return n
-}
-
 /** Номер страницы и размер выдачи: только целое ≥ 1. */
 const pageNum = (name: string, v: string | true | undefined, def: number): number =>
 	v === undefined ? def : positiveInt(`--${name}`, v)
@@ -45,10 +38,13 @@ function contractCommands<A>(spec: ProviderSpec<A>): Command[] {
 		{ name: "login", usage: "login", about: "войти (диалог в терминале, если провайдер не берёт данные иначе)", auth: false },
 		{ name: "logout", usage: "logout", about: "забыть аккаунт", auth: false },
 		{ name: "whoami", usage: "whoami", about: "кто авторизован", auth: false },
-		{ name: "search", usage: "search <текст> [--page <n>] [--limit <n>]", about: "поиск по названию", auth: false },
+		{ name: "search", usage: "search <текст> [--car <json>] [--page <n>] [--limit <n>]", about: "поиск по названию; --car — ref машины из `garage export`", auth: false },
 		{ name: "brands", usage: "brands <артикул>", about: "кто выпускает артикул", auth: false },
 		{ name: "offers", usage: "offers <артикул> --brand <имя> [--analogs]", about: "предложения: цена, наличие, срок", auth: false },
+		{ name: "info", usage: "info <артикул> --brand <имя>", about: "карточка: оценки, цена от, наличие", auth: false },
+		{ name: "analogs", usage: "analogs <артикул> --brand <имя>", about: "только аналоги, без точных совпадений", auth: false },
 	]
+	if (spec.orders) c.push({ name: "orders", usage: "orders", about: "заказы на сайте", auth: true })
 	if (spec.reviews) c.push({ name: "reviews", usage: "reviews <артикул> --brand <имя> [--page <n>] [--limit <n>]", about: "оценки и отзывы", auth: false })
 	if (spec.garageExport) c.push({ name: "garage export", usage: "garage export", about: "машины из гаража сайта", auth: true })
 	if (spec.basket) c.push(
@@ -77,36 +73,10 @@ function usage<A>(spec: ProviderSpec<A>): string {
 	].join("\n")
 }
 
-function parseRef(v: string | true | undefined): Record<string, unknown> {
-	if (typeof v !== "string" || !v) throw new ProviderError("bad_args", "нужен --ref <json> из выдачи offers")
-	try {
-		const o = JSON.parse(v) as unknown
-		if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error()
-		return o as Record<string, unknown>
-	} catch {
-		throw new ProviderError("bad_args", "--ref должен быть JSON-объектом")
-	}
-}
-
 type Out = { json: unknown; render: () => string }
-
-type Sink = { write(text: string, cb: () => void): unknown }
-
-// Единственная точка выхода. process.exit рубит всё, что ещё не ушло в трубу:
-// через пайп оболочки Bun 1.3 теряет хвост за первым буфером (64 КБ), и ответ
-// крупнее буфера уезжал бы обрезанным с кодом 0 — успех на неразбираемом JSON.
-// Поэтому сначала дожидаемся слива, потом выходим.
-async function emit(sink: Sink, text: string, code: number): Promise<never> {
-	await new Promise<void>(resolve => sink.write(text, () => resolve()))
-	process.exit(code)
-}
 
 async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): Promise<Out> {
 	const [cmd, ...rest] = args
-	const need = (v: string | undefined, what: string): string => {
-		if (!v) throw new ProviderError("bad_args", `нужен ${what}`)
-		return v
-	}
 	const brandFlag = (): string => {
 		const b = ctx.flags.brand
 		if (typeof b !== "string" || !b) throw new ProviderError("bad_args", "нужен --brand <имя>")
@@ -133,7 +103,10 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 			return { json: d ? { ok: true, display: d } : { ok: false }, render: () => renderDisplay(d) }
 		}
 		case "search": {
-			const r = await spec.search(ctx, need(rest.join(" ") || undefined, "текст запроса"))
+			// --car отсутствует — ищем без машины; пустая строка тоже не машина,
+			// иначе `--car ""` уехало бы в parseRef и упало непонятной ошибкой.
+			const car = ctx.flags.car === undefined || ctx.flags.car === "" ? null : parseRef(ctx.flags.car, "car", "`garage export`")
+			const r = await spec.search(ctx, need(rest.join(" ") || undefined, "текст запроса"), { car })
 			return { json: r, render: () => renderProducts(r.items) }
 		}
 		case "brands": {
@@ -143,6 +116,19 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 		case "offers": {
 			const r = await spec.offers(ctx, need(rest[0], "артикул"), brandFlag(), { analogs: ctx.flags.analogs === true })
 			return { json: r, render: () => renderOffers(r.items) }
+		}
+		case "info": {
+			const r = await spec.info(ctx, need(rest[0], "артикул"), brandFlag())
+			return { json: r, render: () => renderInfo(r.info) }
+		}
+		case "analogs": {
+			const r = await spec.analogs(ctx, need(rest[0], "артикул"), brandFlag())
+			return { json: r, render: () => renderOffers(r.items) }
+		}
+		case "orders": {
+			if (!spec.orders) break
+			const r = await spec.orders(ctx)
+			return { json: r, render: () => renderOrders(r.items) }
 		}
 		case "reviews": {
 			if (!spec.reviews) break
@@ -162,10 +148,10 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 			const sub = rest[0]
 			let r: Basket
 			if (sub === undefined) r = await b.list(ctx)
-			else if (sub === "add") r = await b.add(ctx, parseRef(ctx.flags.ref), num("qty", ctx.flags.qty, 1))
+			else if (sub === "add") r = await b.add(ctx, parseRef(ctx.flags.ref), intFlag("qty", ctx.flags.qty) ?? 1)
 			else if (sub === "set") {
 				if (ctx.flags.qty === undefined) throw new ProviderError("bad_args", "нужен --qty <n>")
-				r = await b.set(ctx, need(rest[1], "itemId"), num("qty", ctx.flags.qty, 1))
+				r = await b.set(ctx, need(rest[1], "itemId"), intFlag("qty", ctx.flags.qty) ?? 1)
 			}
 			else if (sub === "rm") r = await b.remove(ctx, need(rest[1], "itemId"))
 			else throw new ProviderError("bad_args", `неизвестная подкоманда корзины: ${sub}`)

@@ -1,0 +1,65 @@
+{
+  "_note": "Записано живьём 2026-09-02: форма card по 0986452041 BOSCH. Оставлены строки BOSCH.",
+  "data": {
+    "typeView": "card",
+    "cacheKey": "CACHE",
+    "articlesData": [
+      {
+        "ARTID": 55469,
+        "RSTP": "0",
+        "KEYZAK": "MOV0000019",
+        "CHARG": "",
+        "PARNR": "0",
+        "PRICES1": "592.00",
+        "PRICER1": "592.00",
+        "PRICEW1": "592.00",
+        "PRICEREC": "0.00",
+        "NUMZAK": "1",
+        "RVALUE": ">20",
+        "COLOR": 1,
+        "DLVDT": "20260902143000",
+        "ORDDT": "20260902130000",
+        "RDPRF": "1",
+        "AUTH_DEALER": "",
+        "SCALES": "",
+        "WAERS": "RUB",
+        "XSPEC": "",
+        "VENSL": 100,
+        "MINBM": 1,
+        "TYPE": "BEST",
+        "PRICEP": "624.00",
+        "NAME": "фильтр масляный!\\ Mazda 626, Mitsubishi Galant 1.8-2.5i 91>",
+        "PROMO_PLKEY": "",
+        "WRNTDT": "",
+        "CHARG_INFO": "",
+        "GSORT": 10,
+        "BCNM": "",
+        "BRAND": "BOSCH",
+        "PIN": "0 986 452 041",
+        "CUSTOM_NAME": "Фильтр масляный BOSCH 0 986 452 041 Mazda 626, Mitsubishi Galant 1.8-2.5i 91>",
+        "ARTICLE_ALIAS": "filtr-maslyanyy-bosch-0-986-452-041-mazda-626-mitsubishi-galant-18-25i-91-55469",
+        "BRAND_ID": 934,
+        "BRAND_ALIAS": "bosch-934",
+        "BRAND_ICON": "https://img.armtek.ru/img/uploader/assortment/7e1/c3945cb272381ec4cc62d38ac4b617e1/images/bosch_301810001692362762.webp",
+        "REVIEW_COUNT": 2,
+        "RATING": "5",
+        "FAV_ID": null,
+        "PHOTO": [
+          "https://img.armtek.ru/img/article/554/55469/230x230/55469_0.webp"
+        ],
+        "REC": false,
+        "KWMENG": 0,
+        "POSNR": 0,
+        "GARANT": "",
+        "FAV": false
+      }
+    ],
+    "pagination": {
+      "currentPage": 1,
+      "perPage": 36,
+      "totalCount": 1,
+      "pageCount": 1
+    }
+  },
+  "arr_messages": []
+}

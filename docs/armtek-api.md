@@ -39,6 +39,13 @@ grep -oh 'setUrl(.\{0,140\}' *.js | sort -u                    # пути + ме
 Сегмент `ru` в пути — язык интерфейса, не страна: страна задаётся полем
 `VKORG` в теле запроса.
 
+## Лимит частоты **[проверено]**
+
+На частые вызовы поиска сайт отвечает `429` с телом
+`{"data":{"captchaHash":"…"},"arr_messages":[]}` — это просьба подождать и
+показать капчу, а не ошибка данных. Провайдер переводит 429 в понятный текст и
+не пытается решать капчу. Отпускает само за несколько минут.
+
 ## Соглашения
 
 - **Конверт.** Любой ответ — `{"data": …, "arr_messages": [], "execution_time":
@@ -286,6 +293,82 @@ https://armtek.ru/product/<ARTICLE_ALIAS>
 а `/tovar/…`, `/catalog/…`, `/<alias>` и `/product/<бренд>/<alias>` — 404;
 несуществующий алиас на `/product/` тоже 404, то есть это не заглушка SPA.
 
+Без алиаса сайт подставляет в тот же маршрут `ARTID` (`/product/<ARTID>`) — так
+делает его собственный шаблон карточки. Уценённая партия живёт отдельно:
+`/product/markdown/<alias>/<charg>`.
+
+### Остальные адреса **[из таблицы маршрутов Angular]**
+
+| страница | адрес |
+|---|---|
+| корзина | `/basket` |
+| заказы | `/profile/orders`; карточка — `/profile/orders/card?orderId=<VBELN>` или `?orderHash=<GUID>` |
+| гараж, профиль, избранное | `/profile/garage`, `/profile/info`, `/profile/favorite` |
+| поиск | `/search?text=<запрос>` |
+| категория | `/category/<alias>` |
+
+Отдельной страницы отзывов у товара нет: лента живёт на карточке и листается
+скроллом (`scrollToReviews()`), якоря в адресе тоже нет.
+
+## Подсказка и поиск по категории **[проверено]**
+
+```
+GET search-microservice/v1/autocomplete/search?type=3&query=фильтр%20масляный
+```
+```json
+{"history":[],"suggest":[…],"article":[…],"brands":[…],
+ "category":[{"ID":"8963","ALIAS":"filtry-maslyanye-8963","NAME":"Фильтры масляные",
+              "PATH":[{"ID":"1266","NAME":"Автозапчасти","ALIAS":"avtomobili-1266"},…]}]}
+```
+
+```
+POST search-microservice/v1/search/by-category
+{"query":"<ALIAS категории>","page":1,"typeView":"list",
+ "userInfo":{"VKORG":"4000","VSTELS_LIST":["ME86"]},
+ "linkingTargetId":58759,"linkingTargetType":"P"}
+```
+
+Ответ той же формы, что у `v1/search` (`articlesData` с `SUGGESTIONS`).
+
+`by-category` — основной путь поиска по названию у провайдера, и с машиной, и
+без; цена — один лишний вызов подсказки на каждый поиск. Категория берётся
+только тогда, когда хоть одно слово её названия нашлось в запросе: на артикул
+подсказка тоже отвечает какой-нибудь категорией, и без этой проверки поиск по
+номеру уходил бы в чужой раздел. Свободный поиск `POST v1/search` — это то, что сайт делает по Enter в
+строке поиска, и его выдача склеивается по бренду: на «фильтр масляный» первые
+восемь строк — грузовые фильтры STELLOX, а девятая и десятая уже
+«Кольцо уплотнительное». Клик по подсказанной категории ведёт на
+`assortment/category/<alias>`, то есть ровно в `by-category`, и там видно то,
+что человек искал. `categoryAlias` у свободного поиска сужает выдачу (1000 →
+854), но порядок строк не меняет.
+
+### Поиск с учётом машины **[проверено]**
+
+Это **единственная** ручка armtek, которая умеет фильтр по машине.
+`linkingTargetId` — идентификатор модификации TecDoc, `linkingTargetType` —
+`"P"` для легковых. Замеры на «фильтр масляный» → `filtry-maslyanye-8963`:
+
+| запрос | всего |
+|---|---|
+| свободный поиск `v1/search`, без машины | 997 |
+| `by-category` без машины | 53859 |
+| `by-category` + `linkingTargetId=58759` (Octavia III 1.8 TSI) | **392** |
+| `by-category` + `linkingTargetId=58750` (1.4 TSI) | 1029 |
+
+Свободный поиск `POST v1/search` машину не принимает: `linkingTargetId` и
+`linkingTargetType` он отбивает («Это поле не ожидалось»), а `indexedAutoId`
+принимает и игнорирует — это идентификатор ленивой VIN-идентификации laximo
+(`laximo-microservice/v1/unisearch/auto/identify`), и на нашем VIN она отдаёт
+пустой список.
+
+**`linkingTargetId` совпадает с `modificationId` из гаража autodoc** — оба
+сайта сидят на TecDoc, поэтому провайдер принимает в `--car` ref с любым из
+полей `linkingTargetId`, `modificationId` или `carId`: это одно и то же число.
+Проверено живьём, что оба написания дают одну выдачу (392 позиции). Проверено:
+`substitutes-microservice/v1/substitutes/get-vehicle-ids-and-car-info?manuId=106&modId=11195&linkingTargetType=P`
+содержит `carId: 58759`, а `get-model-series` для SKODA отдаёт `modelId: 11195`
+— те же числа, что у autodoc.
+
 ## Отзывы — `review-microservice/v2/*` **[проверено]**
 
 Лента отзывов существует и **читается гостевым токеном**. Ключ — `artId`
@@ -330,6 +413,17 @@ armtek нет — отзыв это один `text` и `rating` 1–5.
 `resource/get-list`, `POST review-microservice/v2/review`,
 `POST review-microservice/v2/review/set-is-remove/<id>`,
 `POST review-microservice/v2/review/uploader/upload-file`.
+
+### У склада (`KEYZAK`) имени нет **[проверено]**
+
+`KEYZAK` вида `MOV0000019` — внутренний код склада поставки, и человеческого
+названия у него нет нигде: его нет в строке выдачи (`STOCKS` у armtek — это
+акции, а не склады: `STOCK_TYPE_NAME` вроде «Товар со скидкой»), нет в
+`POST search-microservice/v1/search/all-suggestions` (там те же голые коды), и
+он не встречается в списке точек выдачи — `vstel` это другое пространство имён
+(`ME86`, `BR01`; всего 50 записей, поиск по `MOV0000019` даёт ноль). Сам сайт
+код склада человеку не показывает вовсе. Поэтому провайдер оставляет код и
+кладёт рядом срок — то единственное, чем строки складов отличаются.
 
 ## Точки выдачи — `GET delivery-microservice/v1/custom-vstel/list` **[проверено]**
 
@@ -458,13 +552,35 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
   `PUT garage/v2/update-transport`, `DELETE garage/v2/del-transport`,
   `POST garage/v2/upload-transport-file`, `…/upload-transport-image`.
 
-## Заказы — `order-microservice/v1/*`
+## Заказы — `order-microservice/v1/*` **[форма — из бандла]**
 
-`GET order-microservice/v1/order/get-info` **[проверено]** — список заказов.
-Параметры из фронта: `dateFrom`, `dateTo` (`YYYY-MM-DD`), `page`, а также флаги
-состояния `created`, `inProgress`, `closed`, `rejected` (по единице). У
-тестового аккаунта заказов нет — и без параметров, и с диапазоном 2020–2026
-ответ `data: []`, поэтому **форма заказа не проверена**.
+> **Форма заказа живьём не проверена.** У аккаунта заказов нет: ручка отвечает
+> `ORDER: []`. Проверен только сам вызов и конверт ответа; **все поля строки
+> заказа и позиции ниже сняты из бандла фронта**, а не с настоящего ответа.
+> Не считать их подтверждёнными.
+
+`GET order-microservice/v1/order/report` **[вызов проверен]** — список заказов; это
+его зовёт страница `/profile/orders`. `GET order-microservice/v1/order/get-info`
+— карточка одного заказа.
+
+Без параметров ответ приходит конвертом со страницей:
+
+```json
+{"KEY":"<кэш>","TTL":0,"PAGE":1,"PAGE_TTL":0,"ORDER":[]}
+```
+
+Параметры из фронта: `dateFrom`, `dateTo` (`YYYY-MM-DD`), `page`, `vkorg`, а
+также флаги состояния `created`, `inProgress`, `closed`, `rejected` (по
+единице). **Ловушка:** `dateFrom` и `dateTo` сервер принимает по отдельности, а
+любую их пару отбивает «`dateFrom`: Значение не является правильной датой» —
+поэтому провайдер дат не шлёт вовсе.
+
+**Форма заказа взята из бандла** (`chunk-FZVGACXA.js`) **[из бандла]**, а не с
+ответа: строка `ORDER[]` — `VBELN` (номер),
+`GUID`, `date`/`ORDER_DATE`/`CREDT`, `ORDER_STATUS`, `ORDER_STATUS_ALIAS`,
+`NETWR` (сумма), `PAYMENT_STATUS`, `PAYMENT_TYPE`, `ITEMS[]`; позиция —
+`ARTID`, `PIN`, `BRAND`, `NAME`/`ARTICLE_NAME`, `ARTICLE_ALIAS`, `KWMENG`,
+`PRICE`, `NETWR`, `POSITION_STATUS`, `CHARG`.
 
 Остальное **[из бандла]**: `…/order/get-full-position-statuses`, `…/delivery`,
 `…/proforma`, `…/order/report/purchases`, `…/order/positions/cancel`;
@@ -481,11 +597,11 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 
 ## Что провайдер уже умеет
 
-Контракт закрыт целиком: `login`, `logout`, `whoami`, `search`, `brands`,
-`offers` (с `--analogs`), `reviews`, `basket` (список, add, set, rm),
-`garage export`. Capabilities — `reviews`, `garage`, `analogs`, `basket`.
-Сверх контракта: `info <артикул> --brand`, `vstel [поиск]`,
-`raw <METHOD> <путь> [k=v…] [--body <json>]`.
+Контракт закрыт целиком: `login`, `logout`, `whoami`, `search`
+(в том числе `--car`), `brands`, `offers` (с `--analogs`), `info`, `analogs`,
+`reviews`, `orders`, `basket` (список, add, set, rm), `garage export`.
+Capabilities — `reviews`, `garage`, `analogs`, `basket`, `orders`.
+Сверх контракта: `vstel [поиск]`, `raw <METHOD> <путь> [k=v…] [--body <json>]`.
 
 Как сырые поля ложатся в контракт:
 
@@ -496,6 +612,7 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 | `Offer.deliveryDays` | `DLVDT` минус сегодня, **по календарным датам** | прошедшая дата даёт 0, не минус |
 | `quantity` | `RVALUE` | строка; `">20"` → 20 плюс `extra.quantityAtLeast: true` |
 | `Offer.seller` | константа `armtek` | продавец везде один, а человекочитаемого названия склада сайт не отдаёт |
+| `Product.name`, `Offer.name`, `BasketItem.name`, `Info.name` | `NAME`/`CUSTOM_NAME`, пропущенные через `cleanName` | в SAP-имени разметка: «фильтр масляный!\ Mazda 626…»; `!\` превращается в « · », пробелы схлопываются |
 | `extra.keyzak` | `KEYZAK` | код склада; `Offer.stock` не заполняется — в контракте это код со своим названием, а названия нет |
 | `Offer.analog` | сравнение `articleKey`/`brandKey` с запрошенной парой | |
 | `Offer.ref` | `ARTID`, `KEYZAK`, `PARNR`, `NUMZAK`, `PRICES1`, `PRICEP`, `WAERS`, `CHARG`, `MINBM`, `VSTEL` | этого хватает, чтобы собрать тело POST корзины без второго запроса |
@@ -505,6 +622,11 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 | `Car.*` | `brand`/`model_name`/`manufacture_year` — объекты `{value}`; пробег и двигатель — в `options[]` по ключам `mileage`, `engine_capacity`, `engine_type` | строки с `active !== "1"` пропускаем |
 | `offers --analogs` | `queryType: 1`, **ровно одна страница** из `pagination.pageCount` (на `0986452041` это 36 позиций из 557) | `--page` контракт для `offers` не предусматривает, поэтому о неполноте провайдер говорит в stderr через `ctx.warn`: сколько страниц есть и какая отдана. В stdout при `--json` по-прежнему ровно один объект |
 | `brands`, выбор бренда | страницы `queryType: 2` добираются до потолка в 5 (180 строк) | упёрлись в потолок — то же предупреждение в stderr: список брендов неполный |
+| `Product.url`, `Offer.url`, `BrandHit.url`, `BasketItem.url`, `Reviews.url` | `ARTICLE_ALIAS`, иначе `ARTID` | у уценённой партии — `/product/markdown/<alias>/<charg>`; отдельной страницы отзывов у сайта нет, поэтому `Reviews.url` — та же карточка |
+| `Info.*` | форма `card`: `CUSTOM_NAME`, минимум `PRICES1`, минимум срока по `DLVDT`, `KEYZAK` в `stock[].code`, срок строки в `stock[].deliveryDays` | имени у склада нет нигде (см. ниже), поэтому `stock[].name` пустое |
+| `OffersResult.total` | `pagination.totalCount` | сколько насчитал сайт: у `offers --analogs` и `analogs` строк в `items` меньше на весь хвост страниц |
+| `search --car` | `search/by-category` с `linkingTargetId` | ref принимает `linkingTargetId`, `modificationId` и `carId` как одно и то же число (модификация TecDoc) и `linkingTargetType` (по умолчанию `"P"`); ref без такого числа — предупреждение в stderr и обычный поиск |
+| `Order.*` | `order/report` | **форма из бандла**: живых заказов на аккаунте нет, маппер написан мягко и живьём не проверен |
 
 Неоднозначности: бренд, которого нет среди точных совпадений, — ошибка
 `ambiguous` со списком брендов (exit 2); артикул, которого нет вовсе, —
@@ -523,12 +645,14 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 `search-exact-bosch.json`, `search-analogs-paged.json`, `guest-token.json`,
 `reviews-list.json`, `reviews-rating.json`, `cart-list.json`, `cart-add.json`,
 `cart-put.json`, `cart-delete.json`, `vstel-list.json`, `garage-empty.json`,
-`error-validation.json` и три синтетических (у каждого причина в `_note`
-первой строкой файла): `client.json` (настоящая карточка клиента состоит из
-персональных данных целиком), `garage-cars.json` (гараж тестового аккаунта
-пуст, форма собрана из бандла фронта) и `search-exact-overflow.json` (страниц
-точной выдачи больше потолка `MAX_PAGES`, чтобы проверить предупреждение о
-неполном списке брендов).
+`error-validation.json`, `autocomplete.json`, `search-by-category.json`
+(с `linkingTargetId=58759`), `search-card-bosch.json`, `orders-empty.json`
+и четыре синтетических (у каждого причина в `_note` первой строкой файла):
+`client.json` (настоящая карточка клиента состоит из персональных данных
+целиком), `garage-cars.json` (гараж аккаунта пуст, форма собрана из бандла
+фронта), `orders.json` (заказов на аккаунте нет, поля взяты из бандла) и
+`search-exact-overflow.json` (страниц точной выдачи больше потолка
+`MAX_PAGES`, чтобы проверить предупреждение о неполном списке брендов).
 
 ## Что ещё есть в бандле
 

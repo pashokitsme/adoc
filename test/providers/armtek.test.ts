@@ -38,6 +38,14 @@ describe("ошибки", () => {
 		expect(mapHttpError(new Error("боль"))).toBeNull()
 	})
 
+	test("429 — это «подожди», а не простыня с captchaHash", () => {
+		const e = mapHttpError(new HttpError(429, "https://armtek.ru/rest/ru/x", '{"data":{"captchaHash":"abc"},"arr_messages":[]}'))
+		expect(e).toBeInstanceOf(ProviderError)
+		expect(e!.code).toBe("http")
+		expect(e!.message).toContain("подождать")
+		expect(e!.message).not.toContain("captchaHash")
+	})
+
 	test("не-ошибочные сообщения не считаются ошибками", () => {
 		expect(errorTexts({ arr_messages: [{ type: "S", text: "готово" }] })).toEqual([])
 		expect(errorTexts(null)).toEqual([])

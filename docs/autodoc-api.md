@@ -229,6 +229,45 @@ POST /api/catalog-universal-service/catalog-universal-goods/find-goods?CategoryI
 `totalCount: 0`. Полнотекстового поиска по товарам в этом эндпоинте нет —
 сначала подсказка, потом категория.
 
+#### Все параметры `find-goods` **[из бандла, проверены живьём]**
+
+Сигнатура из бандла — `findGoods(filters, CategoryId, PageNumber, SortingId,
+BrandName, Model, ModificationId, SearchText, IsCatalogsCar, Name,
+MaxResultCount)`; тело POST — фильтры, всё остальное в query.
+
+| параметр | смысл |
+|---|---|
+| `CategoryId` | категория; без неё выдача пустая |
+| `PageNumber` | **нумеруется с нуля** (сайт шлёт `pageNumber \|\| 0`) |
+| `MaxResultCount` | размер страницы (у сайта 20) |
+| `SortingId` | из `sorting` в ответе |
+| `BrandName` | марка машины, строкой |
+| `Model` | **`modelId` числом**, а не название модели |
+| `ModificationId` | модификация (TecDoc) |
+| `SearchText` | фильтр по названию внутри категории |
+| `IsCatalogsCar` | другой источник данных; с ним выдача пустая — не наш случай |
+
+### Поиск с учётом гаража **[проверено]**
+
+Фильтр по машине — это те же `BrandName` + `Model` + `ModificationId`, и
+работает он только когда пришли **все три**. Замеры на категории «Фильтры
+масляные» (4673), машина SKODA OCTAVIA III 1.8 TSI (`modelId` 11195,
+`modificationId` 58759):
+
+| параметры | `totalCount` |
+|---|---|
+| ничего | 5517 |
+| `ModificationId` один | 5517 |
+| `BrandName` | 657 |
+| `BrandName` + `Model` | 118 |
+| `BrandName` + `Model` + `ModificationId` | **36** |
+| `Model` = название модели вместо id | 657 (не матчится) |
+
+Сайт делает ровно это: страница категории берёт машину из гаража и передаёт
+`carParams.brandName`, `carParams.seriesModel` (это `modelId`) и
+`carParams.modificationId`. В адресе страницы машина живёт сегментом
+`car_<brandName>_<modelId>_<modificationId>`.
+
 ### Гараж
 
 ```
@@ -249,6 +288,87 @@ PUT /api/garage-service/garage/main-car/{carId}
 Внимание на две разные величины: у машины есть `id` (запись в гараже) и
 `modificationId` (модификация в каталоге). В ответе `products-lite` поле
 `carId` у товаров содержит именно **modificationId**, а не id записи гаража.
+
+### Адреса страниц сайта **[из таблицы маршрутов Angular]**
+
+SSR у сайта нет: любой путь отдаёт один и тот же shell, поэтому проверять
+адрес запросом бессмысленно. Маршруты сняты из бандла (`path:"…"` плюс места,
+где эти ссылки строятся).
+
+| страница | адрес |
+|---|---|
+| карточка товара | `/man/<manufacturerId>/part/<артикул>` |
+| отзывы | `/man/<manufacturerId>/part/<артикул>/reviews` |
+| применимость | `/man/<manufacturerId>/part/<артикул>/compatibility` |
+| прайс-лист продавцов | `/price/<manufacturerId>/<артикул>` |
+| корзина | `/cart` |
+| заказы | `/my/orders` (`all`, `ready`, `deliveries`) |
+| гараж | `/my/garage/<carId>` |
+| избранное, профиль | `/my/favorites`, `/my/profile` |
+| категория каталога | `/catalogs/universal/goods/<seoUrl>-<id>` |
+
+Артикул в адресе карточки сайт приводит к нижнему регистру — и в `canonical`
+тоже. Отдельной страницы у заказа нет, только список.
+
+### Заказы **[проверено]**
+
+```
+GET /api/order-service/orders/items[?BeginDate&EndDate&Statuses]
+```
+
+Отдаёт не заказы, а **позиции**: у каждой свой `id`, `status`, `total`,
+`createDate` и ровно один товар в `goods`. Умолчание по датам — последний
+месяц. У части позиций `createDate` приходит как `0001-01-01T00:00:00` — это
+пустое значение, а не дата.
+
+**Номер заказа — поле `number`.** Позиции с одним `number` — один заказ, и так
+же их складывает сам сайт: `GET /api/order-service/orders/ready` отдаёт
+`{"items":[{"number":4,"goods":[…]}]}`, то есть группирует **только по
+`number`**, не разделяя позиции разных `orderType`. Статус у позиций одного
+заказа при этом разный, общего статуса заказа в API нет.
+
+Смежное: `GET …/orders/grouped-history/<id позиции>` и `…/orders/details/<id
+позиции>` — история статусов **одной позиции**, а не состав заказа;
+`…/orders/info/<id>` отвечает 404; `GET …/orders/count` →
+`{"ready":5,"deliveries":0,"total":12884}`.
+
+```json
+{"dateFrom":"…","dateTo":"…","items":[
+  {"id":185465447,"number":6,"orderType":1,"price":152,"quantity":6,"total":912,
+   "status":{"id":3,"groupId":3,"name":"Закуплено","text":"Товары зарезервированы"},
+   "goods":{"manufacturerId":657,"manufacturerName":"VAG","goodsName":"Болт","article":"n90954802"},
+   "createDate":"2026-09-01T11:18:18.31","waitInShopDate":"2026-09-05T00:00:00",
+   "deliveryStatusName":"В магазине","isCancelable":false}]}
+```
+
+### Позиция корзины **[проверено]**
+
+Артикул, производитель и поставщик лежат **внутри `priceItem`**, плоских полей
+у позиции нет:
+
+```json
+{"id":831763982,"partnerId":7615,
+ "priceItem":{"article":"0986452041","manufacturer":{"id":30,"name":"BOSCH"},
+              "supplier":{"name":"TOT","description":"Оптовый склад"}},
+ "name":"Фильтр масляный","quantity":1,"price":614,"priceType":2,
+ "deliveryDays":3,"total":614,"minimalQuantity":1,"hash":"…"}
+```
+
+### Аналоги: `price-list/analogs` — это кросс-таблица, а не предложения **[проверено]**
+
+```
+GET /api/price-service/price-list/analogs?Article=0986452041&ManufacturerId=30
+```
+
+Отдаёт группы «Неофициальные замены» (208 позиций) и «Входит в состав узла»
+(9), но у каждой позиции только `article`, `manufacturer`, `rating`,
+`minimalPrice`, `minimalDeliveryDays` — **`items` (строки прайса) пустой у
+всех**. Купить по этому ответу нечего: ни продавца, ни `priceId`.
+
+Настоящие аналоги приходят **группами внутри `price-list/originals`**, рядом с
+точными предложениями: «Рекомендованные аналоги на складе Автодок»,
+«Рекомендованный аналог в магазине», «Рекомендованные партнёрами аналоги» —
+на `0986452041` это 22 строки из 64.
 
 ### Что требует токена
 

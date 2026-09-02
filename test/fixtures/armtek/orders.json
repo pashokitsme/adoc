@@ -1,0 +1,37 @@
+{
+  "_note": "Синтетическая фикстура: у аккаунта заказов нет, поля взяты из бандла сайта (chunk-FZVGACXA.js). Личных данных нет.",
+  "data": {
+    "KEY": "CACHEKEY",
+    "TTL": 0,
+    "PAGE": 1,
+    "PAGE_TTL": 0,
+    "ORDER": [
+      {
+        "VBELN": "1234567",
+        "GUID": "abc123",
+        "CREDT": "20260830",
+        "ORDER_STATUS": "В работе",
+        "ORDER_STATUS_ALIAS": "in_progress",
+        "NETWR": "1184.00",
+        "PAYMENT_STATUS": "not_paid",
+        "PAYMENT_TYPE": "card",
+        "ITEMS": [
+          {
+            "ARTID": 55469,
+            "PIN": "0 986 452 041",
+            "BRAND": "BOSCH",
+            "ARTICLE_NAME": "Фильтр масляный",
+            "ARTICLE_ALIAS": "filtr-maslyanyy-bosch-0-986-452-041-55469",
+            "KWMENG": 2,
+            "PRICE": "592.00",
+            "NETWR": "1184.00",
+            "POSITION_STATUS": "created",
+            "CHARG": ""
+          }
+        ]
+      }
+    ]
+  },
+  "arr_messages": [],
+  "execution_time": {"seconds": 0.1, "milliseconds": 100}
+}

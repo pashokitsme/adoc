@@ -4,7 +4,7 @@
 
 export const CONTRACT_VERSION = 1 as const
 
-export type Capability = "reviews" | "garage" | "analogs" | "basket"
+export type Capability = "reviews" | "garage" | "analogs" | "basket" | "orders"
 
 export type Rating = { average: number; count: number }
 
@@ -33,6 +33,7 @@ export type BrandHit = {
 	name?: string
 	rating?: Rating
 	images?: string[]
+	url?: string // карточка этого артикула у этого бренда на сайте
 	extra?: Record<string, unknown>
 }
 
@@ -64,6 +65,7 @@ export type Review = {
 	cons?: string
 	text: string
 	purchased?: boolean
+	url?: string // сам отзыв, если сайт его адресует
 }
 
 export type Reviews = {
@@ -71,6 +73,24 @@ export type Reviews = {
 	rating?: Rating & { histogram?: number[] } // от 5★ к 1★
 	summary?: { pros: string[]; cons: string[] }
 	items: Review[]
+	url?: string // страница отзывов на сайте
+}
+
+/** Карточка товара: то, что сайт показывает до перехода к предложениям. */
+export type Info = {
+	article: string
+	brand: string
+	name: string
+	url?: string // карточка на сайте
+	rating?: Rating & { histogram?: number[] } // от 5★ к 1★
+	images?: string[]
+	price?: number // «от», если сайт её даёт
+	currency?: "RUB"
+	deliveryDays?: number // минимальный срок, если сайт его даёт
+	/** Склады: `name` — только если у сайта оно есть, иначе виден код. */
+	stock?: { code: string; name?: string; quantity?: number; deliveryDays?: number }[]
+	description?: string
+	extra?: Record<string, unknown>
 }
 
 export type BasketItem = {
@@ -84,6 +104,7 @@ export type BasketItem = {
 	seller?: string
 	deliveryDays?: number
 	deliveryDate?: string
+	url?: string // карточка товара этой позиции
 	extra?: Record<string, unknown>
 }
 
@@ -105,6 +126,27 @@ export type Car = {
 	ref: Record<string, unknown>
 }
 
+export type OrderItem = {
+	article: string
+	brand: string
+	name: string
+	qty: number
+	price: number
+	sum?: number
+	url?: string
+}
+
+export type Order = {
+	id: string
+	date: string // ISO
+	status: string
+	total: number
+	currency: string
+	url?: string
+	items?: OrderItem[]
+	extra?: Record<string, unknown>
+}
+
 export type Command = { name: string; usage: string; about: string; auth: boolean }
 
 export type Describe = {
@@ -124,5 +166,9 @@ export type WhoamiResult = { ok: boolean; display?: Display }
 /** `extra` — провайдерское расширение (у autodoc — список найденных категорий). */
 export type SearchResult = { items: Product[]; total?: number; extra?: Record<string, unknown> }
 export type BrandsResult = { items: BrandHit[] }
-export type OffersResult = { items: Offer[] }
+/** `total` — сколько предложений насчитал сайт, если он это говорит: строк в
+ *  `items` может быть меньше (страница, лимит). */
+export type OffersResult = { items: Offer[]; total?: number }
 export type CarsResult = { cars: Car[] }
+export type InfoResult = { info: Info }
+export type OrdersResult = { items: Order[] }

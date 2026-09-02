@@ -1,0 +1,6 @@
+{
+  "_note": "Записано живьём 2026-09-02: у аккаунта заказов нет. KEY заменён.",
+  "data": {"KEY": "CACHEKEY", "TTL": 0, "PAGE": 1, "PAGE_TTL": 0, "ORDER": []},
+  "arr_messages": [],
+  "execution_time": {"seconds": 0.1, "milliseconds": 100}
+}
