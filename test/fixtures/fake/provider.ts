@@ -201,6 +201,11 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		crosses: async (_ctx, article, brand) => {
 			await gate("CROSSES")
 			if (knob(id, "EMPTY_CROSSES")) return { items: [] }
+			// Кросс-ссылки считаются для пары «артикул + бренд»: у другого
+			// бренда того же номера они свои, и путать их нельзя.
+			if (brandKey(brand) === brandKey("OTHER")) {
+				return { items: [{ article: "OTHER-CROSS", brand: "OTHER", kind: "aftermarket" as const, name: "замена OTHER", url: page("OTHER-CROSS") }] }
+			}
 			return { items: [
 				{ article: "CROSS-1", brand: "OEM", kind: "aftermarket" as const, name: `замена ${article}`, url: page("CROSS-1") },
 				{ article: `${id.toUpperCase()}-KIT`, brand, kind: "part-of" as const, name: "узел целиком", url: page(`${id.toUpperCase()}-KIT`) },

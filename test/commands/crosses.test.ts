@@ -61,6 +61,13 @@ describe("adoc crosses", () => {
 		expect(j.crosses.find(c => c.article === "ALPHA-KIT")!.kind).toBe("part-of")
 	})
 
+	test("кроссы считаются для пары артикул+бренд, а не для номера", async () => {
+		const vag = await crosses(["MULTI-1", "VAG"])
+		const other = await crosses(["MULTI-1", "OTHER"])
+		expect(vag.j.crosses.map(c => c.article)).not.toContain("OTHER-CROSS")
+		expect(other.j.crosses.map(c => c.article)).toEqual(["OTHER-CROSS"])
+	})
+
 	test("--limit режет и говорит, сколько всего", async () => {
 		const r = await run(["crosses", "n90954802", "--limit", "1"])
 		expect(r.stdout).toContain("показано 1 из 3")

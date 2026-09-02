@@ -10,7 +10,7 @@ import { accessToken, decodeClaims, login, publicRead, whoami, type Account } fr
 import * as brand from "./brand.ts"
 import { commands } from "./commands.ts"
 import {
-	bestCategory, carTarget, categoryQueries, isRef, productUrl, refOfCartItem, toBasket, toBrandHits, toCars, toInfo,
+	bestCategory, carTarget, categoryQueries, isRef, productUrl, sameKind, refOfCartItem, toBasket, toBrandHits, toCars, toInfo,
 	toOffers, toOrders, toProducts, toReviews, writeItem, type ArmtekRef,
 } from "./map.ts"
 
@@ -202,8 +202,14 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 		const all = await api.search({ query: article, queryType: 1, page: ctx.page, typeView: "list", ...p }, token)
 		const want = articleKey(article)
 		const wantBrand = brandKey(row.BRAND)
+		const source = row.NAME ?? ""
 		const items = (all.articlesData ?? [])
 			.filter(a => articleKey(a.PIN) !== want || brandKey(a.BRAND) !== wantBrand)
+			// Кросс-ссылка спрашивается про пару «артикул + бренд», а выдача
+			// собрана по одному номеру: под ним у armtek лежат и однофамильцы
+			// других брендов (масло, датчик, щётки под номером 900355), и они
+			// этой детали не замена. Отсеиваем по названию.
+			.filter(a => sameKind(source, a.NAME ?? ""))
 			.map(a => ({
 				article: a.PIN,
 				brand: a.BRAND,

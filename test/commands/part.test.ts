@@ -156,6 +156,17 @@ describe("adoc part", () => {
 		expect(r.stdout).toContain("в артикуле пробел")
 	})
 
+	test("номер делят несколько брендов — под шапкой это сказано", async () => {
+		const r = await run(["part", "MULTI-1", "VAG"])
+		expect(r.code).toBe(0)
+		expect(r.stdout).toContain("номер делят")
+		expect(r.stdout).toContain("OTHER")
+	})
+
+	test("уникальный номер обходится без пометки", async () => {
+		expect((await run(["part", "n90954802"])).stdout).not.toContain("номер делят")
+	})
+
 	test("бренд неоднозначен — exit 2 и таблица вариантов с колонкой «где»", async () => {
 		const r = await run(["part", "multi1"])
 		expect(r.code).toBe(2)

@@ -3,7 +3,7 @@
 // Сами таблицы выдачи рисует sdk/render.ts: у обёртки и у провайдера одни и
 // те же колонки обязаны выглядеть одинаково, второго рендера в проекте нет.
 
-import { TOOL, bold, dim, green, hyperlink, linksMode, red, table, yellow } from "../sdk/index.ts"
+import { TOOL, bold, brandKey, dim, green, hyperlink, linksMode, red, table, yellow } from "../sdk/index.ts"
 import type { Col, Display } from "../sdk/index.ts"
 import type { Garage, GarageCar } from "./garage.ts"
 import type { OfferRow } from "./merge.ts"
@@ -105,6 +105,19 @@ export function cut(shown: number, total: number, site?: number): string[] {
 	if (more && siteMore) return [hint(`показано ${shown} из ${total}, а всего у сайтов ${site} — --limit <n> и --page <n>`)]
 	if (more) return [hint(`показано ${shown} из ${total} — --limit <n>`)]
 	return [hint(`показано ${shown}, всего у сайтов ${site} — --page <n>`)]
+}
+
+/**
+ * Пометка «номер делят несколько брендов». У armtek один и тот же номер носят
+ * товары разных производителей — под 900355 лежат и пыльник SACHS, и моторное
+ * масло SINTEC, — и название строки само по себе ни о чём не говорит, пока не
+ * видно, что номер общий. Показывается только когда брендов и правда больше
+ * одного, чтобы не пугать там, где номер уникален.
+ */
+export function sharedNumber(brands: { brand: string }[], chosen: string): string[] {
+	const others = brands.map(b => b.brand).filter(b => brandKey(b) !== brandKey(chosen))
+	if (!others.length) return []
+	return [hint(`номер делят ${brands.length} бренда(ов): ещё ${others.join(", ")} — название смотреть у своего`)]
 }
 
 /** ★ — основная машина; «СВЯЗИ» — сайты, откуда машина импортирована. */

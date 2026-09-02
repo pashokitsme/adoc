@@ -14,7 +14,7 @@ import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
 import { siteTotal, splitOffers } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { cut, hint, providerCol } from "../core/render.ts"
+import { cut, hint, providerCol, sharedNumber } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 import type { Provider } from "../core/registry.ts"
@@ -91,6 +91,7 @@ async function onePart(ctx: Ctx, providers: Provider[], it: BatchItem, batch: bo
 		render: () => {
 			const out = [
 				`${cyan(article)} · ${bold(brand.brand)} · ${dim(brand.providers.join(", "))}`,
+				...sharedNumber(all, brand.brand),
 				"",
 				renderOffers(exact, [providerCol]),
 			]

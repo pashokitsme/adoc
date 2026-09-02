@@ -8,7 +8,7 @@ import { brandOf, limitOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
-import { blockTitle } from "../core/render.ts"
+import { blockTitle, sharedNumber } from "../core/render.ts"
 import { parseInfo } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -47,8 +47,13 @@ export async function cmdInfo(ctx: Ctx): Promise<Output> {
 		code,
 		render: () => f.got.length
 			// Карточку целиком рисует SDK: у провайдера и у обёртки она обязана
-			// выглядеть одинаково. Обёртка добавляет только имя сайта.
-			? f.got.map(g => `\n${blockTitle(g.provider)}\n${renderInfo(g.value.info, g.value.offers.slice(0, limit))}`).join("\n")
+			// выглядеть одинаково. Обёртка добавляет имя сайта и, если номер не
+			// уникален, предупреждение об этом: название чужого бренда под тем
+			// же номером бывает совсем от другой детали.
+			? [
+				...sharedNumber(resolved.all, brand.brand),
+				...f.got.map(g => `\n${blockTitle(g.provider)}\n${renderInfo(g.value.info, g.value.offers.slice(0, limit))}`),
+			].join("\n")
 			: allFailed(f) ? "ни один сайт не ответил" : "карточки нет",
 	}
 }

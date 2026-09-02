@@ -251,6 +251,31 @@ const sameWord = (a: string, b: string): boolean => {
 	return i >= Math.min(4, n)
 }
 
+/**
+ * Слова названия, по которым деталь узнаётся. Числа выкидываются нарочно: имя
+ * строки у armtek почти всегда содержит сам номер, и по нему «моторное масло
+ * 900355» роднится с «пыльником 900 355» — то есть ровно с тем, от чего эта
+ * проверка и защищает. Короткие слова тоже мимо: «vw», «зад» и «шт» есть у
+ * всего подряд.
+ */
+const kindWords = (s: string): string[] =>
+	words(s).filter(w => w.length >= 4 && /\p{L}/u.test(w) && !/^\d+$/.test(w))
+
+/**
+ * Похожи ли названия настолько, чтобы считать строки одной и той же деталью.
+ * Номер у armtek общий на всю базу: «900355» — это и моторное масло SINTEC, и
+ * датчик MEC-DIESEL, и щётки CARBON, и пыльник SACHS. Строку-однофамильца от
+ * настоящей замены отличает только название, и одного общего значимого слова
+ * («пыльник», «амортизатор») для этого достаточно: замена того же узла зовётся
+ * теми же словами, а чужой товар — совсем другими.
+ */
+export function sameKind(a: string, b: string): boolean {
+	const mine = kindWords(a)
+	const theirs = kindWords(b)
+	if (!mine.length || !theirs.length) return false
+	return theirs.some(w => mine.some(x => sameWord(w, x)))
+}
+
 export function bestCategory<T extends { NAME: string }>(cats: T[], query: string): T | undefined {
 	const q = words(query)
 	let best: T | undefined
