@@ -1,6 +1,6 @@
 ---
 name: adoc
-description: Use when looking up a car part by number or by name across parts shops (autodoc.ru, armtek.ru) — price, availability, delivery time, rating, reviews, analogues — or when working with the user's basket on those sites and their local garage. Also covers why those sites cannot be scraped and how to reach endpoints the CLI has no command for.
+description: Use when looking up a car part by number or by name across parts shops (autodoc.ru, armtek.ru) — price, availability, delivery time, rating, reviews, analogues, product page links — or when working with the user's basket, orders and local garage on those sites. Also covers why those sites cannot be scraped and how to reach endpoints the CLI has no command for.
 ---
 # adoc
 
@@ -19,15 +19,25 @@ CLI-агрегатор магазинов запчастей: одна кома�
 |---|---|
 | Есть артикул → цены, сроки, наличие везде | `adoc part <артикул> [бренд]` |
 | То же плюс аналоги | `adoc part <артикул> [бренд] --analogs` |
+| Только аналоги, целой таблицей | `adoc analogs <артикул> [бренд]` |
+| Карточка артикула: склады, гистограмма, ссылка | `adoc info <артикул> [бренд]` |
 | Только один сайт | `adoc part <артикул> --only autodoc` |
 | Название детали → артикулы | `adoc search <текст>` |
+| То же, но не под машину из гаража | `adoc search <текст> --no-car` · `--car <id>` |
 | Отзывы и оценки | `adoc reviews <артикул> [бренд]` |
 | Корзины всех сайтов | `adoc basket` |
-| Положить строку из выдачи `part` | `adoc basket add <#> [--qty <n>]` |
+| Положить строку из выдачи `part` или `analogs` | `adoc basket add <#> [--qty <n>]` |
 | Убрать / изменить | `adoc basket rm <сайт> <ID>` · `adoc basket set <сайт> <ID> --qty <n>` |
+| Заказы пользователя | `adoc orders` |
 | Машины пользователя | `adoc garage` |
 | Кто авторизован | `adoc accounts` (то же самое — `adoc whoami`) |
 | Команда конкретного сайта | `adoc <сайт> <команда> …` |
+
+Ссылки на страницы сайтов есть в каждой выдаче: в таблице — списком под ней
+(номер слева = колонка `#`), у блоков (корзина, отзывы, карточка) — в
+заголовке рядом с именем сайта. В `--json` это поле `url` объекта, а у
+склеенных строк `search` — `urls` (сайт → адрес). Показывай их пользователю:
+он идёт по ним на сайт.
 
 Машине — `--json`: ровно один JSON-объект в stdout, дальше `jq`. Без него
 таблица для человека; цвет гаснет сам при пайпе. Ошибка в `--json` приходит
@@ -74,9 +84,10 @@ CLI-агрегатор магазинов запчастей: одна кома�
 или похож на подкоманду, тот же идентификатор берёт флаг:
 `adoc basket rm <сайт> --id <ID>`.
 
-`adoc basket add <#>` берёт строку из последней выдачи `adoc part` (она живёт
-сутки в `~/.config/adoc/last-part.json`). Кэш переписывает каждая удавшаяся
-`part` — в том числе та, что ничего не нашла: после неё номеров нет вообще.
+`adoc basket add <#>` берёт строку из последней выдачи `adoc part` или
+`adoc analogs` (она живёт сутки в `~/.config/adoc/last-part.json`). Кэш
+переписывает каждая удавшаяся `part`/`analogs` — в том числе та, что ничего
+не нашла: после неё номеров нет вообще.
 Уцелеет он только после неудачи, когда шаг предложений не ответил ни у кого.
 Поэтому номер годен ровно для той выдачи, которую ты только что видел: кэш
 протух или обнулился — команда попросит повторить `part`, не выдумывай номера.
@@ -89,6 +100,13 @@ CLI-агрегатор магазинов запчастей: одна кома�
 модели: там марка, модель, модификация, год, VIN. Гадать не надо. `★` —
 основная машина. Гараж живёт локально, в `~/.config/adoc/garage.json`, а не на
 сайтах, и никуда не отправляется.
+
+`adoc search` по умолчанию ищет под **основную** машину гаража: сайту уходит
+только его собственный `ref` этой машины из `garage import` — не VIN и не
+гараж целиком. Над таблицей написано, какая машина участвовала и у каких
+сайтов; у кого привязки нет, тот ищет без машины и говорит об этом. Другая
+машина — `--car <id>`, без машины — `--no-car`. Если выдача выглядит странно
+узкой или широкой, посмотри именно на эту строку.
 
 `adoc garage import <сайт>` забирает машины с одного названного сайта и
 сливает: сначала по VIN, а если VIN не совпал — со своей машиной **без VIN** с
@@ -139,11 +157,13 @@ login --json` — он печатает токены в stdout; у обёртк�
 
 `adoc <сайт> <команда>` пробрасывается сайту как есть, вместе с `--help`.
 
-- **autodoc**: `goods <categoryId>`, `info <артикул> [--brand]`, `prices`,
-  `analogs`, `favorites`, `orders`, `profile`, `garage [parts|main]`,
-  `get <путь>`, `post <путь>`. Эндпоинт без команды — через `get`/`post`.
-- **armtek**: `info <артикул> --brand <имя>`, `vstel [поиск]`,
-  `raw <METHOD> <путь>` (умеет и писать, нужен вход).
+- **autodoc**: `goods <categoryId>`, `prices`, `favorites`, `profile`,
+  `garage [parts|main]`, `get <путь>`, `post <путь>`. Эндпоинт без команды —
+  через `get`/`post`.
+- **armtek**: `vstel [поиск]`, `raw <METHOD> <путь>` (умеет и писать, нужен вход).
+
+`info`, `analogs` и `orders` — команды контракта: они одинаковы у всех сайтов,
+и звать их надо обёрткой (`adoc info …`), а не через конкретный сайт.
 
 ## Когда API молчит
 
