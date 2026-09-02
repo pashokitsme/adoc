@@ -3,6 +3,7 @@
 // поведение крутится переменными окружения FAKE_<ID>_<КНОПКА>:
 //   DELAY=<мс>     ответить с задержкой (проверка таймаута)
 //   FAIL=<код>     любая контрактная команда падает этим кодом
+//   FAIL_OFFERS=<код>  падает только offers, а brands отвечает как обычно
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
@@ -16,10 +17,12 @@ export type FakeData = { article: string; brand: string; price: number; seller: 
 const knob = (id: string, name: string): string | undefined => process.env[`FAKE_${id.toUpperCase()}_${name}`]
 
 export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> {
-	const gate = async (): Promise<void> => {
+	// `what` — имя команды: на нём проверяется случай «бренд нашёлся, а
+	// предложения не отдались», в котором обёртка обязана не тронуть кэш.
+	const gate = async (what?: string): Promise<void> => {
 		const delay = knob(id, "DELAY")
 		if (delay) await Bun.sleep(Number(delay))
-		const fail = knob(id, "FAIL")
+		const fail = knob(id, "FAIL") ?? (what ? knob(id, `FAIL_${what}`) : undefined)
 		if (fail) throw new ProviderError(fail as ErrorCode, `${id}: так велено переменной окружения`)
 	}
 
@@ -96,7 +99,7 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		},
 
 		offers: async (_ctx, article, brand, { analogs }) => {
-			await gate()
+			await gate("OFFERS")
 			const hit = find(article).filter(r => brandKey(r.brand) === brandKey(brand))
 			const items = hit.map((r, i) => toOffer(r, i + 1))
 			// Аналог — другой артикул: обёртка обязана унести его в отдельную таблицу.

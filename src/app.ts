@@ -4,13 +4,17 @@
 // Единственное исключение — интерактивный `login`: его диалог идёт прямо в
 // терминал, иначе подсказка «Пароль >» появилась бы после ввода пароля.
 
-import { ProviderError, errorBody, exitCode, parseArgv, red, yellow } from "./sdk/index.ts"
+import { ProviderError, TOOL, errorBody, exitCode, parseArgv, red, renderBrands, yellow } from "./sdk/index.ts"
 import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
+import { cmdPart } from "./commands/part.ts"
 import { cmdProviders } from "./commands/providers.ts"
 import type { Ctx, Output } from "./core/ctx.ts"
-import { blame } from "./core/partial.ts"
+import { Ambiguous } from "./core/errors.ts"
+import type { MergedBrand } from "./core/merge.ts"
+import { blame, failureLine } from "./core/partial.ts"
 import { load, select, type Loaded } from "./core/registry.ts"
+import { hint, whereCol } from "./core/render.ts"
 
 // Флаги обёртки, которые берут значение. Булевы (--json, --analogs) сюда не
 // входят: parseArgv развернёт их сам.
@@ -24,6 +28,7 @@ type Handler = (ctx: Ctx) => Promise<Output>
 // Таблица команд обёртки. Остальные имена — не ошибка разбора, а вопрос к
 // самому провайдеру: `adoc armtek hello` появится в задаче 14.
 const COMMANDS: Record<string, Handler> = {
+	part: cmdPart,
 	providers: cmdProviders,
 	accounts: cmdAccounts,
 	whoami: cmdAccounts,
@@ -76,12 +81,23 @@ export async function run(argv: string[]): Promise<RunResult> {
 		const out = await handler(makeCtx(rest, flags, json, warn))
 		return { stdout: `${json ? JSON.stringify(out.json) : out.render()}\n`, stderr, code: out.code ?? 0 }
 	} catch (e) {
+		// Список вариантов, собранный из половины сайтов, — неполный список:
+		// молчать про упавшего нельзя ни человеку, ни машине.
+		if (e instanceof Ambiguous) for (const f of e.failures) warn(failureLine(f))
 		// Код в теле и код возврата — из одного места, иначе текстовый и
 		// машинный ответы разошлись бы.
 		const body = errorBody(e)
 		const code = exitCode(body.error.code)
-		if (json) return { stdout: `${JSON.stringify(body)}\n`, stderr, code }
-		return { stdout: "", stderr: `${stderr}${red(body.error.message)}\n`, code }
+		if (json) {
+			const full = e instanceof Ambiguous ? { error: { ...body.error, extra: { errors: e.failures } } } : body
+			return { stdout: `${JSON.stringify(full)}\n`, stderr, code }
+		}
+		// «Уточни бренд» — не ошибка, а список: человеку нужна таблица с
+		// колонкой «где», а не одна строка красным.
+		const table = e instanceof Ambiguous
+			? `${renderBrands(e.brands, [whereCol<MergedBrand>()])}\n${hint(`повтори с брендом: ${TOOL} part <артикул> <бренд> или --brand <бренд>`)}\n`
+			: ""
+		return { stdout: "", stderr: `${stderr}${red(body.error.message)}\n${table}`, code }
 	}
 }
 

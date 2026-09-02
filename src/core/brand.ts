@@ -25,7 +25,8 @@ export type Resolved = {
 export async function resolveBrand(
 	providers: Provider[], article: string, wanted: string | undefined, warn: (line: string) => void,
 ): Promise<Resolved> {
-	const step = await fanout(providers, p => invoke(p.bin, ["brands", article]), parseBrands, warn)
+	// id — чтобы наши собственные отказы называли провайдера, а не `bun`.
+	const step = await fanout(providers, p => invoke(p.bin, ["brands", article], { id: p.id }), parseBrands, warn)
 	const all = mergeBrands(article, step.got.map(g => ({ provider: g.provider, items: g.value })))
 	const base = { all, failures: step.failures, step }
 
@@ -35,10 +36,12 @@ export async function resolveBrand(
 		const hit = all.find(b => b.key === want)
 		// Названного бренда нет — показываем те, что есть: человек ошибается в
 		// написании чаще, чем сайт теряет производителя.
-		if (!hit) throw new Ambiguous(all)
+		if (!hit) throw new Ambiguous(all, step.failures, wanted)
 		return { brand: hit, ...base }
 	}
-	if (all.length > 1) throw new Ambiguous(all)
+	// Отказы уезжают вместе с вопросом: иначе «выбери из двух» промолчало бы о
+	// том, что третий сайт не ответил и вариантов на деле могло быть больше.
+	if (all.length > 1) throw new Ambiguous(all, step.failures)
 	return { brand: all[0]!, ...base }
 }
 
