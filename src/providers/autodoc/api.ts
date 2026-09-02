@@ -11,8 +11,19 @@ import type { Originals, RawBasket } from "./map.ts"
 /**
  * База API. Переопределяется только тестами (`ADOC_AUTODOC_BASE`), чтобы
  * поднять локальный сервер и проверить поведение на зависшем ответе.
+ * Принимается только localhost: по этому адресу уходит Bearer-токен, и
+ * переменная окружения не должна уметь увести его на чужой хост.
  */
-export const BASE = process.env.ADOC_AUTODOC_BASE || "https://web.autodoc.ru"
+function localBase(v: string | undefined): string | undefined {
+	if (!v) return undefined
+	try {
+		const host = new URL(v).hostname
+		return host === "localhost" || host === "127.0.0.1" || host === "[::1]" ? v : undefined
+	} catch {
+		return undefined
+	}
+}
+export const BASE = localBase(process.env.ADOC_AUTODOC_BASE) ?? "https://web.autodoc.ru"
 
 /**
  * Потолок ожидания сети. Без него зависший ответ держал бы процесс до
