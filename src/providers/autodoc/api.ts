@@ -94,11 +94,6 @@ export type CatalogGood = {
 	article: string; name: string; manufacturer: Manufacturer
 	price?: number; quantity?: number; rating?: Rating; isFavorite?: boolean
 }
-export type Offer = {
-	price?: number; deliveryDays?: number; quantity?: number
-	partnerName?: string; distributorName?: string; name?: string
-	manufacturer?: Manufacturer; article?: string
-}
 
 // --- публичное ------------------------------------------------------------
 

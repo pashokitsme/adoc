@@ -75,23 +75,6 @@ export function fold(text: string, width = 76, indent = "  "): string {
 
 export const heading = (s: string) => `\n${bold(s)}`
 
-/** Маскировка для вывода: показываем ровно столько, чтобы человек себя узнал. */
-export function maskEmail(v: string | undefined): string {
-	if (!v) return "—"
-	const at = v.indexOf("@")
-	if (at < 1) return v
-	const name = v.slice(0, at)
-	const head = name.slice(0, Math.min(2, name.length))
-	return `${head}${"•".repeat(Math.max(1, name.length - head.length))}${v.slice(at)}`
-}
-
-export function maskPhone(v: string | undefined): string {
-	if (!v) return "—"
-	const digits = v.replace(/\D/g, "")
-	if (digits.length < 4) return v
-	return `${v.startsWith("+") ? "+" : ""}${digits[0] ?? ""}••••••${digits.slice(-4)}`
-}
-
 /** Пары «поле — значение» с выровненной колонкой. */
 export function fields(rows: [string, string][], indent = "  "): string {
 	if (!rows.length) return ""
