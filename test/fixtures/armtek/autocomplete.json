@@ -1,0 +1,39 @@
+{
+  "_note": "Записано живьём 2026-09-02; история запросов и артикулы вырезаны.",
+  "data": {
+    "suggest": [],
+    "category": [
+      {
+        "ID": "8963",
+        "ALIAS": "filtry-maslyanye-8963",
+        "NAME": "Фильтры масляные",
+        "PATH": [
+          {
+            "ID": "1266",
+            "NAME": "Автозапчасти",
+            "URL": "/category/avtomobili-1266",
+            "ALIAS": "avtomobili-1266"
+          },
+          {
+            "ID": "8811",
+            "NAME": "Фильтры автомобильные",
+            "URL": "/category/filtry-8811",
+            "ALIAS": "filtry-8811"
+          },
+          {
+            "ID": "8963",
+            "NAME": "Фильтры масляные",
+            "URL": "/category/filtry-maslyanye-8963",
+            "ALIAS": "filtry-maslyanye-8963"
+          }
+        ],
+        "ICON": "",
+        "IMAGE_LINK": ""
+      }
+    ],
+    "brands": [],
+    "article": [],
+    "history": []
+  },
+  "arr_messages": []
+}

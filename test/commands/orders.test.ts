@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV, accountStore } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
-import type { Order } from "../../src/core/delta.ts"
+import type { Order } from "../../src/sdk/index.ts"
 
 type OrdersJson = { providers: Record<string, Order[]>; errors: { provider: string; code: string }[] }
 
@@ -38,16 +38,17 @@ describe("adoc orders", () => {
 	test("заказы обоих сайтов, ключ — id провайдера", async () => {
 		const j = await orders()
 		expect(Object.keys(j.providers)).toEqual(["alpha", "beta"])
-		expect(j.providers.alpha![0]).toMatchObject({ id: "alpha-100", status: "доставлен", currency: "RUB" })
-		expect(j.providers.alpha![0]!.items![0]).toMatchObject({ article: "N90954802", qty: 1 })
+		expect(j.providers.alpha![0]).toMatchObject({ id: "alpha-1", status: "выдан", currency: "RUB" })
+		expect(j.providers.alpha![0]!.items![0]).toMatchObject({ article: "N90954802", qty: 2 })
 	})
 
-	test("таблица по сайтам с номером, датой и ссылкой на заказ", async () => {
+	test("блок на сайт: номер, дата, статус и ссылка на заказ", async () => {
 		const r = await run(["orders"])
 		expect(r.code).toBe(0)
-		expect(r.stdout).toContain("НОМЕР")
+		expect(r.stdout).toContain("№ alpha-1")
 		expect(r.stdout).toContain("2026-01-02")
-		expect(r.stdout).toContain("https://alpha.example/orders/100")
+		expect(r.stdout).toContain("выдан")
+		expect(r.stdout).toContain("https://alpha.example/orders/1")
 	})
 
 	test("сайт без заказов не спрашивается, но назван в stderr", async () => {

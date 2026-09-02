@@ -26,7 +26,7 @@ describe("adoc-autodoc", () => {
 	test("describe", async () => {
 		const r = await run(["describe"])
 		expect(r.json.id).toBe("autodoc")
-		expect(r.json.capabilities).toEqual(["reviews", "garage", "analogs", "basket"])
+		expect(r.json.capabilities).toEqual(["reviews", "garage", "analogs", "basket", "orders"])
 	})
 	test("brands", async () => {
 		const r = await run(["brands", "n90954802"])
@@ -66,7 +66,7 @@ describe("adoc-autodoc", () => {
 	test("garage export", async () => {
 		await live()
 		const r = await run(["garage", "export"])
-		expect(r.json.cars[0].ref).toEqual({ carId: 10, modificationId: 58759, main: true })
+		expect(r.json.cars[0].ref).toEqual({ carId: 10, modificationId: 58759, modelId: 11195, brandName: "SKODA", main: true })
 	})
 	test("basket", async () => {
 		await live()

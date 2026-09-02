@@ -2,8 +2,7 @@
 // ленивый доступ к провайдерам, а возвращает две формы одного ответа: JSON для
 // машины и текст для человека. Печатает их не команда, а app.ts.
 
-import type { Flags } from "../sdk/index.ts"
-import type { Cap } from "./delta.ts"
+import type { Capability, Flags } from "../sdk/index.ts"
 import type { Loaded, Provider, SelectOpts } from "./registry.ts"
 
 export type Ctx = {
@@ -20,7 +19,7 @@ export type Ctx = {
 	 * Пустой выбор — ошибка: команде выдачи спрашивать некого. Исключение
 	 * просит явно тот, кому есть что сказать и без сайтов (`accounts`).
 	 */
-	pick(cap?: Cap, opts?: SelectOpts): Promise<Provider[]>
+	pick(cap?: Capability, opts?: SelectOpts): Promise<Provider[]>
 }
 
 export type Output = { json: unknown; render(): string; code?: 0 | 1 | 2 }

@@ -85,7 +85,7 @@ async function spawnRaw(c: Case, args: string[]): Promise<{ code: number; out: s
 	return { code: await proc.exited, out, err }
 }
 
-const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket"]
+const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket", "orders"]
 
 for (const c of cases) {
 	describe(`контракт: ${c.id}`, () => {

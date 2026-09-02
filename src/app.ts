@@ -22,7 +22,7 @@ import { VALUE_FLAGS, helpText } from "./core/help.ts"
 import type { MergedBrand } from "./core/merge.ts"
 import { blame, failureLine } from "./core/partial.ts"
 import { discover, load, select, type Loaded } from "./core/registry.ts"
-import { hint, linkList, numCol, whereCol } from "./core/render.ts"
+import { extraLinks, hint, numCol, whereCol } from "./core/render.ts"
 
 type Handler = (ctx: Ctx) => Promise<Output>
 
@@ -125,7 +125,7 @@ export async function run(argv: string[]): Promise<RunResult> {
 		const table = e instanceof Ambiguous
 			? `${[
 				renderBrands(e.brands, [numCol(e.brands), whereCol<MergedBrand>()]),
-				...linkList(e.brands),
+				...extraLinks(e.brands),
 				"",
 				hint(`повтори с брендом: ${TOOL} ${ran} <артикул> <бренд> или --brand <бренд>`),
 			].join("\n")}\n`

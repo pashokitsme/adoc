@@ -3,11 +3,11 @@
 // сводится — сайты показывают разное, и общий знаменатель у них слишком
 // беден. Поэтому здесь блок на сайт, как у reviews.
 
-import { need } from "../sdk/index.ts"
+import { need, renderInfo } from "../sdk/index.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
-import { blockTitle, infoCard } from "../core/render.ts"
+import { blockTitle } from "../core/render.ts"
 import { parseInfo } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -42,7 +42,9 @@ export async function cmdInfo(ctx: Ctx): Promise<Output> {
 		},
 		code,
 		render: () => f.got.length
-			? f.got.map(g => `\n${blockTitle(g.provider, `· ${brand.brand} ${article}`, g.value.url)}\n${infoCard(g.value)}`).join("\n")
+			// Карточку целиком рисует SDK: у провайдера и у обёртки она обязана
+			// выглядеть одинаково. Обёртка добавляет только имя сайта.
+			? f.got.map(g => `\n${blockTitle(g.provider)}\n${renderInfo(g.value)}`).join("\n")
 			: allFailed(f) ? "ни один сайт не ответил" : "карточки нет",
 	}
 }

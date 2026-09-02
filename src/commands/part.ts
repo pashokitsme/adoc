@@ -10,7 +10,7 @@ import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
 import { splitOffers } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { cut, hint, linkList, providerCol } from "../core/render.ts"
+import { cut, hint, providerCol } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -80,13 +80,9 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 				renderOffers(exact, [providerCol]),
 			]
 			out.push(...cut(exact.length, split.offers.length))
-			// Ссылки на карточки — под своей таблицей: у блока аналогов нумерация
-			// продолжает основную, и список ссылок обязан продолжать её же.
-			out.push(...linkList(exact))
 			if (analogs) {
 				out.push(heading("Аналоги"), extra.length ? renderOffers(extra, [providerCol], exact.length + 1) : dim("аналогов нет"))
 				out.push(...cut(extra.length, split.analogs.length))
-				out.push(...linkList(extra, exact.length + 1))
 			} else if (split.analogs.length) {
 				out.push("", hint(`есть и аналоги — --analogs, или ${TOOL} analogs ${article} ${brand.brand}`))
 			}

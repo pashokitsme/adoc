@@ -13,7 +13,7 @@ import { carById, carLabel, loadGarage, mainCar, type GarageCar } from "../core/
 import { invoke } from "../core/invoke.ts"
 import { mergeProducts, type MergedProduct } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { cut, linkList, numCol, tips, whereCol } from "../core/render.ts"
+import { cut, extraLinks, numCol, tips, whereCol } from "../core/render.ts"
 import { parseProducts } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -80,7 +80,7 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 			...(car && used.length ? [`${dim("машина:")} ${carLabel(car)} ${dim(`· ${used.join(", ")} · искать без машины: --no-car`)}`, ""] : []),
 			renderProducts(items, [numCol(items), whereCol<MergedProduct>()]),
 			...cut(items.length, merged.length),
-			...linkList(items),
+			...extraLinks(items),
 			// Подсказки идут одним блоком: пустая строка между ними разносит
 			// короткий совет на пол-экрана. Подсказка про `part` под пустой
 			// выдачей — совет в никуда: там нет строки, по которой спрашивать.

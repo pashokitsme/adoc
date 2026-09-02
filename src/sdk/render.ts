@@ -1,7 +1,7 @@
 // render.ts — вывод в терминал. Цвета гаснут вне TTY и при NO_COLOR,
 // чтобы `adoc ... | grep` не ловил escape-последовательности.
 
-import type { Basket, BasketItem, BrandHit, Car, Display, Offer, Product, Reviews } from "./contract.ts"
+import type { Basket, BasketItem, BrandHit, Car, Display, Info, Offer, Order, Product, Reviews } from "./contract.ts"
 
 // Решение принимается на каждый вызов, а не один раз при импорте: модуль
 // грузится раньше, чем становится известно, куда пойдёт вывод, и запомненное
@@ -104,31 +104,51 @@ export const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim(
 export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "ничего не найдено"
 	return table(items.map(p => cells(cols, p, [
-		cyan(p.article), bold(p.brand), p.name.slice(0, 50),
-		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
-	])), heads(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
+		cyan(p.article), bold(p.brand), p.name.slice(0, 44),
+		money(p.price), qtyCell(p.quantity), ratingCell(p.rating), link(p.url),
+	])), heads(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ", "ССЫЛКА"]))
 }
 
 export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "не найдено"
-	return table(items.map(b => cells(cols, b, [bold(b.brand), cyan(b.article), b.name ?? "", ratingCell(b.rating)])),
-		heads(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
+	// имя режется, как и в остальных таблицах: у armtek в него уезжает
+	// применимость целиком, и колонка ссылок оказалась бы за краем экрана
+	return table(items.map(b => cells(cols, b, [bold(b.brand), cyan(b.article), (b.name ?? "").slice(0, 44), ratingCell(b.rating), link(b.url)])),
+		heads(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ", "ССЫЛКА"]))
 }
 
-/** `from` — номер первой строки: у блока аналогов нумерация продолжает основную. */
+/**
+ * Ссылка колонкой. Пустая клетка, а не «—»: колонка со ссылками и так самая
+ * широкая, лишний мусор в ней только мешает читать.
+ */
+export const link = (url: string | undefined): string => (url ? dim(url) : "")
+
+/**
+ * `from` — номер первой строки: у блока аналогов нумерация продолжает основную.
+ *
+ * Ссылка у предложений одной детали одна и та же на десяток строк, поэтому
+ * печатается только первая встреча каждого адреса: колонка остаётся узкой, а
+ * каждая карточка всё равно названа ровно один раз.
+ */
 export function renderOffers<T extends Offer>(items: T[], cols: Col<T>[] = [], from = 1): string {
 	if (!items.length) return "предложений нет"
-	return table(items.map((o, i) => cells(cols, o, [
-		String(from + i), bold(o.brand), (o.name ?? "").slice(0, 40), money(o.price), qtyCell(o.quantity),
-		o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
-		o.seller ?? dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "",
-	])), heads(cols, ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
+	const seen = new Set<string>()
+	return table(items.map((o, i) => {
+		const url = o.url && !seen.has(o.url) ? o.url : undefined
+		if (o.url) seen.add(o.url)
+		return cells(cols, o, [
+			String(from + i), bold(o.brand), (o.name ?? "").slice(0, 36), money(o.price), qtyCell(o.quantity),
+			o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
+			o.seller ?? dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "", link(url),
+		])
+	}), heads(cols, ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", "", "ССЫЛКА"]))
 }
 
 export function renderReviews(r: Reviews): string {
 	const out: string[] = [dim(`отзывов: ${r.total}`)]
 	if (r.rating) out.push(`${stars(r.rating.average)}  ${bold(r.rating.average.toFixed(2))}  ${dim(`${r.rating.count} оценок`)}`)
 	for (const l of bar(r.rating?.histogram)) out.push(l)
+	if (r.url) out.push(dim(r.url))
 	if (r.summary && (r.summary.pros.length || r.summary.cons.length)) {
 		out.push(heading("Выжимка"))
 		for (const p of r.summary.pros) out.push(`  ${green("+")} ${p}`)
@@ -136,7 +156,7 @@ export function renderReviews(r: Reviews): string {
 	}
 	for (const it of r.items) {
 		const who = [it.author, it.purchased ? "покупка подтверждена" : ""].filter(Boolean).join(" · ")
-		out.push(heading(`${it.rating ? stars(it.rating) + "  " : ""}${who || "аноним"}`) + (it.date ? dim(`  ${it.date}`) : ""))
+		out.push(heading(`${it.rating ? stars(it.rating) + "  " : ""}${who || "аноним"}`) + (it.date ? dim(`  ${it.date}`) : "") + (it.url ? dim(`  ${it.url}`) : ""))
 		if (it.pros) out.push(`  ${green("+")} ${it.pros}`)
 		if (it.cons) out.push(`  ${red("−")} ${it.cons}`)
 		if (it.text) out.push(fold(it.text))
@@ -151,12 +171,73 @@ export const basketTotal = (b: Basket): number =>
 export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
 	if (!b.items.length) return "корзина пуста"
 	const rows = b.items.map((it, i) => cells(cols, it, [
-		`${i + 1}`, dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 36),
+		`${i + 1}`, dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 32),
 		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
-		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
+		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")), link(it.url),
 	]))
-	return table(rows, heads(cols, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"])) +
-		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}`
+	return table(rows, heads(cols, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК", "ССЫЛКА"])) +
+		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}` +
+		(b.url ? `\n${dim(b.url)}` : "")
+}
+
+/**
+ * Карточка товара. Порядок блоков тот же, что у сайта: название, оценки,
+ * цена и наличие, характеристики — и ссылка последней строкой, чтобы её было
+ * видно, не листая склады.
+ */
+export function renderInfo(i: Info): string {
+	const out: string[] = [`${bold(i.name)}  ${cyan(i.article)}  ${i.brand}`]
+
+	out.push(heading("Оценки"))
+	out.push(`  ${stars(i.rating?.average)}  ${bold(i.rating ? i.rating.average.toFixed(2) : "—")}  ${dim(`${i.rating?.count ?? 0} оценок`)}`)
+	out.push(...bar(i.rating?.histogram))
+
+	const price: [string, string][] = []
+	if (i.price !== undefined) price.push(["цена от", bold(money(i.price))])
+	if (i.deliveryDays !== undefined) price.push(["срок", days(i.deliveryDays)])
+	if (price.length) {
+		out.push(heading("Цена и срок"))
+		out.push(fields(price))
+	}
+
+	// Код склада человеку не нужен — он есть в --json; в таблице от него только
+	// лишняя колонка, а у сайтов с одним безымянным складом ещё и бессмыслица.
+	if (i.stock?.length) {
+		out.push(heading("Наличие"))
+		out.push(table(i.stock.map(s => ["  " + (s.name ?? s.code), qtyCell(s.quantity)])))
+	}
+
+	if (i.description) {
+		out.push(heading("Описание"))
+		out.push(fold(i.description))
+	}
+
+	if (i.url) out.push("", dim(i.url))
+	return out.join("\n")
+}
+
+/**
+ * Заказы: шапка строкой, позиции — вложенной таблицей под ней. Повторный
+ * адрес не печатается: у сайта без страницы отдельного заказа ссылка одна на
+ * весь список, и дублировать её у каждой строки незачем.
+ */
+export function renderOrders(items: Order[]): string {
+	if (!items.length) return "заказов нет"
+	const out: string[] = []
+	const seen = new Set<string>()
+	for (const o of items) {
+		const url = o.url && !seen.has(o.url) ? o.url : undefined
+		if (o.url) seen.add(o.url)
+		const date = isoDate(o.date)
+		out.push(`${bold(`№ ${o.id}`)}  ${dim(date || "—")}  ${green(o.status)}  ${bold(money(o.total))}${url ? `  ${dim(url)}` : ""}`)
+		if (o.items?.length) {
+			out.push(table(o.items.map(it => [
+				"  " + cyan(it.article), bold(it.brand), it.name.slice(0, 36),
+				`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty), link(it.url),
+			])))
+		}
+	}
+	return out.join("\n")
 }
 
 /**

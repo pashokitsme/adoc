@@ -180,11 +180,11 @@ describe("adoc basket", () => {
 		expect(JSON.parse((await run(["basket", "нетакой", "--json"])).stdout).error.message).toContain("нетакой")
 	})
 
-	test("адрес корзины в заголовке, ссылки позиций — под таблицей", async () => {
+	test("адрес корзины под итогом, адрес позиции — колонкой", async () => {
 		await run(["part", "n90954802"])
 		await run(["basket", "add", "1"])
 		const r = await run(["basket"])
-		expect(r.stdout).toContain("beta  https://beta.example/basket")
-		expect(r.stdout).toContain("1  https://beta.example/p/N%20909%20548%2002")
+		expect(r.stdout).toContain("https://beta.example/basket")
+		expect(r.stdout).toContain("https://beta.example/p/N%20909%20548%2002")
 	})
 })

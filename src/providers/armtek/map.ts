@@ -2,8 +2,8 @@
 // сюда не приходит ни сеть, ни аккаунт, поэтому всё проверяется фикстурами.
 
 import { articleKey, brandKey } from "../../sdk/index.ts"
-import type { Basket, BasketItem, BrandHit, Car, Offer, Product, Rating, Review, Reviews } from "../../sdk/contract.ts"
-import type { CartWriteItem, RawArticle, RawCard, RawCartItem, RawReview, RawReviewRating, RawSuggestion, RawTransport } from "./api.ts"
+import type { Basket, BasketItem, BrandHit, Car, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews } from "../../sdk/contract.ts"
+import type { CartWriteItem, RawArticle, RawCard, RawCartItem, RawOrder, RawReview, RawReviewRating, RawSuggestion, RawTransport } from "./api.ts"
 
 export const SITE = "https://armtek.ru"
 
@@ -14,9 +14,26 @@ export const SITE = "https://armtek.ru"
  */
 export const SELLER = "armtek"
 
-/** Карточка товара: `https://armtek.ru/product/<ARTICLE_ALIAS>`. Проверено. */
-export const productUrl = (alias: string | undefined): string | undefined =>
-	alias ? `${SITE}/product/${alias}` : undefined
+/**
+ * Карточка товара: `https://armtek.ru/product/<ARTICLE_ALIAS>`. Без алиаса
+ * сайт подставляет в тот же маршрут `ARTID` — так делает и его собственный
+ * шаблон карточки, поэтому позиция без алиаса всё равно получает адрес.
+ * Уценённая партия живёт отдельно: `/product/markdown/<alias>/<charg>`.
+ */
+export const productUrl = (alias: string | undefined, artId?: number, charg?: string): string | undefined => {
+	if (alias && charg) return `${SITE}/product/markdown/${alias}/${charg}`
+	if (alias) return `${SITE}/product/${alias}`
+	return artId ? `${SITE}/product/${artId}` : undefined
+}
+
+export const BASKET_URL = `${SITE}/basket`
+export const ORDERS_URL = `${SITE}/profile/orders`
+
+/** Карточка заказа: `?orderId=<VBELN>`, а без номера — по хэшу. */
+export const orderUrl = (vbeln: string | undefined, guid: string | undefined): string | undefined => {
+	if (vbeln) return `${ORDERS_URL}/card?orderId=${encodeURIComponent(vbeln)}`
+	return guid ? `${ORDERS_URL}/card?orderHash=${encodeURIComponent(guid)}` : ORDERS_URL
+}
 
 // --- числа и даты ---------------------------------------------------------
 
@@ -176,6 +193,52 @@ export function refOfCartItem(i: RawCartItem, vstel: string): ArmtekRef {
 	}
 }
 
+// --- машина и категории ---------------------------------------------------
+
+/**
+ * Ref машины → фильтр по машине. Годится любой ref, в котором есть
+ * идентификатор модификации TecDoc: у armtek он зовётся `linkingTargetId`, у
+ * autodoc ровно то же число лежит в `modificationId` (проверено — оба сайта
+ * сидят на TecDoc). Нет числа — нет фильтра, и провайдер скажет об этом вслух,
+ * а не сделает вид, что нашёл под машину.
+ */
+export function carTarget(ref: Record<string, unknown> | null):
+	{ linkingTargetId: number; linkingTargetType: string } | undefined {
+	if (!ref) return undefined
+	const id = [ref.linkingTargetId, ref.modificationId, ref.carId].find(v => typeof v === "number" && v > 0)
+	if (typeof id !== "number") return undefined
+	const type = typeof ref.linkingTargetType === "string" && ref.linkingTargetType ? ref.linkingTargetType : "P"
+	return { linkingTargetId: id, linkingTargetType: type }
+}
+
+/**
+ * Какая из подсказанных категорий отвечает на запрос: доля слов её названия,
+ * нашедшихся в запросе. Слова сравниваются по общему префиксу, иначе «свеча» и
+ * «свечи» разошлись бы. Ничья — за первой, то есть порядок сайта значим.
+ */
+const words = (s: string): string[] =>
+	s.toLowerCase().replace(/ё/g, "е").split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1)
+
+const sameWord = (a: string, b: string): boolean => {
+	const n = Math.min(a.length, b.length)
+	let i = 0
+	while (i < n && a[i] === b[i]) i++
+	return i >= Math.min(4, n)
+}
+
+export function bestCategory<T extends { NAME: string }>(cats: T[], query: string): T | undefined {
+	const q = words(query)
+	let best: T | undefined
+	let bestScore = -1
+	for (const c of cats) {
+		const t = words(c.NAME)
+		if (!t.length) continue
+		const score = t.filter(w => q.some(x => sameWord(w, x))).length / t.length
+		if (score > bestScore) { bestScore = score; best = c }
+	}
+	return best ?? cats[0]
+}
+
 // --- поиск ----------------------------------------------------------------
 
 /** Минимальная цена и наличие по строке: в выдаче их показывают «от». */
@@ -195,7 +258,7 @@ export function toProducts(rows: RawArticle[]): Product[] {
 			...(q.value !== undefined ? { quantity: q.value } : {}),
 			...(rating(a.RATING, a.REVIEW_COUNT) ? { rating: rating(a.RATING, a.REVIEW_COUNT)! } : {}),
 			...(a.PHOTO?.length ? { images: a.PHOTO } : {}),
-			...(productUrl(a.ARTICLE_ALIAS) ? { url: productUrl(a.ARTICLE_ALIAS)! } : {}),
+			...(productUrl(a.ARTICLE_ALIAS, a.ARTID) ? { url: productUrl(a.ARTICLE_ALIAS, a.ARTID)! } : {}),
 			extra: {
 				artId: a.ARTID,
 				...(a.ARTICLE_ALIAS ? { alias: a.ARTICLE_ALIAS } : {}),
@@ -235,6 +298,7 @@ export function toBrandHits(rows: RawArticle[]): BrandHit[] {
 			...(a.NAME ? { name: a.NAME } : {}),
 			...(r ? { rating: r } : {}),
 			...(a.PHOTO?.length ? { images: a.PHOTO } : {}),
+			...(productUrl(a.ARTICLE_ALIAS, a.ARTID) ? { url: productUrl(a.ARTICLE_ALIAS, a.ARTID)! } : {}),
 			extra: {
 				artId: a.ARTID,
 				...(a.ARTICLE_ALIAS ? { alias: a.ARTICLE_ALIAS } : {}),
@@ -281,7 +345,7 @@ export function toOffers(rows: RawArticle[], want: { article: string; brand: str
 				seller: SELLER,
 				...(r ? { rating: r } : {}),
 				...(a.PHOTO?.length ? { images: a.PHOTO } : {}),
-				...(productUrl(a.ARTICLE_ALIAS) ? { url: productUrl(a.ARTICLE_ALIAS)! } : {}),
+				...(productUrl(a.ARTICLE_ALIAS, a.ARTID) ? { url: productUrl(a.ARTICLE_ALIAS, a.ARTID)! } : {}),
 				ref: refOf(a, s, vstel) as unknown as Record<string, unknown>,
 				...(analog ? { analog: true, analogOf: { article: want.article, brand: want.brand } } : {}),
 				extra: {
@@ -314,7 +378,7 @@ export function author(r: RawReview): string | undefined {
 	return first ? `${first} ${[...last][0]!.toUpperCase()}.` : `${[...last][0]!.toUpperCase()}.`
 }
 
-export function toReviews(list: { paginator?: { totalCount?: number }; items?: RawReview[] } | null, stats: RawReviewRating | undefined): Reviews {
+export function toReviews(list: { paginator?: { totalCount?: number }; items?: RawReview[] } | null, stats: RawReviewRating | undefined, url?: string): Reviews {
 	const items: Review[] = (list?.items ?? []).map(r => ({
 		...(author(r) ? { author: author(r)! } : {}),
 		...(r.createdDate ? { date: r.createdDate.slice(0, 10) } : {}),
@@ -333,7 +397,89 @@ export function toReviews(list: { paginator?: { totalCount?: number }; items?: R
 			},
 		} : {}),
 		items,
+		// отдельной страницы отзывов у armtek нет: лента живёт на карточке
+		// товара и листается скроллом, якоря в адресе тоже нет
+		...(url ? { url } : {}),
 	}
+}
+
+// --- карточка -------------------------------------------------------------
+
+/**
+ * Карточка из строк формы «card»: там предложение слито с артикулом, поэтому
+ * одна деталь видна целиком — все склады, цены и сроки одним списком.
+ * Наличие по складам и есть `stock`: `KEYZAK` — код склада, человеческого
+ * имени сайт не отдаёт.
+ */
+export function toInfo(rows: RawCard[], stats: RawReviewRating | undefined, today = new Date()): Info {
+	const head = rows[0]!
+	const prices = rows.map(c => num(c.PRICES1)).filter((v): v is number => v !== undefined)
+	const daysList = rows.map(c => deliveryDays(c.DLVDT, today)).filter((v): v is number => v !== undefined)
+	const avg = num(stats?.rating)
+	return {
+		article: head.PIN,
+		brand: head.BRAND,
+		// в форме card NAME — название предложения, человеческое лежит в CUSTOM_NAME
+		name: head.CUSTOM_NAME || head.NAME || head.PIN,
+		...(productUrl(head.ARTICLE_ALIAS, head.ARTID) ? { url: productUrl(head.ARTICLE_ALIAS, head.ARTID)! } : {}),
+		...(stats && avg !== undefined ? {
+			rating: {
+				average: avg,
+				count: stats.reviewCount,
+				histogram: [stats.fiveStarsCount, stats.fourStarsCount, stats.threeStarsCount, stats.twoStarsCount, stats.oneStarsCount],
+			},
+		} : {}),
+		...(head.PHOTO?.length ? { images: head.PHOTO } : {}),
+		...(prices.length ? { price: Math.min(...prices), currency: "RUB" as const } : {}),
+		...(daysList.length ? { deliveryDays: Math.min(...daysList) } : {}),
+		stock: rows.filter(c => c.KEYZAK).map(c => ({
+			code: c.KEYZAK!,
+			...(quantity(c.RVALUE).value !== undefined ? { quantity: quantity(c.RVALUE).value } : {}),
+		})),
+		extra: { artId: head.ARTID, ...(head.ARTICLE_ALIAS ? { alias: head.ARTICLE_ALIAS } : {}), offers: rows.length },
+	}
+}
+
+// --- заказы ---------------------------------------------------------------
+
+/** SAP-число строкой: суммы в заказе приходят и числом, и «1234.00». */
+const orderNum = (v: number | string | undefined): number => num(v) ?? 0
+
+/**
+ * Заказы. Форма строки взята из бандла сайта: у аккаунта заказов нет, поэтому
+ * все поля читаются мягко — лишь бы не уронить команду на чужой раскладке.
+ */
+export function toOrders(list: RawOrder[] | undefined): Order[] {
+	return (list ?? []).map(o => {
+		const items: OrderItem[] = (o.ITEMS ?? []).map(i => {
+			const price = orderNum(i.PRICE)
+			const qty = orderNum(i.KWMENG) || 1
+			return {
+				article: i.PIN ?? "",
+				brand: i.BRAND ?? "",
+				name: i.ARTICLE_NAME || i.NAME || "",
+				qty,
+				price,
+				sum: num(i.NETWR) ?? price * qty,
+				...(productUrl(i.ARTICLE_ALIAS, i.ARTID, i.CHARG || undefined) ? { url: productUrl(i.ARTICLE_ALIAS, i.ARTID, i.CHARG || undefined)! } : {}),
+			}
+		})
+		const vbeln = o.VBELN === undefined ? undefined : String(o.VBELN)
+		return {
+			id: vbeln ?? o.GUID ?? "",
+			date: sapDate(o.CREDT) ?? o.ORDER_DATE ?? o.date ?? "",
+			status: o.ORDER_STATUS ?? "",
+			total: orderNum(o.NETWR) || items.reduce((s, i) => s + (i.sum ?? 0), 0),
+			currency: "RUB",
+			...(orderUrl(vbeln, o.GUID) ? { url: orderUrl(vbeln, o.GUID)! } : {}),
+			...(items.length ? { items } : {}),
+			extra: {
+				...(o.GUID ? { guid: o.GUID } : {}),
+				...(o.PAYMENT_STATUS ? { paymentStatus: o.PAYMENT_STATUS } : {}),
+				...(o.PAYMENT_TYPE ? { paymentType: o.PAYMENT_TYPE } : {}),
+			},
+		}
+	})
 }
 
 // --- корзина --------------------------------------------------------------
@@ -352,6 +498,7 @@ export function toBasket(raw: { items?: RawCartItem[] } | null, vstel: string, t
 			seller: SELLER,
 			...(days !== undefined ? { deliveryDays: days } : {}),
 			...(sapDate(i.dateDel) ? { deliveryDate: sapDate(i.dateDel)! } : {}),
+			...(productUrl(i.articleAlias, i.artid, i.charg || undefined) ? { url: productUrl(i.articleAlias, i.artid, i.charg || undefined)! } : {}),
 			extra: {
 				artId: i.artid,
 				keyzak: i.keyzak,
@@ -364,7 +511,7 @@ export function toBasket(raw: { items?: RawCartItem[] } | null, vstel: string, t
 		items,
 		total: items.reduce((s, i) => s + (i.sum ?? 0), 0),
 		currency: "RUB",
-		url: `${SITE}/basket`,
+		url: BASKET_URL,
 	}
 }
 

@@ -5,8 +5,9 @@ import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import type { RawArticle, RawCard, RawCart, RawGarage, RawReview, RawReviewRating } from "../../src/providers/armtek/api.ts"
 import {
-	author, cardToProducts, deliveryDays, exactRows, isRef, num, productUrl, quantity,
-	refOf, refOfCartItem, sapDate, toBasket, toBrandHits, toCars, toOffers, toProducts, toReviews, writeItem,
+	author, bestCategory, cardToProducts, carTarget, deliveryDays, exactRows, isRef, num, orderUrl,
+	productUrl, quantity, refOf, refOfCartItem, sapDate, toBasket, toBrandHits, toCars, toInfo,
+	toOffers, toOrders, toProducts, toReviews, writeItem,
 } from "../../src/providers/armtek/map.ts"
 
 const DIR = join(import.meta.dir, "..", "fixtures", "armtek")
@@ -287,5 +288,72 @@ describe("garage", () => {
 	test("пустой гараж — пустой список", async () => {
 		const g = (await fixture("garage-empty.json")).data as RawGarage
 		expect(toCars(g.transportList)).toEqual([])
+	})
+})
+
+describe("ссылки", () => {
+	test("карточка по алиасу, по artId и уценённая партия", () => {
+		expect(productUrl("filtr-55469")).toBe("https://armtek.ru/product/filtr-55469")
+		expect(productUrl(undefined, 55469)).toBe("https://armtek.ru/product/55469")
+		expect(productUrl("filtr-55469", 55469, "C1")).toBe("https://armtek.ru/product/markdown/filtr-55469/C1")
+		expect(productUrl(undefined)).toBeUndefined()
+	})
+
+	test("карточка заказа по номеру, иначе по хэшу", () => {
+		expect(orderUrl("1234567", "abc")).toBe("https://armtek.ru/profile/orders/card?orderId=1234567")
+		expect(orderUrl(undefined, "abc")).toBe("https://armtek.ru/profile/orders/card?orderHash=abc")
+		expect(orderUrl(undefined, undefined)).toBe("https://armtek.ru/profile/orders")
+	})
+})
+
+describe("машина и категории", () => {
+	test("идентификатор модификации берётся из любого знакомого поля", () => {
+		expect(carTarget({ linkingTargetId: 1 })).toEqual({ linkingTargetId: 1, linkingTargetType: "P" })
+		// autodoc зовёт то же самое число modificationId — оба сайта на TecDoc
+		expect(carTarget({ modificationId: 58759 })).toEqual({ linkingTargetId: 58759, linkingTargetType: "P" })
+		expect(carTarget({ carId: 7, linkingTargetType: "L" })).toEqual({ linkingTargetId: 7, linkingTargetType: "L" })
+	})
+
+	test("без числа фильтра нет", () => {
+		expect(carTarget(null)).toBeUndefined()
+		expect(carTarget({ transportId: "7" })).toBeUndefined()
+		expect(carTarget({ modificationId: 0 })).toBeUndefined()
+	})
+
+	test("категория выбирается по совпадению слов, а не по порядку", () => {
+		const cats = [{ NAME: "Станки для заклепки тормозных колодок" }, { NAME: "Колодки тормозные" }]
+		expect(bestCategory(cats, "тормозные колодки")!.NAME).toBe("Колодки тормозные")
+		// ничья — за первой: порядок сайта остаётся значимым
+		expect(bestCategory([{ NAME: "Свечи зажигания" }, { NAME: "Свечи зажигания" }], "свеча зажигания")!.NAME).toBe("Свечи зажигания")
+		expect(bestCategory([], "что угодно")).toBeUndefined()
+	})
+})
+
+describe("toInfo", () => {
+	test("цена «от» и склады из строк формы card", async () => {
+		const rows: RawCard[] = (await fixture("search-card-bosch.json")).data.articlesData
+		const stats: RawReviewRating = (await fixture("reviews-rating.json")).data[0]
+		const info = toInfo(rows, stats, TODAY)
+		expect(info.article).toBe("0 986 452 041")
+		expect(info.brand).toBe("BOSCH")
+		expect(info.price).toBe(592)
+		expect(info.currency).toBe("RUB")
+		expect(info.stock![0]!.code).toBe("MOV0000019")
+		expect(info.url).toStartWith("https://armtek.ru/product/")
+		expect(info.rating!.histogram).toHaveLength(5)
+	})
+})
+
+describe("toOrders", () => {
+	test("суммы строками, позиции со ссылками", async () => {
+		const orders = toOrders((await fixture("orders.json")).data.ORDER)
+		expect(orders).toHaveLength(1)
+		expect(orders[0]).toMatchObject({ id: "1234567", date: "2026-08-30", status: "В работе", total: 1184, currency: "RUB" })
+		expect(orders[0]!.items![0]).toMatchObject({ article: "0 986 452 041", brand: "BOSCH", qty: 2, price: 592, sum: 1184 })
+		expect(orders[0]!.extra).toMatchObject({ guid: "abc123" })
+	})
+
+	test("пустой список — пустой массив", () => {
+		expect(toOrders(undefined)).toEqual([])
 	})
 })

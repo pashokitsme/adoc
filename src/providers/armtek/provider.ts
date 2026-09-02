@@ -9,7 +9,10 @@ import { mapHttpError } from "./api.ts"
 import { accessToken, decodeClaims, login, readToken, whoami, type Account } from "./auth.ts"
 import * as brand from "./brand.ts"
 import { commands } from "./commands.ts"
-import { isRef, refOfCartItem, toBasket, toBrandHits, toCars, toOffers, toProducts, toReviews, writeItem, type ArmtekRef } from "./map.ts"
+import {
+	bestCategory, carTarget, isRef, productUrl, refOfCartItem, toBasket, toBrandHits, toCars, toInfo,
+	toOffers, toOrders, toProducts, toReviews, writeItem, type ArmtekRef,
+} from "./map.ts"
 
 /** Точка выдачи и организация аккаунта; без входа — умолчания фронта. */
 const place = (ctx: Ctx<Account>): brand.Place => ({
@@ -26,11 +29,11 @@ async function cart(ctx: Ctx<Account>): Promise<{ token: string; vkorg: string; 
 	return { token, ...p, raw }
 }
 
-export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "basket"]>({
+export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "basket", "orders"]>({
 	id: "armtek",
 	name: "Armtek",
 	site: "https://armtek.ru",
-	capabilities: ["reviews", "garage", "analogs", "basket"],
+	capabilities: ["reviews", "garage", "analogs", "basket", "orders"],
 	valueFlags: ["body"],
 	mapError: mapHttpError,
 
@@ -39,8 +42,34 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 
 	// Поиск по названию: та же ручка, что и по артикулу, но выдачу берём
 	// формой list — иначе сервер сам решит, отдать список или карточки.
-	search: async (ctx, text) => {
-		const r = await api.search({ query: text, queryType: 1, page: ctx.page, typeView: "list", ...place(ctx) }, await readToken(ctx))
+	//
+	// С машиной путь другой, потому что свободный поиск фильтр по машине
+	// отбивает: подсказка даёт alias категории, а по категории уже можно
+	// искать с `linkingTargetId` (см. notes/providers-v2.md).
+	search: async (ctx, text, { car }) => {
+		const token = await readToken(ctx)
+		const p = place(ctx)
+		const target = carTarget(car)
+		if (car && !target) ctx.warn("armtek: в ref машины нет идентификатора модификации TecDoc — ищу без машины")
+
+		if (target) {
+			const a = await api.autocomplete(text, token)
+			const cat = bestCategory(a.category ?? [], text)
+			if (!cat) ctx.warn(`armtek: под «${text}» категории не нашлось — ищу без машины`)
+			else {
+				const r = await api.searchByCategory({ categoryAlias: cat.ALIAS, page: ctx.page, ...p, ...target }, token)
+				return {
+					items: toProducts(r.articlesData ?? []).slice(0, ctx.limit),
+					total: r.pagination?.totalCount,
+					extra: {
+						page: r.pagination?.currentPage, perPage: r.pagination?.perPage, pageCount: r.pagination?.pageCount,
+						category: { id: cat.ID, alias: cat.ALIAS, name: cat.NAME }, car: target,
+					},
+				}
+			}
+		}
+
+		const r = await api.search({ query: text, queryType: 1, page: ctx.page, typeView: "list", ...p }, token)
 		return {
 			items: toProducts(r.articlesData ?? []).slice(0, ctx.limit),
 			total: r.pagination?.totalCount,
@@ -76,6 +105,38 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 		return { items: toOffers(hasExact ? rows : [row, ...rows], want, p.vstel) }
 	},
 
+	/**
+	 * Карточка. Форма `card` сливает предложение с артикулом, поэтому склады,
+	 * цены и сроки видно одним списком — это и есть наличие в `Info.stock`.
+	 */
+	info: async (ctx, article, brandName) => {
+		const token = await readToken(ctx)
+		const p = place(ctx)
+		const r = await api.search({ query: article, queryType: 2, typeView: "card", ...p }, token)
+		const wantArticle = articleKey(article)
+		const wantBrand = brandKey(brandName)
+		const rows = (r.articlesData ?? []).filter(c => articleKey(c.PIN) === wantArticle && brandKey(c.BRAND) === wantBrand)
+		if (!rows.length) throw new ProviderError("notfound", `armtek: ${article} (${brandName}) — ничего не найдено`)
+		const stats = await api.reviewRating(rows[0]!.ARTID, token).catch(() => [] as api.RawReviewRating[])
+		return { info: toInfo(rows, stats[0]) }
+	},
+
+	// Только аналоги: точные строки отдаёт offers, и повторять их здесь значит
+	// заставить агрегатора отличать одно от другого руками.
+	analogs: async (ctx, article, brandName) => {
+		const token = await readToken(ctx)
+		const p = place(ctx)
+		const { row } = await brand.resolve(article, brandName, token, p, ctx.warn)
+		const all = await api.search({ query: article, queryType: 1, page: ctx.page, typeView: "list", ...p }, token)
+		const pageCount = all.pagination?.pageCount ?? 1
+		if (pageCount > 1) {
+			ctx.warn(`armtek: аналогов ${all.pagination?.totalCount ?? "?"} на ${pageCount} страницах, возвращена только страница ${all.pagination?.currentPage ?? ctx.page} из ${pageCount}`)
+		}
+		const rows = (all.articlesData ?? []).filter(a =>
+			articleKey(a.PIN) !== articleKey(article) || brandKey(a.BRAND) !== brandKey(row.BRAND))
+		return { items: toOffers(rows, { article, brand: row.BRAND }, p.vstel) }
+	},
+
 	reviews: async (ctx, article, brandName) => {
 		const token = await readToken(ctx)
 		const { row } = await brand.resolve(article, brandName, token, place(ctx), ctx.warn)
@@ -84,7 +145,13 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 			// оценки — отдельная ручка; без неё лента всё ещё имеет смысл
 			api.reviewRating(row.ARTID, token).catch(() => [] as api.RawReviewRating[]),
 		])
-		return toReviews(list, stats[0])
+		return toReviews(list, stats[0], productUrl(row.ARTICLE_ALIAS, row.ARTID))
+	},
+
+	orders: async ctx => {
+		const token = await accessToken(ctx)
+		const r = await api.orderReport(token, place(ctx).vkorg, ctx.page)
+		return { items: toOrders(r.ORDER) }
 	},
 
 	garageExport: async ctx => {

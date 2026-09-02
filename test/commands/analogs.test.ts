@@ -44,12 +44,12 @@ describe("adoc analogs", () => {
 		expect(j.analogs.every(a => a.analog === true)).toBe(true)
 	})
 
-	test("в таблице колонка ПРОВАЙДЕР и ссылки под ней", async () => {
+	test("в таблице колонка ПРОВАЙДЕР и адрес каждой карточки", async () => {
 		const r = await run(["analogs", "n90954802"])
 		expect(r.code).toBe(0)
 		expect(r.stdout).toContain("ПРОВАЙДЕР")
 		expect(r.stdout).toContain("аналоги")
-		expect(r.stdout).toContain("ссылки")
+		expect(r.stdout).toContain("ССЫЛКА")
 		expect(r.stdout).toContain("https://beta.example/p/AN-1")
 	})
 

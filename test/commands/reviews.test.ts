@@ -96,10 +96,10 @@ describe("adoc reviews", () => {
 		expect(r.stderr).toContain("beta")
 	})
 
-	test("адрес страницы отзывов в заголовке блока, ссылки отзывов — под ним", async () => {
+	test("адрес страницы отзывов и адрес самого отзыва доезжают до вывода", async () => {
 		const r = await run(["reviews", "n90954802"])
-		expect(r.stdout).toContain("alpha · VAG n90954802  https://alpha.example/r/n90954802")
-		expect(r.stdout).toContain("ссылки на отзывы")
+		expect(r.stdout).toContain("alpha · VAG n90954802")
+		expect(r.stdout).toContain("https://alpha.example/r/n90954802")
 		expect(r.stdout).toContain("https://alpha.example/r/n90954802#1")
 	})
 })

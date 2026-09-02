@@ -3,11 +3,11 @@
 // оттуда. Общего итога тут нет нарочно: складывать заказы разных сайтов в
 // одно число бессмысленно — у каждого свои сроки и своя история.
 
-import { dim } from "../sdk/index.ts"
+import { dim, renderOrders } from "../sdk/index.ts"
 import { limitOf } from "../core/args.ts"
 import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
-import { blockTitle, cut, linkList, ordersTable } from "../core/render.ts"
+import { blockTitle, cut } from "../core/render.ts"
 import { parseOrders } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -34,9 +34,8 @@ export async function cmdOrders(ctx: Ctx): Promise<Output> {
 		render: () => shown.length
 			? shown.map(g => [
 				`\n${blockTitle(g.provider, g.total ? `· заказов ${g.total}` : "")}`,
-				ordersTable(g.items),
+				renderOrders(g.items),
 				...cut(g.items.length, g.total),
-				...linkList(g.items),
 			].join("\n")).join("\n")
 			// «Заказов нет» и «никто не ответил» — разные новости: первое про
 			// пустую историю, второе про то, что её не удалось спросить.

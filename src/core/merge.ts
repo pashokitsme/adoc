@@ -3,8 +3,7 @@
 // правил в проекте быть не должно, иначе part и search разъедутся.
 
 import { articleKey, brandKey } from "../sdk/index.ts"
-import type { Offer, Product, Rating } from "../sdk/index.ts"
-import type { BrandHitL } from "./delta.ts"
+import type { BrandHit, Offer, Product, Rating } from "../sdk/index.ts"
 
 export type Per<T> = { provider: string; items: T[] }
 export type OfferRow = Offer & { provider: string }
@@ -18,6 +17,8 @@ export type MergedBrand = {
 	providers: string[]
 	/** Провайдер → его собственное написание бренда; ему же и отправляем. */
 	spelling: Record<string, string>
+	/** Адрес для колонки ССЫЛКА — первый, кто его дал. */
+	url?: string
 	/** Провайдер → карточка этого бренда у него: страница, которую хотят открыть. */
 	urls: Record<string, string>
 	name?: string
@@ -34,7 +35,7 @@ export type MergedProduct = Product & { providers: string[]; prices: Record<stri
 const better = (a: Rating | undefined, b: Rating | undefined): Rating | undefined =>
 	!a ? b : !b ? a : b.count > a.count ? b : a
 
-export function mergeBrands(article: string, per: Per<BrandHitL>[]): MergedBrand[] {
+export function mergeBrands(article: string, per: Per<BrandHit>[]): MergedBrand[] {
 	const want = articleKey(article)
 	const by = new Map<string, MergedBrand>()
 	for (const { provider, items } of per) {
@@ -47,13 +48,19 @@ export function mergeBrands(article: string, per: Per<BrandHitL>[]): MergedBrand
 				by.set(key, {
 					key, brand: hit.brand, article: hit.article, providers: [provider], spelling: { [provider]: hit.brand },
 					urls: hit.url ? { [provider]: hit.url } : {},
+					...(hit.url ? { url: hit.url } : {}),
 					...(hit.name ? { name: hit.name } : {}), ...(hit.rating ? { rating: hit.rating } : {}),
 				})
 				continue
 			}
 			if (!cur.providers.includes(provider)) cur.providers.push(provider)
 			cur.spelling[provider] ??= hit.brand
-			if (hit.url) cur.urls[provider] ??= hit.url
+			if (hit.url) {
+				cur.urls[provider] ??= hit.url
+				// Колонка ССЫЛКА одна на строку: если первый сайт адреса не дал,
+				// его занимает следующий, а не остаётся пустой при живых ссылках.
+				cur.url ??= hit.url
+			}
 			cur.name ??= hit.name
 			cur.rating = better(cur.rating, hit.rating)
 		}
@@ -92,7 +99,10 @@ export function mergeProducts(per: Per<Product>[]): MergedProduct[] {
 				continue
 			}
 			if (!cur.providers.includes(provider)) cur.providers.push(provider)
-			if (p.url) cur.urls[provider] ??= p.url
+			if (p.url) {
+				cur.urls[provider] ??= p.url
+				cur.url ??= p.url
+			}
 			if (p.price !== undefined) {
 				cur.prices[provider] = p.price
 				// В колонке «ОТ» — минимум по сайтам.

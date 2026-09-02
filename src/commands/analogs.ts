@@ -10,7 +10,7 @@ import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
 import { splitOffers } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { cut, hint, linkList, providerCol } from "../core/render.ts"
+import { cut, hint, providerCol } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -59,7 +59,6 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 			"",
 			renderOffers(rows, [providerCol]),
 			...cut(rows.length, split.analogs.length),
-			...linkList(rows),
 			...(rows.length ? ["", hint(`${TOOL} basket add <#> [--qty <n>] — положить строку в корзину её сайта`)] : []),
 		].join("\n"),
 	}

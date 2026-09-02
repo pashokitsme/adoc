@@ -4,19 +4,18 @@
 // в offers и уходит обратно как есть.
 
 import { ProviderError, TOOL, basketTotal, bold, dim, money, need, parseRef, renderBasket } from "../sdk/index.ts"
-import type { BasketL } from "../core/delta.ts"
+import type { Basket } from "../sdk/index.ts"
 import { one, qtyOf } from "../core/args.ts"
 import { BASKET_RM, BASKET_SET } from "../core/help.ts"
 import { invoke, passNoise, type InvokeResult } from "../core/invoke.ts"
 import { lineOf } from "../core/lastpart.ts"
 import { failureText, fanout, report } from "../core/partial.ts"
-import { blockTitle, hint, linkList } from "../core/render.ts"
+import { blockTitle, hint } from "../core/render.ts"
 import { parseBasket } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
-/** Корзина одного сайта целиком: заголовок с адресом, таблица и ссылки строк. */
-const block = (id: string, b: BasketL): string =>
-	[blockTitle(id, "", b.url), renderBasket(b), ...linkList(b.items)].join("\n")
+/** Корзина одного сайта: имя сайта и таблица. Адреса печатает рендер SDK. */
+const block = (id: string, b: Basket): string => `${blockTitle(id)}\n${renderBasket(b)}`
 
 /**
  * itemId — колонка ID в выводе корзины. Позиционным его набирают руками
@@ -106,6 +105,6 @@ function afterChange(ctx: Ctx, id: string, r: InvokeResult): Output {
 	// Подпись та же, что у жёлтых строк списка: имя виноватого один раз и
 	// подсказка про вход, если сайт просит логин.
 	if (!r.ok) throw new ProviderError(r.error.code, failureText({ provider: id, code: r.error.code, message: r.error.message }))
-	const basket: BasketL = parseBasket(r.json, id)
+	const basket: Basket = parseBasket(r.json, id)
 	return { json: { provider: id, basket }, render: () => block(id, basket) }
 }

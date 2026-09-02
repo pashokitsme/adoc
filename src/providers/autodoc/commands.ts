@@ -1,12 +1,16 @@
 // commands.ts — команды autodoc сверх контракта. Всё, что раньше было в
 // src/main.ts, кроме контрактных операций.
+//
+// Правило вывода то же, что и у контрактных команд: человеку — таблица или
+// карточка, `--json` — сырой ответ сайта как есть, без переработки.
 
 import { ProviderError, positiveInt, render, type ProviderCommand } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import type { Tokens } from "./auth.ts"
 import { resolveBrand } from "./brand.ts"
+import { cardUrl, toOffers } from "./map.ts"
 
-const { bar, bold, cyan, days, dim, green, heading, money, stars, table, yellow } = render
+const { bold, cyan, days, dim, fields, green, heading, link, money, money: rub, renderOffers, table, yellow } = render
 
 type Cmd = ProviderCommand<Tokens>
 
@@ -37,47 +41,73 @@ const brandArg = (args: string[], flags: Record<string, string | true>): string 
 const goods: Cmd = {
 	usage: "goods <categoryId> [--page <n>] [--sort <id>] [--limit <n>]", about: "товары внутри категории (id даёт search)", auth: false,
 	run: async (ctx, args) => {
-		const r = await api.categoryGoods(numArg(args[0], "categoryId"), { PageNumber: ctx.page, SortingId: numFlag("sort", ctx.flags.sort) })
+		// PageNumber у этой ручки нумеруется с нуля, а --page у нас с единицы
+		const r = await api.categoryGoods(numArg(args[0], "categoryId"), {
+			PageNumber: ctx.page - 1, MaxResultCount: ctx.limit, SortingId: numFlag("sort", ctx.flags.sort),
+		})
 		return { json: r, render: () => {
-			const head = dim(`всего ${r.totalCount}, страница ${ctx.page}`)
+			const head = dim(`${r.categoryName ?? ""}${r.categoryName ? " · " : ""}всего ${r.totalCount}, страница ${ctx.page}`)
 			if (!r.items?.length) return head
-			return head + "\n" + table(r.items.slice(0, ctx.limit).map(g => [
-				cyan(g.article), bold(g.name.slice(0, 46)), dim(g.manufacturer?.name ?? ""), money(g.price),
+			return head + "\n" + table(r.items.map(g => [
+				cyan(g.article), bold(g.name.slice(0, 44)), dim(g.manufacturer?.name ?? ""), money(g.price),
 				g.quantity ? green(`${g.quantity} шт`) : dim("нет"), g.rating?.quantity ? `${g.rating.average.toFixed(1)}★` : dim("—"),
-			]), ["АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ЦЕНА", "НАЛИЧИЕ", "РЕЙТИНГ"]) +
+				g.manufacturer ? link(cardUrl(g.manufacturer.id, g.article)) : "",
+			]), ["АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ЦЕНА", "НАЛИЧИЕ", "РЕЙТИНГ", "ССЫЛКА"]) +
 				(r.sorting?.length ? dim(`\n--sort: ${r.sorting.map(s => `${s.id}=${s.name}`).join(", ")}`) : "")
 		} }
 	},
 }
 
-const info: Cmd = {
-	usage: "info <артикул> [brandId | --brand <имя>]", about: "карточка: рейтинг, гистограмма, наличие", auth: false,
+/**
+ * Прайс-лист как его отдаёт сайт: `offers` показывает то же самое, но
+ * `--json` тут — сырой `originals` со всеми полями строки прайса, до которых
+ * контрактный `Offer` не дотягивается.
+ */
+const prices: Cmd = {
+	usage: "prices <артикул> [brandId | --brand <имя>]", about: "прайс-лист продавцов (сырой originals в --json)", auth: true,
 	run: async (ctx, args) => {
 		const article = need(args[0], "артикул")
 		const b = await resolveBrand(article, brandArg(args, ctx.flags))
-		const [inf, price] = await Promise.all([api.goodsInfo(article, b.id), api.goodsPrice(article, b.id).catch(() => null)])
-		return { json: { info: inf, price }, render: () => [
-			`${bold(inf.name)}  ${dim(inf.article)}`, `${inf.manufacturer.name}  ${dim(`id ${inf.manufacturer.id}`)}`,
-			heading("Оценки"), `  ${stars(inf.rating?.average)}  ${bold(inf.rating?.average?.toFixed(2) ?? "—")}  ${dim(`${inf.rating?.quantity ?? 0} оценок`)}`,
-			...bar(inf.rating?.ratings),
-			heading("Наличие и цена"), `  минимальная цена  ${bold(money(price?.minimalPrice))}`, `  срок              ${days(price?.minimalDeliveryDays)}`,
-			`  на складе         ${inf.inStock ? green(`${inf.inStock} шт`) : dim("нет")}`,
-			...(inf.categoryId ? [`  категория         ${cyan(String(inf.categoryId))}`] : []),
-			dim(`\nhttps://www.autodoc.ru/price/${inf.manufacturer.id}/${inf.article}`),
-		].join("\n") }
+		const raw = await api.offers(article, b.id)
+		return { json: raw, render: () => renderOffers(toOffers(raw, article, b.name || article)) }
 	},
 }
 
-// Сырой ответ как есть: у originals и analogs полей больше, чем помещается в
-// контрактный Offer, а через эти команды до них можно дотянуться без jq по сети.
-const rawByBrand = (usage: string, about: string, fn: (a: string, id: number) => Promise<unknown>): Cmd => ({
-	usage, about, auth: true,
+const favorites: Cmd = {
+	usage: "favorites [listId]", about: "избранное; без аргумента — списки", auth: true,
 	run: async (ctx, args) => {
-		const article = need(args[0], "артикул")
-		const b = await resolveBrand(article, brandArg(args, ctx.flags))
-		return { json: await fn(article, b.id) }
+		if (!args[0]) {
+			const r = await api.favoriteLists()
+			return { json: r, render: () => {
+				const items = r.items ?? []
+				if (!items.length) return dim("списков избранного нет")
+				return table(items.map(l => [cyan(String(l.id)), bold(l.name ?? ""), `${l.goodsCount ?? 0} шт`]),
+					["ID", "СПИСОК", "ТОВАРОВ"]) + dim("\n\n`favorites <id>` — что внутри списка")
+			} }
+		}
+		const r = await api.favorites(numArg(args[0], "listId"))
+		return { json: r, render: () => {
+			const items = r.items ?? []
+			if (!items.length) return dim("в списке пусто")
+			return table(items.map(g => [
+				cyan(g.article ?? ""), bold(g.manufacturerName ?? ""), (g.goodsName ?? "").slice(0, 40),
+				money(g.price), g.manufacturerId !== undefined && g.article ? link(cardUrl(g.manufacturerId, g.article)) : "",
+			]), ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "ССЫЛКА"])
+		} }
 	},
-})
+}
+
+const profile: Cmd = {
+	usage: "profile", about: "сводка по аккаунту: баланс, бонусы, сертификаты", auth: true,
+	run: async () => {
+		const r = await api.profile()
+		return { json: r, render: () => fields([
+			["баланс", bold(rub(r.balanceAmount))],
+			["бонусы", r.bonusAmount ? green(String(r.bonusAmount)) : dim("нет")],
+			["сертификаты", r.certificateCount ? String(r.certificateCount) : dim("нет")],
+		]) }
+	},
+}
 
 const garage: Cmd = {
 	usage: "garage [parts <carId> | main <carId>]", about: "гараж сайта: список, подборка под машину, основная", auth: true,
@@ -96,8 +126,12 @@ const garage: Cmd = {
 				return (r.modification ? dim(r.modification) + "\n" : "") + table(goodsList.map(g => {
 					const best = (g.items ?? []).reduce<{ price?: number; deliveryDays?: number } | null>(
 						(acc, it) => (acc === null || (it.price ?? Infinity) < (acc.price ?? Infinity) ? it : acc), null)
-					return [cyan(g.article), bold(g.name.slice(0, 40)), dim(g.manufacturer?.name ?? ""), money(best?.price), days(best?.deliveryDays), dim(g.groupName ?? "")]
-				}), ["АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ОТ", "СРОК", "ГРУППА"])
+					return [
+						cyan(g.article), bold(g.name.slice(0, 36)), dim(g.manufacturer?.name ?? ""),
+						money(best?.price), days(best?.deliveryDays), dim(g.groupName ?? ""),
+						g.manufacturer ? link(cardUrl(g.manufacturer.id, g.article)) : "",
+					]
+				}), ["АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ОТ", "СРОК", "ГРУППА", "ССЫЛКА"])
 			} }
 		}
 		if (sub) throw new ProviderError("bad_args", `неизвестная подкоманда гаража: ${sub}`)
@@ -119,13 +153,6 @@ const raw = (method: "GET" | "POST"): Cmd => ({
 })
 
 export const commands: Record<string, Cmd> = {
-	goods, info,
-	prices: rawByBrand("prices <артикул> [brandId | --brand <имя>]", "сырые предложения продавцов (originals)", api.offers),
-	analogs: rawByBrand("analogs <артикул> [brandId | --brand <имя>]", "сырые аналоги", api.analogs),
-	favorites: { usage: "favorites [listId]", about: "избранное; без аргумента — списки", auth: true,
-		run: async (_ctx, args) => ({ json: args[0] ? await api.favorites(numArg(args[0], "listId")) : await api.favoriteLists() }) },
-	orders: { usage: "orders", about: "заказы", auth: true, run: async () => ({ json: await api.orders() }) },
-	profile: { usage: "profile", about: "сводка по аккаунту", auth: true, run: async () => ({ json: await api.profile() }) },
-	garage,
+	goods, prices, favorites, profile, garage,
 	get: raw("GET"), post: raw("POST"),
 }

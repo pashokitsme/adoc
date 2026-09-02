@@ -4,8 +4,9 @@
 // провайдера: виноват он, а не пользователь.
 
 import { CONTRACT_VERSION, ProviderError } from "../sdk/index.ts"
-import type { Capability, Car, Command, Describe, Display, Offer, Product, Rating, WhoamiResult } from "../sdk/index.ts"
-import { CAPABILITIES, type BasketItemL, type BasketL, type BrandHitL, type Cap, type Info, type Order, type OrderItem, type ReviewL, type ReviewsL, type Stock } from "./delta.ts"
+import type { Basket, BasketItem, BrandHit, Capability, Car, Command, Describe, Display, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/index.ts"
+
+const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket", "orders"]
 
 const fail = (who: string, what: string): never => {
 	throw new ProviderError("internal", `${who}: ${what}`)
@@ -57,9 +58,7 @@ export function parseDescribe(v: unknown, id: string): Describe {
 	const site = str(o, "site", who)
 	// Незнакомая capability — это провайдер новее обёртки, а не поломка:
 	// молча отбрасываем, всё известное продолжает работать.
-	// «orders» пока нет в контрактном Capability — отсюда приведение; уйдёт
-	// вместе с delta.ts, когда ветка провайдеров внесёт его в контракт.
-	const capabilities = arr(o.capabilities, who, "capabilities").filter((c): c is Capability => CAPABILITIES.includes(c as Cap))
+	const capabilities = arr(o.capabilities, who, "capabilities").filter((c): c is Capability => CAPABILITIES.includes(c as Capability))
 	const commands: Command[] = arr(o.commands, who, "commands").map(c => {
 		const x = obj(c, who, "команда")
 		return { name: str(x, "name", who), usage: str(x, "usage", who), about: optStr(x, "about") ?? "", auth: x.auth === true }
@@ -78,7 +77,7 @@ export function parseWhoami(v: unknown, who: string): WhoamiResult {
 	return ok ? { ok, display: parseDisplay(o.display, who) } : { ok: false }
 }
 
-const parseBrandHit = (v: unknown, who: string): BrandHitL => {
+const parseBrandHit = (v: unknown, who: string): BrandHit => {
 	const o = obj(v, who, "элемент brands")
 	return {
 		brand: str(o, "brand", who), article: str(o, "article", who),
@@ -89,7 +88,7 @@ const parseBrandHit = (v: unknown, who: string): BrandHitL => {
 	}
 }
 
-export const parseBrands = (v: unknown, who: string): BrandHitL[] =>
+export const parseBrands = (v: unknown, who: string): BrandHit[] =>
 	arr(obj(v, who, "ответ brands").items, who, "items").map(x => parseBrandHit(x, who))
 
 export function parseOffers(v: unknown, who: string): Offer[] {
@@ -127,10 +126,10 @@ export function parseProducts(v: unknown, who: string): Product[] {
 	})
 }
 
-export function parseReviews(v: unknown, who: string): ReviewsL {
+export function parseReviews(v: unknown, who: string): Reviews {
 	const o = obj(v, who, "ответ reviews")
 	const r = optObj(o, "rating")
-	const items: ReviewL[] = arr(o.items, who, "items").map(x => {
+	const items: Review[] = arr(o.items, who, "items").map(x => {
 		const it = obj(x, who, "отзыв")
 		return {
 			text: optStr(it, "text") ?? "",
@@ -156,9 +155,9 @@ export function parseReviews(v: unknown, who: string): ReviewsL {
 	}
 }
 
-export function parseBasket(v: unknown, who: string): BasketL {
+export function parseBasket(v: unknown, who: string): Basket {
 	const o = obj(v, who, "корзина")
-	const items: BasketItemL[] = arr(o.items, who, "items").map(x => {
+	const items: BasketItem[] = arr(o.items, who, "items").map(x => {
 		const it = obj(x, who, "позиция корзины")
 		return {
 			id: str(it, "id", who), article: str(it, "article", who), brand: str(it, "brand", who),
@@ -202,7 +201,7 @@ export function parseInfo(v: unknown, who: string): Info {
 			...(Array.isArray(r.histogram) ? { histogram: r.histogram.filter((n): n is number => typeof n === "number") } : {}),
 		}
 		: undefined
-	const stock: Stock[] = arr(o.stock ?? [], who, "stock").flatMap(x => {
+	const stock: NonNullable<Info["stock"]> = arr(o.stock ?? [], who, "stock").flatMap(x => {
 		const s = x && typeof x === "object" && !Array.isArray(x) ? x as Record<string, unknown> : undefined
 		if (!s) return []
 		const code = optStr(s, "code")
@@ -220,7 +219,8 @@ export function parseInfo(v: unknown, who: string): Info {
 		...(rating ? { rating } : {}),
 		...(optStrings(o, "images") ? { images: optStrings(o, "images") } : {}),
 		...(optNum(o, "price") !== undefined ? { price: optNum(o, "price") } : {}),
-		...(optStr(o, "currency") ? { currency: optStr(o, "currency") } : {}),
+		// Валюта у контракта одна: другой цены агрегатор всё равно не покажет.
+		...(optStr(o, "currency") ? { currency: "RUB" as const } : {}),
 		...(optNum(o, "deliveryDays") !== undefined ? { deliveryDays: optNum(o, "deliveryDays") } : {}),
 		...(stock.length ? { stock } : {}),
 		...(optStr(o, "description") ? { description: optStr(o, "description") } : {}),

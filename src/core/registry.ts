@@ -8,8 +8,7 @@ import { access, readdir } from "node:fs/promises"
 import { constants } from "node:fs"
 import { delimiter, join } from "node:path"
 import { ProviderError, TOOL } from "../sdk/index.ts"
-import type { Describe, Flags } from "../sdk/index.ts"
-import type { Cap } from "./delta.ts"
+import type { Capability, Describe, Flags } from "../sdk/index.ts"
 import { ID_RE } from "./store.ts"
 import { DESCRIBE_TIMEOUT_MS, invoke, passNoise } from "./invoke.ts"
 import { parseDescribe } from "./validate.ts"
@@ -95,7 +94,7 @@ export type SelectOpts = {
 }
 
 /** `--only`/`--providers`, `--skip` и фильтр по capability. */
-export function select(ok: Provider[], flags: Flags, cap?: Cap, opts: SelectOpts = {}): Provider[] {
+export function select(ok: Provider[], flags: Flags, cap?: Capability, opts: SelectOpts = {}): Provider[] {
 	const known = new Set(ok.map(p => p.id))
 	const check = (ids: string[], flag: string): string[] => {
 		for (const id of ids) if (!known.has(id)) throw new ProviderError("bad_args", `--${flag}: нет провайдера «${id}» — есть ${[...known].join(", ") || "ни одного"}`)
@@ -106,7 +105,7 @@ export function select(ok: Provider[], flags: Flags, cap?: Cap, opts: SelectOpts
 	const skip = new Set(check(list(flags.skip), "skip"))
 
 	let out = ok.filter(p => (only.length ? only.includes(p.id) : true) && !skip.has(p.id))
-	if (cap) out = out.filter(p => (p.describe.capabilities as Cap[]).includes(cap))
+	if (cap) out = out.filter(p => p.describe.capabilities.includes(cap))
 	if (!out.length && !opts.allowEmpty) {
 		throw new ProviderError("bad_args", cap
 			? `ни один выбранный провайдер не умеет ${cap} — смотри ${TOOL} providers`

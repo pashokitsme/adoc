@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
-import type { Info } from "../../src/core/delta.ts"
+import type { Info } from "../../src/sdk/index.ts"
 
 type InfoJson = {
 	article: string
@@ -49,18 +49,19 @@ describe("adoc info", () => {
 	test("адрес карточки, склады и гистограмма доезжают до JSON", async () => {
 		const j = await info(["n90954802"])
 		expect(j.providers.alpha!.url).toBe("https://alpha.example/p/N90954802")
-		expect(j.providers.alpha!.stock).toEqual([{ code: "MSK", name: "Москва", quantity: 3 }])
+		expect(j.providers.alpha!.stock).toEqual([{ code: "S1", name: "склад", quantity: 3 }])
 		expect(j.providers.alpha!.rating!.histogram).toEqual([8, 1, 1, 0, 0])
 	})
 
-	test("в таблице — блок на сайт, адрес в заголовке и склады", async () => {
+	test("блок на сайт: имя сайта, карточка рендером SDK и адрес в ней", async () => {
 		const r = await run(["info", "n90954802"])
 		expect(r.code).toBe(0)
-		// Артикул в заголовке — как его набрали, ровно как у part.
-		expect(r.stdout).toContain("alpha · VAG n90954802  https://alpha.example/p/N90954802")
-		expect(r.stdout).toContain("beta · VAG n90954802  https://beta.example/p/N%20909%20548%2002")
-		expect(r.stdout).toContain("СКЛАД")
-		expect(r.stdout).toContain("цена от")
+		// Имя сайта — от обёртки, всё остальное рисует SDK, как и у самого сайта.
+		expect(r.stdout).toContain("alpha\nБолт  N90954802  VAG")
+		expect(r.stdout).toContain("Наличие")
+		expect(r.stdout).toContain("Цена и срок")
+		expect(r.stdout).toContain("https://alpha.example/p/N90954802")
+		expect(r.stdout).toContain("https://beta.example/p/N%20909%20548%2002")
 	})
 
 	test("бренд вторым словом и флагом — одно и то же", async () => {

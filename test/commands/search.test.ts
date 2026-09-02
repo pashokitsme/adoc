@@ -97,11 +97,12 @@ describe("adoc search", () => {
 		expect((await run(["search", "болт", "--json"])).code).toBe(1)
 	})
 
-	test("ссылки строк идут списком под таблицей, по одной на сайт", async () => {
+	test("первый адрес — колонкой, второй сайт той же строки — блоком «ещё ссылки»", async () => {
 		const r = await run(["search", "болт"])
-		expect(r.stdout).toContain("ссылки")
-		expect(r.stdout).toContain("alpha  https://alpha.example/p/N90954802")
-		expect(r.stdout).toContain("beta   https://beta.example/p/N%20909%20548%2002")
+		expect(r.stdout).toContain("ССЫЛКА")
+		expect(r.stdout).toContain("https://alpha.example/p/N90954802")
+		expect(r.stdout).toContain("ещё ссылки")
+		expect(r.stdout).toContain("beta  https://beta.example/p/N%20909%20548%2002")
 	})
 
 	test("адреса обоих сайтов лежат в JSON одной строкой выдачи", async () => {
