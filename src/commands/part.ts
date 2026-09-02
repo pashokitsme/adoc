@@ -56,7 +56,9 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 	// положил бы в корзину не то, что человек прочитал. И кэш перезаписывает
 	// только удавшаяся таблица: упавший шаг offers иначе затёр бы вчерашние
 	// строки пустотой, и `basket add 1` перестал бы работать на ровном месте.
-	if (code === 0 && rows.length) await saveLastPart(article, brand.brand, rows)
+	// Удавшаяся пустая таблица — тоже выдача: кэш обнуляется, чтобы
+	// `basket add 1` сказал «строк нет», а не положил строку прошлого артикула.
+	if (code === 0) await saveLastPart(article, brand.brand, rows)
 
 	return {
 		json: {

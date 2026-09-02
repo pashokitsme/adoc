@@ -28,6 +28,13 @@ describe("last-part.json", () => {
 		await expect(lineOf(1)).rejects.toThrow("adoc part")
 	})
 
+	test("выдача пустая — не «нет файла», а «нуль строк»", async () => {
+		// Разные беды и разные ответы: файла нет — зови part, файл есть и пуст —
+		// у этого артикула предложений не было, класть в корзину нечего.
+		await saveLastPart("N1", "VAG", [])
+		await expect(lineOf(1)).rejects.toThrow("0 строк")
+	})
+
 	test("номер за пределами выдачи", async () => {
 		await saveLastPart("N1", "VAG", [row("alpha", 1, { line: "a" })])
 		await expect(lineOf(2)).rejects.toThrow("1 строк")

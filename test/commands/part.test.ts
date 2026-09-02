@@ -37,6 +37,8 @@ afterEach(async () => {
 	delete process.env.FAKE_BETA_FAIL
 	delete process.env.FAKE_ALPHA_FAIL_OFFERS
 	delete process.env.FAKE_BETA_FAIL_OFFERS
+	delete process.env.FAKE_ALPHA_EMPTY_OFFERS
+	delete process.env.FAKE_BETA_EMPTY_OFFERS
 	if (color === undefined) delete process.env.NO_COLOR
 	else process.env.NO_COLOR = color
 	await rm(dir, { recursive: true, force: true })
@@ -204,6 +206,33 @@ describe("adoc part", () => {
 		expect(r.code).toBe(0)
 		expect(r.stdout).not.toContain("basket add")
 		expect(await readJson(LAST_PART_FILE)).toBeNull()
+	})
+
+	test("бренд есть, а предложений нет — кэш обнуляется по текущему артикулу", async () => {
+		await run(["part", "n90954802"])
+		process.env.FAKE_ALPHA_EMPTY_OFFERS = "1"
+		process.env.FAKE_BETA_EMPTY_OFFERS = "1"
+		const { code, j } = await part(["n90954802"])
+		expect(code).toBe(0)
+		expect(j.brand).toBe("VAG")
+		expect(j.offers).toEqual([])
+		const saved = await readJson<{ article: string; lines: unknown[] }>(LAST_PART_FILE)
+		expect(saved!.lines).toEqual([])
+		// Иначе `basket add 1` молча положил бы строку прошлой выдачи.
+		const r = await run(["basket", "add", "1", "--json"])
+		expect(r.code).toBe(1)
+		const e = JSON.parse(r.stdout) as { error: { code: string; message: string } }
+		expect(e.error.code).toBe("bad_args")
+		expect(e.error.message).toContain("0 строк")
+	})
+
+	test("предложений нет — подсказки про basket add тоже нет", async () => {
+		process.env.FAKE_ALPHA_EMPTY_OFFERS = "1"
+		process.env.FAKE_BETA_EMPTY_OFFERS = "1"
+		const r = await run(["part", "n90954802"])
+		expect(r.code).toBe(0)
+		expect(r.stdout).toContain("предложений нет")
+		expect(r.stdout).not.toContain("basket add")
 	})
 
 	test("аналоги режутся тем же --limit и говорят об этом", async () => {

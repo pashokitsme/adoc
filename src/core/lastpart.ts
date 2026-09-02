@@ -38,7 +38,9 @@ export async function saveLastPart(article: string, brand: string, rows: OfferRo
 /** Строка `n` из последней выдачи. Нумерация — с единицы, как в таблице. */
 export async function lineOf(n: number, now: number = Date.now()): Promise<LastPartLine> {
 	const lp = await readJson<LastPart>(LAST_PART_FILE)
-	if (!lp?.lines?.length) throw new ProviderError("bad_args", `нет сохранённой выдачи — сначала ${TOOL} part <артикул>`)
+	// Пустая выдача — не то же самое, что её отсутствие: `part` уже отвечал по
+	// этому артикулу и предложений не было, и звать его снова незачем.
+	if (!lp || !Array.isArray(lp.lines)) throw new ProviderError("bad_args", `нет сохранённой выдачи — сначала ${TOOL} part <артикул>`)
 	const age = now - Date.parse(lp.at)
 	if (!Number.isFinite(age) || age > MAX_AGE_MS) throw new ProviderError("bad_args", `выдача старше суток — повтори ${TOOL} part ${lp.article} ${lp.brand}`)
 	const line = lp.lines[n - 1]

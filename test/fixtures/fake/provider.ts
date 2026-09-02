@@ -4,6 +4,7 @@
 //   DELAY=<мс>     ответить с задержкой (проверка таймаута)
 //   FAIL=<код>     любая контрактная команда падает этим кодом
 //   FAIL_OFFERS=<код>  падает только offers, а brands отвечает как обычно
+//   EMPTY_OFFERS=1 offers отвечает пустым списком, а brands — как обычно
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
 //   NOREVIEWS=1    в describe нет capability reviews (метод при этом есть)
 
@@ -101,6 +102,9 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 
 		offers: async (_ctx, article, brand, { analogs }) => {
 			await gate("OFFERS")
+			// Бренд у сайта есть, а предложений по нему нет: обёртка обязана
+			// обнулить кэш выдачи, а не оставить в нём прошлый артикул.
+			if (knob(id, "EMPTY_OFFERS")) return { items: [] }
 			const hit = find(article).filter(r => brandKey(r.brand) === brandKey(brand))
 			const items = hit.map((r, i) => toOffer(r, i + 1))
 			// Аналог — другой артикул: обёртка обязана унести его в отдельную таблицу.
