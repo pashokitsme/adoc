@@ -6,13 +6,16 @@
 //   FAIL_OFFERS=<код>  падает только offers, а brands отвечает как обычно
 //   EMPTY_OFFERS=1 offers отвечает пустым списком, а brands — как обычно
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
+//   FAIL_INFO / FAIL_ANALOGS / FAIL_ORDERS=<код>  падает только эта команда
 //   NOREVIEWS=1    в describe нет capability reviews (метод при этом есть)
 //   NOBASKET=1     в describe нет capability basket (метод при этом есть)
 //   NOGARAGE=1     в describe нет capability garage (метод при этом есть)
+//   NOORDERS=1     в describe нет capability orders (метод при этом есть)
+//   NOCAR=1        поиск игнорирует --car и предупреждает об этом
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { ProviderError, articleKey, brandKey, configDir, defineProvider } from "../../../src/sdk/index.ts"
+import { ProviderError, articleKey, brandKey, configDir, defineProvider, need } from "../../../src/sdk/index.ts"
 import type { Basket, Capability, ErrorCode, Offer, ProviderSpec } from "../../../src/sdk/index.ts"
 
 export type FakeAccount = { token: string; user: string }
@@ -21,6 +24,11 @@ export type FakeData = { article: string; brand: string; price: number; seller: 
 const knob = (id: string, name: string): string | undefined => process.env[`FAKE_${id.toUpperCase()}_${name}`]
 
 export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> {
+	// Ссылки — половина смысла выдачи: обёртка обязана их показать, и фейк их
+	// отдаёт везде, где контракт разрешает.
+	const site = `https://${id}.example`
+	const page = (article: string): string => `${site}/p/${encodeURIComponent(article)}`
+
 	// `what` — имя команды: на нём проверяется случай «бренд нашёлся, а
 	// предложения не отдались», в котором обёртка обязана не тронуть кэш.
 	const gate = async (what?: string): Promise<void> => {
@@ -65,12 +73,21 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 	const toOffer = (r: Row, n: number): Offer => ({
 		article: r.article, brand: r.brand, name: r.name, price: r.price, currency: "RUB",
 		quantity: 3, deliveryDays: 2, seller: data.seller, rating: { average: 4.5, count: 10 },
-		ref: { line: `${id}-${n}` },
+		url: page(r.article), ref: { line: `${id}-${n}` },
 	})
+	const brandOf = (article: string, brand: string): Row | undefined =>
+		find(article).find(r => brandKey(r.brand) === brandKey(brand))
+	const brandFlag = (v: string | true | undefined): string => {
+		if (typeof v !== "string" || !v) throw new ProviderError("bad_args", "нужен --brand <имя>")
+		return v
+	}
 
 	const spec = defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket"]>({
-		id, name: `Fake ${id}`, site: `https://${id}.example`,
+		id, name: `Fake ${id}`, site,
 		capabilities: ["reviews", "garage", "analogs", "basket"],
+		// --car контрактным флагом со значением станет в ветке провайдеров; пока
+		// фейк объявляет его своим, иначе parseArgv развернул бы его булевым.
+		valueFlags: ["car"],
 
 		login: async ctx => {
 			const user = knob(id, "LOGIN") ?? await ctx.prompt("Логин > ")
@@ -84,22 +101,29 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			return ctx.account ? { name: ctx.account.user, email: `${ctx.account.user}@${id}.example` } : null
 		},
 
-		search: async (_ctx, text) => {
+		search: async (ctx, text) => {
 			await gate()
+			// Машина приезжает своим же ref-ом из `garage export`: обёртка не
+			// придумывает его, а пересылает как есть. Сайт, который так не умеет,
+			// говорит об этом вслух и ищет без машины.
+			const raw = typeof ctx.flags.car === "string" ? ctx.flags.car : undefined
+			if (raw && knob(id, "NOCAR")) ctx.warn(`${id}: поиск по машине не поддерживается`)
+			const carId = raw && !knob(id, "NOCAR") ? String((JSON.parse(raw) as { carId?: unknown }).carId ?? "?") : undefined
 			if (text !== "болт") return { items: [] }
 			return {
 				items: [
-					{ article: data.article, brand: data.brand, name: "Болт", price: data.price, quantity: 3, rating: { average: 4.5, count: 10 } },
-					{ article: `${id.toUpperCase()}-ONLY`, brand: "OWN", name: `Своё у ${id}`, price: 100 },
+					{ article: data.article, brand: data.brand, name: "Болт", price: data.price, quantity: 3, rating: { average: 4.5, count: 10 }, url: page(data.article) },
+					{ article: `${id.toUpperCase()}-ONLY`, brand: "OWN", name: `Своё у ${id}`, price: 100, url: page(`${id.toUpperCase()}-ONLY`) },
+					...(carId ? [{ article: `${id.toUpperCase()}-CAR`, brand: "OEM", name: `под машину ${carId}`, price: 50, url: page("car") }] : []),
 				],
-				total: 2,
+				total: carId ? 3 : 2,
 			}
 		},
 
 		brands: async (_ctx, article) => {
 			await gate()
 			if (knob(id, "AMBIGUOUS")) throw new ProviderError("ambiguous", "уточни бренд", [{ brand: "AAA", article }, { brand: "BBB", article }])
-			return { items: find(article).map(r => ({ brand: r.brand, article: r.article, name: r.name, rating: { average: 4.5, count: 10 } })) }
+			return { items: find(article).map(r => ({ brand: r.brand, article: r.article, name: r.name, rating: { average: 4.5, count: 10 }, url: page(r.article) })) }
 		},
 
 		offers: async (_ctx, article, brand, { analogs }) => {
@@ -110,13 +134,17 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			const hit = find(article).filter(r => brandKey(r.brand) === brandKey(brand))
 			const items = hit.map((r, i) => toOffer(r, i + 1))
 			// Аналог — другой артикул: обёртка обязана унести его в отдельную таблицу.
-			if (analogs && hit.length) items.push({ ...toOffer(hit[0]!, 9), article: "AN-1", brand: "ANALOG", price: data.price + 50, analog: true })
+			if (analogs && hit.length) items.push({ ...toOffer(hit[0]!, 9), article: "AN-1", brand: "ANALOG", price: data.price + 50, analog: true, url: page("AN-1") })
 			return { items }
 		},
 
-		reviews: async () => {
+		reviews: async (_ctx, article) => {
 			await gate()
-			return { total: 1, rating: { average: 4.5, count: 10, histogram: [8, 1, 1, 0, 0] }, items: [{ text: `отзыв у ${id}`, rating: 5, date: "2026-01-02" }] }
+			return {
+				total: 1, rating: { average: 4.5, count: 10, histogram: [8, 1, 1, 0, 0] },
+				url: `${site}/r/${encodeURIComponent(article)}`,
+				items: [{ text: `отзыв у ${id}`, rating: 5, date: "2026-01-02", url: `${site}/r/${encodeURIComponent(article)}#1` }],
+			}
 		},
 
 		garageExport: async ctx => {
@@ -126,7 +154,7 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		},
 
 		basket: {
-			list: async ctx => { auth(ctx.account); await gate(); return await load() },
+			list: async ctx => { auth(ctx.account); await gate(); return { ...(await load()), url: `${site}/basket` } },
 			add: async (ctx, ref, qty) => {
 				auth(ctx.account)
 				await gate()
@@ -134,7 +162,7 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 				const itemId = String(ref.line ?? "x")
 				const items = b.items.some(i => i.id === itemId)
 					? b.items.map(i => (i.id === itemId ? { ...i, quantity: i.quantity + qty } : i))
-					: [...b.items, { id: itemId, article: data.article, brand: data.brand, name: "Болт", price: data.price, quantity: qty, deliveryDays: 2 }]
+					: [...b.items, { id: itemId, article: data.article, brand: data.brand, name: "Болт", price: data.price, quantity: qty, deliveryDays: 2, url: page(data.article) }]
 				return await store({ ...b, items })
 			},
 			set: async (ctx, itemId, qty) => {
@@ -149,8 +177,60 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			},
 		},
 
+		// info, analogs и orders в ветке провайдеров станут контрактными и
+		// уедут в defineProvider; пока фейк объявляет их своими командами —
+		// в describe и в разборе обёртки разницы нет.
 		commands: {
 			hello: { usage: "hello [имя]", about: "своя команда провайдера", auth: false, run: async (_ctx, args) => ({ json: { hello: args[0] ?? id }, render: () => `привет, ${args[0] ?? id}` }) },
+
+			info: {
+				usage: "info <артикул> --brand <имя>", about: "карточка артикула", auth: false,
+				run: async (ctx, args) => {
+					await gate("INFO")
+					const article = need(args[0], "артикул")
+					const hit = brandOf(article, brandFlag(ctx.flags.brand))
+					if (!hit) throw new ProviderError("notfound", `${id}: нет карточки ${article}`)
+					return {
+						json: {
+							info: {
+								article: hit.article, brand: hit.brand, name: hit.name, url: page(hit.article),
+								price: hit.price, currency: "RUB", deliveryDays: 2,
+								rating: { average: 4.5, count: 10, histogram: [8, 1, 1, 0, 0] },
+								stock: [{ code: "MSK", name: "Москва", quantity: 3 }],
+								description: `Карточка ${hit.name} у ${id}`,
+							},
+						},
+					}
+				},
+			},
+
+			analogs: {
+				usage: "analogs <артикул> --brand <имя>", about: "заменители", auth: false,
+				run: async (ctx, args) => {
+					await gate("ANALOGS")
+					const article = need(args[0], "артикул")
+					const hit = brandOf(article, brandFlag(ctx.flags.brand))
+					if (!hit) return { json: { items: [] } }
+					return { json: { items: [{ ...toOffer(hit, 9), article: "AN-1", brand: "ANALOG", price: data.price + 50, analog: true, url: page("AN-1") }] } }
+				},
+			},
+
+			orders: {
+				usage: "orders", about: "заказы", auth: true,
+				run: async ctx => {
+					auth(ctx.account)
+					await gate("ORDERS")
+					return {
+						json: {
+							items: [{
+								id: `${id}-100`, date: "2026-01-02T10:00:00Z", status: "доставлен",
+								total: data.price, currency: "RUB", url: `${site}/orders/100`,
+								items: [{ article: data.article, brand: data.brand, name: "Болт", qty: 1, price: data.price, url: page(data.article) }],
+							}],
+						},
+					}
+				},
+			},
 		},
 	})
 
@@ -162,5 +242,8 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 	if (knob(id, "NOREVIEWS")) off.add("reviews")
 	if (knob(id, "NOBASKET")) off.add("basket")
 	if (knob(id, "NOGARAGE")) off.add("garage")
-	return off.size ? { ...spec, capabilities: spec.capabilities.filter(c => !off.has(c)) } : spec
+	// «orders» ещё нет в контрактном Capability — отсюда приведение; уйдёт,
+	// когда ветка провайдеров внесёт его в контракт.
+	const caps = knob(id, "NOORDERS") ? spec.capabilities : [...spec.capabilities, "orders" as Capability]
+	return { ...spec, capabilities: caps.filter(c => !off.has(c)) }
 }

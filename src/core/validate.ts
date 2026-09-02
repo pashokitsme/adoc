@@ -4,9 +4,8 @@
 // провайдера: виноват он, а не пользователь.
 
 import { CONTRACT_VERSION, ProviderError } from "../sdk/index.ts"
-import type { Basket, BasketItem, BrandHit, Capability, Car, Command, Describe, Display, Offer, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/index.ts"
-
-const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket"]
+import type { Capability, Car, Command, Describe, Display, Offer, Product, Rating, WhoamiResult } from "../sdk/index.ts"
+import { CAPABILITIES, type BasketItemL, type BasketL, type BrandHitL, type Cap, type Info, type Order, type OrderItem, type ReviewL, type ReviewsL, type Stock } from "./delta.ts"
 
 const fail = (who: string, what: string): never => {
 	throw new ProviderError("internal", `${who}: ${what}`)
@@ -58,7 +57,9 @@ export function parseDescribe(v: unknown, id: string): Describe {
 	const site = str(o, "site", who)
 	// Незнакомая capability — это провайдер новее обёртки, а не поломка:
 	// молча отбрасываем, всё известное продолжает работать.
-	const capabilities = arr(o.capabilities, who, "capabilities").filter((c): c is Capability => CAPABILITIES.includes(c as Capability))
+	// «orders» пока нет в контрактном Capability — отсюда приведение; уйдёт
+	// вместе с delta.ts, когда ветка провайдеров внесёт его в контракт.
+	const capabilities = arr(o.capabilities, who, "capabilities").filter((c): c is Capability => CAPABILITIES.includes(c as Cap))
 	const commands: Command[] = arr(o.commands, who, "commands").map(c => {
 		const x = obj(c, who, "команда")
 		return { name: str(x, "name", who), usage: str(x, "usage", who), about: optStr(x, "about") ?? "", auth: x.auth === true }
@@ -77,17 +78,18 @@ export function parseWhoami(v: unknown, who: string): WhoamiResult {
 	return ok ? { ok, display: parseDisplay(o.display, who) } : { ok: false }
 }
 
-const parseBrandHit = (v: unknown, who: string): BrandHit => {
+const parseBrandHit = (v: unknown, who: string): BrandHitL => {
 	const o = obj(v, who, "элемент brands")
 	return {
 		brand: str(o, "brand", who), article: str(o, "article", who),
 		...(optStr(o, "name") ? { name: optStr(o, "name") } : {}),
 		...(optRating(o) ? { rating: optRating(o) } : {}),
+		...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
 		...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
 	}
 }
 
-export const parseBrands = (v: unknown, who: string): BrandHit[] =>
+export const parseBrands = (v: unknown, who: string): BrandHitL[] =>
 	arr(obj(v, who, "ответ brands").items, who, "items").map(x => parseBrandHit(x, who))
 
 export function parseOffers(v: unknown, who: string): Offer[] {
@@ -125,10 +127,10 @@ export function parseProducts(v: unknown, who: string): Product[] {
 	})
 }
 
-export function parseReviews(v: unknown, who: string): Reviews {
+export function parseReviews(v: unknown, who: string): ReviewsL {
 	const o = obj(v, who, "ответ reviews")
 	const r = optObj(o, "rating")
-	const items: Review[] = arr(o.items, who, "items").map(x => {
+	const items: ReviewL[] = arr(o.items, who, "items").map(x => {
 		const it = obj(x, who, "отзыв")
 		return {
 			text: optStr(it, "text") ?? "",
@@ -138,6 +140,7 @@ export function parseReviews(v: unknown, who: string): Reviews {
 			...(optStr(it, "pros") ? { pros: optStr(it, "pros") } : {}),
 			...(optStr(it, "cons") ? { cons: optStr(it, "cons") } : {}),
 			...(optBool(it, "purchased") !== undefined ? { purchased: optBool(it, "purchased") } : {}),
+			...(optStr(it, "url") ? { url: optStr(it, "url") } : {}),
 		}
 	})
 	const rating = r && optNum(r, "average") !== undefined && optNum(r, "count") !== undefined
@@ -148,13 +151,14 @@ export function parseReviews(v: unknown, who: string): Reviews {
 		total: optNum(o, "total") ?? items.length,
 		...(rating ? { rating } : {}),
 		...(summary ? { summary: { pros: optStrings(summary, "pros") ?? [], cons: optStrings(summary, "cons") ?? [] } } : {}),
+		...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
 		items,
 	}
 }
 
-export function parseBasket(v: unknown, who: string): Basket {
+export function parseBasket(v: unknown, who: string): BasketL {
 	const o = obj(v, who, "корзина")
-	const items: BasketItem[] = arr(o.items, who, "items").map(x => {
+	const items: BasketItemL[] = arr(o.items, who, "items").map(x => {
 		const it = obj(x, who, "позиция корзины")
 		return {
 			id: str(it, "id", who), article: str(it, "article", who), brand: str(it, "brand", who),
@@ -164,6 +168,7 @@ export function parseBasket(v: unknown, who: string): Basket {
 			...(optStr(it, "seller") ? { seller: optStr(it, "seller") } : {}),
 			...(optNum(it, "deliveryDays") !== undefined ? { deliveryDays: optNum(it, "deliveryDays") } : {}),
 			...(optStr(it, "deliveryDate") ? { deliveryDate: optStr(it, "deliveryDate") } : {}),
+			...(optStr(it, "url") ? { url: optStr(it, "url") } : {}),
 		}
 	})
 	return { items, currency: "RUB", ...(optNum(o, "total") !== undefined ? { total: optNum(o, "total") } : {}), ...(optStr(o, "url") ? { url: optStr(o, "url") } : {}) }
@@ -179,6 +184,71 @@ export function parseCars(v: unknown, who: string): Car[] {
 			...(optStr(c, "engine") ? { engine: optStr(c, "engine") } : {}),
 			...(optStr(c, "vin") ? { vin: optStr(c, "vin") } : {}),
 			...(optNum(c, "odometer") !== undefined ? { odometer: optNum(c, "odometer") } : {}),
+		}
+	})
+}
+
+/**
+ * Карточка артикула: почти всё в ней необязательно — сайты показывают разное,
+ * и требовать от каждого цену со сроком значило бы забраковать половину
+ * честных ответов. Обязателен только сам предмет разговора: артикул и бренд.
+ */
+export function parseInfo(v: unknown, who: string): Info {
+	const o = obj(obj(v, who, "ответ info").info, who, "info")
+	const r = optObj(o, "rating")
+	const rating = r && optNum(r, "average") !== undefined && optNum(r, "count") !== undefined
+		? {
+			average: optNum(r, "average")!, count: optNum(r, "count")!,
+			...(Array.isArray(r.histogram) ? { histogram: r.histogram.filter((n): n is number => typeof n === "number") } : {}),
+		}
+		: undefined
+	const stock: Stock[] = arr(o.stock ?? [], who, "stock").flatMap(x => {
+		const s = x && typeof x === "object" && !Array.isArray(x) ? x as Record<string, unknown> : undefined
+		if (!s) return []
+		const code = optStr(s, "code")
+		// Склад без кода — не склад: показать его нечем, а падать из-за одной
+		// строки наличия, когда есть остальная карточка, незачем.
+		return code === undefined ? [] : [{
+			code,
+			...(optStr(s, "name") ? { name: optStr(s, "name") } : {}),
+			...(optNum(s, "quantity") !== undefined ? { quantity: optNum(s, "quantity") } : {}),
+		}]
+	})
+	return {
+		article: str(o, "article", who), brand: str(o, "brand", who), name: optStr(o, "name") ?? "",
+		...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
+		...(rating ? { rating } : {}),
+		...(optStrings(o, "images") ? { images: optStrings(o, "images") } : {}),
+		...(optNum(o, "price") !== undefined ? { price: optNum(o, "price") } : {}),
+		...(optStr(o, "currency") ? { currency: optStr(o, "currency") } : {}),
+		...(optNum(o, "deliveryDays") !== undefined ? { deliveryDays: optNum(o, "deliveryDays") } : {}),
+		...(stock.length ? { stock } : {}),
+		...(optStr(o, "description") ? { description: optStr(o, "description") } : {}),
+		...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
+	}
+}
+
+/** Заказы сайта. Позиции необязательны: их отдают не все. */
+export function parseOrders(v: unknown, who: string): Order[] {
+	return arr(obj(v, who, "ответ orders").items, who, "items").map(x => {
+		const o = obj(x, who, "заказ")
+		const items: OrderItem[] | undefined = Array.isArray(o.items)
+			? o.items.map(y => {
+				const it = obj(y, who, "позиция заказа")
+				return {
+					article: str(it, "article", who), brand: str(it, "brand", who), name: optStr(it, "name") ?? "",
+					qty: num(it, "qty", who), price: num(it, "price", who),
+					...(optNum(it, "sum") !== undefined ? { sum: optNum(it, "sum") } : {}),
+					...(optStr(it, "url") ? { url: optStr(it, "url") } : {}),
+				}
+			})
+			: undefined
+		return {
+			id: str(o, "id", who), date: optStr(o, "date") ?? "", status: optStr(o, "status") ?? "",
+			total: optNum(o, "total") ?? 0, currency: optStr(o, "currency") ?? "RUB",
+			...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
+			...(items ? { items } : {}),
+			...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
 		}
 	})
 }
