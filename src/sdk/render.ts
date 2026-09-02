@@ -96,6 +96,15 @@ export type Col<T> = { head: string; cell: (item: T) => string }
 const heads = <T>(cols: Col<T>[], own: string[]): string[] => [...cols.map(c => c.head), ...own]
 const cells = <T>(cols: Col<T>[], item: T, own: string[]): string[] => [...cols.map(c => c.cell(item)), ...own]
 
+/**
+ * То же самое, но с номером строки перед колонками вызывающего: номер — это
+ * ключ к списку адресов под таблицей, и читаться он должен первым, до
+ * «ПРОВАЙДЕРА» и прочего, что добавляет агрегатор.
+ */
+const headsNum = <T>(cols: Col<T>[], own: string[]): string[] => ["#", ...cols.map(c => c.head), ...own]
+const cellsNum = <T>(cols: Col<T>[], item: T, n: number, own: string[]): string[] =>
+	[String(n), ...cols.map(c => c.cell(item)), ...own]
+
 export const ratingCell = (r: { average: number; count: number } | undefined) =>
 	r && r.count ? `${r.average.toFixed(1)}★ (${r.count})` : dim("—")
 
@@ -103,19 +112,19 @@ export const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim(
 
 export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "ничего не найдено"
-	return table(items.map((p, i) => cells(cols, p, [
-		String(i + 1), cyan(p.article), bold(p.brand), p.name.slice(0, 50),
+	return table(items.map((p, i) => cellsNum(cols, p, i + 1, [
+		cyan(p.article), bold(p.brand), p.name.slice(0, 50),
 		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
-	])), heads(cols, ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
+	])), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
 		+ urlList(items)
 }
 
 export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "не найдено"
 	// имя режется: у armtek в него уезжает применимость целиком
-	return table(items.map((b, i) => cells(cols, b, [
-		String(i + 1), bold(b.brand), cyan(b.article), (b.name ?? "").slice(0, 50), ratingCell(b.rating),
-	])), heads(cols, ["#", "БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
+	return table(items.map((b, i) => cellsNum(cols, b, i + 1, [
+		bold(b.brand), cyan(b.article), (b.name ?? "").slice(0, 50), ratingCell(b.rating),
+	])), headsNum(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
 		+ urlList(items)
 }
 
@@ -149,14 +158,14 @@ export function urlList(items: { url?: string }[], from = 1): string {
  */
 export function renderOffers<T extends Offer>(items: T[], cols: Col<T>[] = [], from = 1): string {
 	if (!items.length) return "предложений нет"
-	return table(items.map((o, i) => cells(cols, o, [
+	return table(items.map((o, i) => cellsNum(cols, o, from + i, [
 		// длины подобраны так, чтобы строка укладывалась в ~110 символов: у
 		// autodoc продавец бывает «Магазин CHEB · Наличие в магазине», а имя
 		// детали у armtek тянет за собой всю применимость
-		String(from + i), bold(o.brand), (o.name ?? "").slice(0, 32), money(o.price), qtyCell(o.quantity),
+		bold(o.brand), (o.name ?? "").slice(0, 32), money(o.price), qtyCell(o.quantity),
 		o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
 		(o.seller ?? "").slice(0, 26) || dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "",
-	])), heads(cols, ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
+	])), headsNum(cols, ["БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
 		+ urlList(items, from)
 }
 
@@ -185,12 +194,12 @@ export const basketTotal = (b: Basket): number =>
 
 export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
 	if (!b.items.length) return "корзина пуста"
-	const rows = b.items.map((it, i) => cells(cols, it, [
-		`${i + 1}`, dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 36),
+	const rows = b.items.map((it, i) => cellsNum(cols, it, i + 1, [
+		dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 36),
 		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
 		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
 	]))
-	return table(rows, heads(cols, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"])) +
+	return table(rows, headsNum(cols, ["ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"])) +
 		urlList(b.items) +
 		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}${b.url ? `  ${link(b.url)}` : ""}`
 }

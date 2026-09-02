@@ -1,7 +1,7 @@
 // provider.ts — autodoc.ru как провайдер контракта. Вся сайтоспецифика — в
 // api.ts/auth.ts/map.ts; здесь только склейка вызовов и свои команды.
 
-import { ProviderError, defineProvider, positiveInt, type Display } from "../../sdk/index.ts"
+import { ProviderError, defineProvider, positiveInt, type Display, type Offer } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import { ApiError } from "./api.ts"
 import * as auth from "./auth.ts"
@@ -42,6 +42,26 @@ const timeoutError = () => new ProviderError("timeout", `нет ответа о�
 const noAnalogs = (e: unknown): null => {
 	if (e instanceof ApiError && e.status === 404) return null
 	throw e
+}
+
+/**
+ * Предложения по паре (артикул, бренд) — один источник на `offers --analogs` и
+ * на `analogs`, чтобы они не могли разойтись. Так уже было: `analogs` спрашивал
+ * только `price-list/analogs`, а тот отдаёт кросс-таблицу замен без строк
+ * прайса (`items` пустой у всех 217 позиций) — команда возвращала пустоту, хотя
+ * `offers --analogs` находил 21 аналог. Аналоги у autodoc приходят **группами
+ * внутри originals** («Рекомендованные аналоги на складе Автодок» и подобными);
+ * `price-list/analogs` спрашиваем всё равно — на случай, если там появятся
+ * настоящие предложения.
+ */
+async function offerRows(article: string, b: Brand, name: string, withAnalogs: boolean): Promise<Offer[]> {
+	const [orig, an] = await Promise.all([
+		api.offers(article, b.id),
+		withAnalogs ? api.analogs(article, b.id).catch(noAnalogs) : Promise.resolve(null),
+	])
+	const items = toOffers(orig, article, name)
+	if (an) items.push(...toOffers(an, article, name, true))
+	return items
 }
 
 export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "basket", "orders"]>({
@@ -123,14 +143,9 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 
 	offers: async (_ctx, article, brand, { analogs }) => {
 		const b = await resolveBrand(article, brand)
-		const name = brandLabel(b, brand)
-		const [orig, an] = await Promise.all([
-			api.offers(article, b.id),
-			analogs ? api.analogs(article, b.id).catch(noAnalogs) : Promise.resolve(null),
-		])
-		const items = toOffers(orig, article, name)
-		if (an) items.push(...toOffers(an, article, name, true))
-		return { items }
+		const items = await offerRows(article, b, brandLabel(b, brand), analogs)
+		// сайт отдаёт выдачу целиком, страниц у неё нет — итог и есть длина
+		return { items, total: items.length }
 	},
 
 	info: async (_ctx, article, brand) => {
@@ -139,13 +154,13 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		return { info: toInfo(inf, price) }
 	},
 
-	// Только аналоги: точные строки живут в offers, и дублировать их здесь
-	// значит заставить агрегатора отличать одно от другого руками.
+	// Только аналоги: ровно те строки `offers --analogs`, у которых analog:true.
+	// Точные совпадения живут в offers, и дублировать их здесь значит заставить
+	// агрегатора отличать одно от другого руками.
 	analogs: async (_ctx, article, brand) => {
 		const b = await resolveBrand(article, brand)
-		const name = brandLabel(b, brand)
-		const an = await api.analogs(article, b.id).catch(noAnalogs)
-		return { items: an ? toOffers(an, article, name, true) : [] }
+		const items = (await offerRows(article, b, brandLabel(b, brand), true)).filter(o => o.analog)
+		return { items, total: items.length }
 	},
 
 	reviews: async (ctx, article, brand) => {

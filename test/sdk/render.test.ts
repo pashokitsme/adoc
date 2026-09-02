@@ -70,15 +70,25 @@ describe("renderReviews", () => {
 })
 
 describe("дополнительные колонки", () => {
-	test("встают слева и в шапке, и в строке", () => {
+	test("встают после номера строки, и в шапке, и в строке", () => {
 		const out = renderOffers(
 			[{ article: "N1", brand: "VAG", price: 407, currency: "RUB" as const, provider: "beta" }],
 			[{ head: "ПРОВАЙДЕР", cell: o => o.provider }],
 		)
 		const lines = out.split("\n")
-		expect(lines[0]!.startsWith("ПРОВАЙДЕР")).toBe(true)
-		expect(lines[1]!.startsWith("beta")).toBe(true)
+		// номер первый: он ключ к списку адресов под таблицей
+		expect(lines[0]!.startsWith("#  ПРОВАЙДЕР")).toBe(true)
+		expect(lines[1]!.startsWith("1  beta")).toBe(true)
 		expect(lines[1]).toContain("407 ₽")
+	})
+
+	test("номер остаётся первым и у поиска, брендов и корзины", () => {
+		const col = [{ head: "ГДЕ", cell: () => "beta" }]
+		expect(renderProducts([{ article: "N1", brand: "VAG", name: "Болт" }], col).split("\n")[0]).toStartWith("#  ГДЕ")
+		expect(renderBrands([{ brand: "VAG", article: "N1" }], col).split("\n")[0]).toStartWith("#  ГДЕ")
+		const basket = renderBasket({ items: [{ id: "7", article: "N1", brand: "VAG", price: 1, quantity: 1 }], currency: "RUB" }, col)
+		expect(basket.split("\n")[0]).toStartWith("#  ГДЕ")
+		expect(basket.split("\n")[1]).toStartWith("1  beta")
 	})
 
 	test("from сдвигает нумерацию строк", () => {
