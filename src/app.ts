@@ -4,7 +4,7 @@
 // Единственное исключение — интерактивный `login`: его диалог идёт прямо в
 // терминал, иначе подсказка «Пароль >» появилась бы после ввода пароля.
 
-import { ProviderError, TOOL, errorBody, exitCode, linksHint, parseArgv, red, renderBrands, yellow } from "./sdk/index.ts"
+import { ProviderError, TOOL, errorBody, exitCode, linksHint, parseArgv, red, renderBrands, warnSink, yellow } from "./sdk/index.ts"
 import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
 import { cmdAnalogs } from "./commands/analogs.ts"
@@ -64,7 +64,9 @@ export async function run(argv: string[]): Promise<RunResult> {
 	// обязана звать ту команду, которую человек и набрал, а не всегда `part`.
 	// До разбора argv его ещё нет — тогда и подсказка достанется `part`.
 	let ran = "part"
-	const warn = (line: string): void => { stderr += line.endsWith("\n") ? line : `${line}\n` }
+	// Через одну воронку: она же гасит всё при ADOC_NO_WARN и не даёт одной и
+	// той же строке напечататься дважды за запуск.
+	const warn = warnSink(line => { stderr += line.endsWith("\n") ? line : `${line}\n` })
 
 	try {
 		const { args, flags } = parseArgv(argv, VALUE_FLAGS)

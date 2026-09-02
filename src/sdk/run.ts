@@ -7,7 +7,7 @@ import { CONTRACT_VERSION, type Basket, type Command, type Describe } from "./co
 import type { Ctx, ProviderSpec } from "./define.ts"
 import { ProviderError, errorBody, exitCode, type ErrorMapper } from "./errors.ts"
 import { HttpError } from "./http.ts"
-import { emit } from "./out.ts"
+import { emit, warnSink } from "./out.ts"
 import { bold, dim, fields, linksHint, red, renderBasket, renderBrands, renderCars, renderDisplay, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews } from "./render.ts"
 import { TOOL } from "./config.ts"
 
@@ -202,7 +202,7 @@ export async function runProvider<A>(spec: ProviderSpec<A>, argv: string[] = pro
 			limit: 30,
 			prompt: needTTY(readLine),
 			secret: needTTY(readSecret),
-			warn: m => process.stderr.write(`${m}\n`),
+			warn: warnSink(m => process.stderr.write(`${m}\n`)),
 		}
 
 		ctx.page = pageNum("page", flags.page, 1)

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
-import { CONFIG_DIR_ENV, LINKS_HINT } from "../../src/sdk/index.ts"
+import { CONFIG_DIR_ENV, LINKS_HINT, NO_WARN_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { LAST_PART_FILE } from "../../src/core/lastpart.ts"
 import { filePath, readJson } from "../../src/core/store.ts"
@@ -37,6 +37,8 @@ afterEach(async () => {
 	delete process.env.FAKE_BETA_FAIL_OFFERS
 	delete process.env.FAKE_ALPHA_EMPTY_OFFERS
 	delete process.env.FAKE_BETA_EMPTY_OFFERS
+	delete process.env.FAKE_ALPHA_SAME_WARN
+	delete process.env[NO_WARN_ENV]
 	restore()
 	await rm(dir, { recursive: true, force: true })
 })
@@ -142,6 +144,27 @@ describe("adoc part", () => {
 		expect(j.offers.map(o => o.provider)).toEqual(["beta"])
 		expect(j.errors).toEqual([{ provider: "alpha", code: "auth", message: expect.any(String) }])
 		expect(stderr).toContain("adoc login alpha")
+	})
+
+	test("ADOC_NO_WARN гасит stderr, но не выдачу и не код возврата", async () => {
+		process.env.FAKE_ALPHA_FAIL = "auth"
+		process.env[NO_WARN_ENV] = "1"
+		const r = await run(["part", "n90954802"])
+		expect(r.stderr).toBe("")
+		expect(r.code).toBe(0)
+		// таблица второго сайта на месте: молчат предупреждения, а не ответ
+		expect(r.stdout).toContain("beta")
+		// а без переменной строка отказа печатается
+		delete process.env[NO_WARN_ENV]
+		expect((await run(["part", "n90954802"])).stderr).toContain("adoc login alpha")
+	})
+
+	test("одна и та же заметка сайта печатается раз за запуск, а не на каждый шаг", async () => {
+		process.env.FAKE_ALPHA_SAME_WARN = "1"
+		// `part` спрашивает alpha дважды — бренды и предложения, — и заметка
+		// приходит из обеих команд
+		const r = await run(["part", "n90954802"])
+		expect(r.stderr.split("заметка, одна на все шаги").length - 1).toBe(1)
 	})
 
 	test("упали все — exit 1", async () => {

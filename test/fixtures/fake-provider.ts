@@ -22,7 +22,13 @@ export const fake = defineProvider<Account, ["reviews", "garage", "basket"]>({
 		return { account: { token: "t-" + user, user }, display: { name: user } }
 	},
 	whoami: async ctx => (ctx.account ? { name: ctx.account.user } : null),
-	search: async (_ctx, text) => ({ items: text === "болт" ? [{ article: "N1", brand: "VAG", name: "Болт", price: 407 }] : [], total: 1 }),
+	search: async (ctx, text) => {
+		// FAKE_WARN — две одинаковые заметки за один запуск: так ведёт себя
+		// провайдер, у которого один и тот же повод предупредить встречается на
+		// разных шагах. SDK обязан напечатать её один раз, а ADOC_NO_WARN — ни разу.
+		if (process.env.FAKE_WARN) { ctx.warn("fake: заметка"); ctx.warn("fake: заметка") }
+		return { items: text === "болт" ? [{ article: "N1", brand: "VAG", name: "Болт", price: 407 }] : [], total: 1 }
+	},
 	brands: async (_ctx, article) => {
 		if (article === "AMB") throw new ProviderError("ambiguous", "нужен бренд", [{ brand: "A", article }, { brand: "B", article }])
 		return { items: article === "N1" ? [{ brand: "VAG", article, name: "Болт" }] : [] }

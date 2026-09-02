@@ -3,7 +3,7 @@
 export { defineProvider } from "./define.ts"
 export type { BasketOps, CommandResult, Ctx, ProviderCommand, ProviderSpec, SearchOpts } from "./define.ts"
 export { runProvider } from "./run.ts"
-export { drain, emit } from "./out.ts"
+export { drain, emit, warnSink } from "./out.ts"
 export type { Sink } from "./out.ts"
 export { ProviderError, errorBody, exitCode, toProviderError } from "./errors.ts"
 export type { ErrorMapper } from "./errors.ts"
@@ -14,7 +14,7 @@ export { hasTTY, intFlag, need, parseArgv, parseRef, positiveInt, readLine, read
 export type { Flags } from "./cli.ts"
 export { accountStore } from "./account.ts"
 export type { AccountStore } from "./account.ts"
-export { CONFIG_DIR_ENV, TOOL, configDir } from "./config.ts"
+export { CONFIG_DIR_ENV, NO_WARN_ENV, TOOL, configDir, noWarn } from "./config.ts"
 export * from "./contract.ts"
 export {
 	LINKS_HINT, bar, basketTotal, bold, cyan, days, dim, fields, fold, green, heading, hyperlink, isoDate, link,

@@ -1,6 +1,7 @@
 // render.ts — вывод в терминал. Цвета гаснут вне TTY и при NO_COLOR,
 // чтобы `adoc ... | grep` не ловил escape-последовательности.
 
+import { noWarn } from "./config.ts"
 import type { Basket, BasketItem, BrandHit, Car, Display, Info, Offer, Order, Product, Reviews } from "./contract.ts"
 
 // Решение принимается на каждый вызов, а не один раз при импорте: модуль
@@ -76,6 +77,7 @@ export const LINKS_HINT = "ссылки — Cmd+клик (iTerm2, WezTerm, ghost
  * она один раз, потому что и вывод собирается один раз за запуск.
  */
 export function linksHint(text: string): string {
+	if (noWarn()) return ""
 	return linksMode() === "osc8" && text.includes("\x1b]8;;") ? dim(LINKS_HINT) : ""
 }
 

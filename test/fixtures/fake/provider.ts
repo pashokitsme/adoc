@@ -14,6 +14,9 @@
 //   NOGARAGE=1     в describe нет capability garage (метод при этом есть)
 //   NOORDERS=1     в describe нет capability orders (метод при этом есть)
 //   NOCAR=1        поиск игнорирует --car и предупреждает об этом
+//   SAME_WARN=1    каждая команда пишет одну и ту же заметку в stderr: так
+//                  ведёт себя armtek, когда сайт ограничил аккаунт, — `part`
+//                  ловит её и на шаге брендов, и на шаге предложений
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -38,6 +41,12 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		if (delay) await Bun.sleep(Number(delay))
 		const fail = knob(id, "FAIL") ?? (what ? knob(id, `FAIL_${what}`) : undefined)
 		if (fail) throw new ProviderError(fail as ErrorCode, `${id}: так велено переменной окружения`)
+	}
+
+	// Одна и та же заметка из разных команд: обёртка обязана напечатать её
+	// один раз за запуск, а не по разу на каждый шаг.
+	const note = (warn: (m: string) => void): void => {
+		if (knob(id, "SAME_WARN")) warn(`${id}: заметка, одна на все шаги`)
 	}
 
 	const auth = (a: FakeAccount | null): void => {
@@ -115,14 +124,16 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			}
 		},
 
-		brands: async (_ctx, article) => {
+		brands: async (ctx, article) => {
 			await gate()
+			note(ctx.warn)
 			if (knob(id, "AMBIGUOUS")) throw new ProviderError("ambiguous", "нужен бренд", [{ brand: "AAA", article }, { brand: "BBB", article }])
 			return { items: find(article).map(r => ({ brand: r.brand, article: r.article, name: r.name, rating: { average: 4.5, count: 10 }, url: page(r.article) })) }
 		},
 
-		offers: async (_ctx, article, brand, { analogs }) => {
+		offers: async (ctx, article, brand, { analogs }) => {
 			await gate("OFFERS")
+			note(ctx.warn)
 			// Бренд у сайта есть, а предложений по нему нет: обёртка обязана
 			// обнулить кэш выдачи, а не оставить в нём прошлый артикул.
 			if (knob(id, "EMPTY_OFFERS")) return { items: [] }

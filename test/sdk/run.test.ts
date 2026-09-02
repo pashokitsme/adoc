@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { CONFIG_DIR_ENV } from "../../src/sdk/config.ts"
+import { CONFIG_DIR_ENV, NO_WARN_ENV } from "../../src/sdk/config.ts"
 import { accountStore } from "../../src/sdk/account.ts"
 
 const BIN = join(import.meta.dir, "..", "fixtures", "fake-provider.ts")
@@ -19,6 +19,21 @@ async function run(args: string[], env: Record<string, string> = {}) {
 	const code = await proc.exited
 	return { code, out, err, json: () => JSON.parse(out) }
 }
+
+describe("предупреждения провайдера", () => {
+	test("одна и та же заметка за запуск печатается один раз", async () => {
+		const r = await run(["search", "болт"], { FAKE_WARN: "1" })
+		expect(r.code).toBe(0)
+		expect(r.err.split("fake: заметка").length - 1).toBe(1)
+	})
+
+	test("ADOC_NO_WARN гасит их совсем, не трогая выдачу и код", async () => {
+		const r = await run(["search", "болт", "--json"], { FAKE_WARN: "1", [NO_WARN_ENV]: "1" })
+		expect(r.err).toBe("")
+		expect(r.code).toBe(0)
+		expect(r.json().items).toHaveLength(1)
+	})
+})
 
 describe("runProvider", () => {
 	test("describe собирается из объявления", async () => {
