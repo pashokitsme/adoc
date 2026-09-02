@@ -6,6 +6,7 @@ import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { VALUE_FLAGS } from "../../src/core/help.ts"
+import { limitOf } from "../../src/core/args.ts"
 
 let dir: string
 beforeEach(async () => {
@@ -26,6 +27,11 @@ describe("adoc --help", () => {
 		for (const s of ["part <артикул>", "info <артикул>", "analogs <артикул>", "search <текст>", "basket add", "orders", "garage import", "providers", "--only", "--analogs"]) {
 			expect(r.stdout).toContain(s)
 		}
+	})
+
+	test("подвал называет ту же величину --limit, что берёт limitOf", async () => {
+		expect(limitOf({})).toBe(30)
+		expect((await run(["--help"])).stdout).toContain("по умолчанию 30")
 	})
 
 	test("подвал перечисляет все флаги обёртки", async () => {

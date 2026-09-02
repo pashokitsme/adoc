@@ -37,7 +37,7 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 | `--json` | нет (переключатель) | все команды |
 | `--brand <имя>` | да | `offers`, `info`, `analogs`, `reviews` |
 | `--page <n>` | да | `search`, `reviews`; по умолчанию `1` |
-| `--limit <n>` | да | `search`, `reviews`; по умолчанию `10` |
+| `--limit <n>` | да | `search`, `reviews`; по умолчанию `30` |
 | `--analogs` | нет (переключатель) | `offers`, при capability `analogs` |
 | `--car <json>` | да | `search` |
 | `--qty <n>` | да | `basket add`, `basket set` |

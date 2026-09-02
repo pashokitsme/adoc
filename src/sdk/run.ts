@@ -199,14 +199,14 @@ export async function runProvider<A>(spec: ProviderSpec<A>, argv: string[] = pro
 			json,
 			flags,
 			page: 1,
-			limit: 10,
+			limit: 30,
 			prompt: needTTY(readLine),
 			secret: needTTY(readSecret),
 			warn: m => process.stderr.write(`${m}\n`),
 		}
 
 		ctx.page = pageNum("page", flags.page, 1)
-		ctx.limit = pageNum("limit", flags.limit, 10)
+		ctx.limit = pageNum("limit", flags.limit, 30)
 		const out = await dispatch(spec, ctx, args)
 		if (json) return await emit(process.stdout, JSON.stringify(out.json) + "\n", 0)
 		// Подсказка про клик — одна на весь вывод и только когда ссылки в нём

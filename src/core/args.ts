@@ -8,7 +8,7 @@ import type { Capability, Flags } from "../sdk/index.ts"
 import type { Ctx } from "./ctx.ts"
 import type { Provider } from "./registry.ts"
 
-export const limitOf = (flags: Flags, def = 10): number => (flags.limit === undefined ? def : positiveInt("--limit", flags.limit))
+export const limitOf = (flags: Flags, def = 30): number => (flags.limit === undefined ? def : positiveInt("--limit", flags.limit))
 export const pageOf = (flags: Flags): number => (flags.page === undefined ? 1 : positiveInt("--page", flags.page))
 
 /** Количество для корзины: целое ≥ 0, по умолчанию одна штука. */
