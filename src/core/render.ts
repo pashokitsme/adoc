@@ -3,7 +3,7 @@
 // Сами таблицы выдачи рисует sdk/render.ts: у обёртки и у провайдера одни и
 // те же колонки обязаны выглядеть одинаково, второго рендера в проекте нет.
 
-import { TOOL, bold, dim, green, red, table, yellow } from "../sdk/index.ts"
+import { TOOL, bold, dim, green, hyperlink, linksMode, red, table, yellow } from "../sdk/index.ts"
 import type { Col, Display } from "../sdk/index.ts"
 import type { Garage, GarageCar } from "./garage.ts"
 import type { OfferRow } from "./merge.ts"
@@ -62,12 +62,32 @@ export function accountsTable(rows: AccountRow[]): string {
 	]), ["ПРОВАЙДЕР", "СТАТУС", "ИМЯ", "EMAIL", "ТЕЛЕФОН"])
 }
 
+/**
+ * Склеенная строка: у одного товара своя страница на каждом сайте, где он
+ * нашёлся. Первая уезжает в список адресов под таблицей (его печатает рендер
+ * SDK), а остальным места там нет — они идут следом блоком «ещё ссылки».
+ */
+export type Linked = { url?: string; urls?: Record<string, string> }
+
+/**
+ * Имя сайта, кликабельное в режиме osc8: адрес — страница этой самой строки у
+ * него. Так вторые и третьи адреса склеенной строки живут прямо в её колонке,
+ * а не отдельным списком под таблицей.
+ */
+const siteLink = (x: Linked, id: string): string => {
+	const url = x.urls?.[id]
+	return url && linksMode() === "osc8" ? hyperlink(id, url) : id
+}
+
 /** Колонка «ПРОВАЙДЕР»: в таблице обёртки строки приходят из разных мест. */
-export const providerCol: Col<OfferRow> = { head: "ПРОВАЙДЕР", cell: o => dim(o.provider) }
+export const providerCol: Col<OfferRow> = {
+	head: "ПРОВАЙДЕР",
+	cell: o => dim(o.url && linksMode() === "osc8" ? hyperlink(o.provider, o.url) : o.provider),
+}
 
 /** Колонка «ГДЕ»: у каких сайтов есть эта строка. */
-export const whereCol = <T extends { providers: string[] }>(): Col<T> =>
-	({ head: "ГДЕ", cell: x => dim(x.providers.join(", ")) })
+export const whereCol = <T extends Linked & { providers: string[] }>(): Col<T> =>
+	({ head: "ГДЕ", cell: x => dim(x.providers.map(id => siteLink(x, id)).join(", ")) })
 
 /**
  * «показано X из Y» под таблицей. Y — то, что обёртка склеила из ответов;
@@ -91,20 +111,17 @@ export const garageCols = (g: Garage): Col<GarageCar>[] => [
 ]
 
 /**
- * Склеенная строка: у одного товара своя страница на каждом сайте, где он
- * нашёлся. Первая уезжает в список адресов под таблицей (его печатает рендер
- * SDK), а остальным места там нет — они идут следом блоком «ещё ссылки».
- */
-export type Linked = { url?: string; urls?: Record<string, string> }
-
-/**
  * Адреса, которых нет в списке под таблицей. Рендер SDK печатает по одному
  * адресу на строку — тот, что лежит в `url`, — а склеенная строка живёт сразу
  * на нескольких сайтах. Здесь идут остальные, с именем сайта: без него
  * непонятно, куда ведёт вторая ссылка. Номера и отступы — те же, что у
  * urlList из SDK: два блока подряд не должны выглядеть по-разному.
+ *
+ * Блок — запасной путь, ровно как и сам список: в режиме osc8 каждый адрес уже
+ * вшит в имя своего сайта в колонке «ГДЕ», и повторять их незачем.
  */
 export function extraLinks(items: Linked[], from = 1): string[] {
+	if (linksMode() !== "list") return []
 	const rows: string[][] = []
 	items.forEach((it, i) => {
 		for (const [who, url] of Object.entries(it.urls ?? {})) {

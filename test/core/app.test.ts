@@ -96,7 +96,7 @@ describe("run", () => {
 	test("бинарь запускается и печатает справку", async () => {
 		const bin = join(import.meta.dir, "..", "..", "src", "main.ts")
 		const proc = Bun.spawn(["bun", bin, "--help"], {
-			env: { ...process.env, ...env, NO_COLOR: "1" },
+			env: { ...process.env, ...env, NO_COLOR: "1", ADOC_LINKS: "list" },
 			stdin: "ignore", stdout: "pipe", stderr: "pipe",
 		})
 		const out = await new Response(proc.stdout).text()
@@ -113,7 +113,7 @@ describe("run", () => {
 		const cmd = `bun ${JSON.stringify(bin)} part N1 --only noisy 2>&1 | cat`
 		const proc = Bun.spawn(["sh", "-c", cmd], {
 			env: {
-				...process.env, ...env, NO_COLOR: "1",
+				...process.env, ...env, NO_COLOR: "1", ADOC_LINKS: "list",
 				ADOC_PROVIDERS_DIR: join(import.meta.dir, "..", "fixtures", "odd"),
 				NOISY_STDERR_BYTES: "300000",
 			},

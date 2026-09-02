@@ -17,7 +17,7 @@ afterEach(async () => { delete process.env[CONFIG_DIR_ENV]; await rm(dir, { recu
 
 async function run(args: string[], json = true) {
 	const proc = Bun.spawn(["bun", BIN, ...args, ...(json ? ["--json"] : [])], {
-		env: { ...process.env, [CONFIG_DIR_ENV]: dir, ADOC_FIXTURES: FIX, NO_COLOR: "1" }, stdin: "ignore", stdout: "pipe", stderr: "pipe",
+		env: { ...process.env, [CONFIG_DIR_ENV]: dir, ADOC_FIXTURES: FIX, NO_COLOR: "1", ADOC_LINKS: "list" }, stdin: "ignore", stdout: "pipe", stderr: "pipe",
 	})
 	const out = await new Response(proc.stdout).text()
 	return { code: await proc.exited, out, json: () => JSON.parse(out) }

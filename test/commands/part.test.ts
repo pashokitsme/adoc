@@ -7,6 +7,7 @@ import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { LAST_PART_FILE } from "../../src/core/lastpart.ts"
 import { filePath, readJson } from "../../src/core/store.ts"
+import { plainOutput } from "../plain.ts"
 
 type PartJson = {
 	article: string
@@ -20,15 +21,12 @@ type PartJson = {
 }
 
 let dir: string
-let color: string | undefined
+let restore: () => void
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "adoc-part-"))
 	process.env[CONFIG_DIR_ENV] = dir
 	process.env[PROVIDERS_DIR_ENV] = join(import.meta.dir, "..", "fixtures", "providers")
-	// Таблицы сверяются как текст: escape-последовательности внутри ячейки
-	// ломали бы toContain, если тест запущен из терминала.
-	color = process.env.NO_COLOR
-	process.env.NO_COLOR = "1"
+	restore = plainOutput()
 })
 afterEach(async () => {
 	delete process.env[CONFIG_DIR_ENV]
@@ -39,8 +37,7 @@ afterEach(async () => {
 	delete process.env.FAKE_BETA_FAIL_OFFERS
 	delete process.env.FAKE_ALPHA_EMPTY_OFFERS
 	delete process.env.FAKE_BETA_EMPTY_OFFERS
-	if (color === undefined) delete process.env.NO_COLOR
-	else process.env.NO_COLOR = color
+	restore()
 	await rm(dir, { recursive: true, force: true })
 })
 
@@ -264,6 +261,14 @@ describe("adoc part", () => {
 		const r = await run(["part", "n90954802"])
 		expect(r.stdout).toContain("1  https://beta.example/p/N%20909%20548%2002")
 		expect(r.stdout).toContain("2  https://alpha.example/p/N90954802")
+	})
+
+	test("в osc8 адрес вшит в номер, название и имя сайта, списка нет", async () => {
+		process.env.ADOC_LINKS = "osc8"
+		const r = await run(["part", "n90954802"])
+		const url = "https://beta.example/p/N%20909%20548%2002"
+		expect(r.stdout).toContain(`\x1b]8;;${url}\x1b\\beta\x1b]8;;\x1b\\`)
+		expect(r.stdout.replace(/\x1b\]8;;[^\x07\x1b]*(\x1b\\|\x07)/g, "")).not.toContain("https://")
 	})
 
 	test("у аналогов свой список, нумерация продолжает основную", async () => {

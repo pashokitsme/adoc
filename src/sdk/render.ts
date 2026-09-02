@@ -16,6 +16,61 @@ export const green = wrap("32")
 export const yellow = wrap("33")
 export const cyan = wrap("36")
 
+/**
+ * Режим ссылок:
+ * - `osc8` — адрес вшит терминальной ссылкой в текст самой строки (номер,
+ *   название, имя сайта), список адресов под таблицей не печатается;
+ * - `list` — адреса нумерованным списком под таблицей, как раньше;
+ * - `off` — адресов не показываем вовсе.
+ */
+export type LinksMode = "osc8" | "list" | "off"
+
+/** Терминалы, про которые известно, что OSC 8 они понимают. */
+const OSC8_PROGRAMS = new Set(["iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper", "alacritty"])
+
+/**
+ * Терминал, чья поддержка OSC 8 известна наверняка. Общего признака у неё нет:
+ * терминал, который её не знает, escape не проглотит, а напечатает мусором
+ * посреди таблицы, — поэтому список именной, а не «всё, кроме известных плохих».
+ */
+function knownTerminal(): boolean {
+	const env = process.env
+	if (env.TERM_PROGRAM && OSC8_PROGRAMS.has(env.TERM_PROGRAM)) return true
+	if (env.KITTY_WINDOW_ID || env.TERM?.includes("kitty")) return true
+	if (env.WT_SESSION) return true
+	if (Number(env.VTE_VERSION) >= 5000) return true
+	if (env.KONSOLE_VERSION) return true
+	return false
+}
+
+/**
+ * Решается на каждый вызов, как и цвет: модуль грузится раньше, чем известно,
+ * куда пойдёт вывод. `ADOC_LINKS` сильнее всего — терминал по переменным
+ * угадывается не всегда, и сказать прямо человек должен уметь. Труба и
+ * незнакомый терминал получают `list`: `| grep` и агенты обязаны видеть голый
+ * адрес, а не escape вокруг слова.
+ *
+ * `NO_COLOR` на ссылки не влияет: он про цвет, а ссылка — не украшение, а
+ * единственный способ открыть страницу прямо из таблицы.
+ */
+export function linksMode(): LinksMode {
+	const forced = process.env.ADOC_LINKS
+	if (forced === "osc8" || forced === "list" || forced === "off") return forced
+	return process.stdout.isTTY && knownTerminal() ? "osc8" : "list"
+}
+
+/** Терминальная ссылка OSC 8: кликается текст, адреса на экране не видно. */
+export const hyperlink = (text: string, url: string): string =>
+	`\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`
+
+/**
+ * Ячейка-ссылка: в режиме osc8 адрес строки вшивается в её собственный текст,
+ * и список адресов под таблицей становится не нужен. Пустой текст не
+ * оборачиваем — кликать было бы нечего, а ширину ячейки это не меняет.
+ */
+const cellLink = (url: string | undefined, text: string): string =>
+	url && text && linksMode() === "osc8" ? hyperlink(text, url) : text
+
 export const money = (v: number | undefined | null) =>
 	v == null ? "—" : `${v.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽`
 
@@ -46,8 +101,13 @@ export function bar(counts: number[] | undefined, width = 18): string[] {
 	})
 }
 
-/** Ширина без escape-последовательностей — иначе колонки разъезжаются. */
-const visible = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").length
+/**
+ * Ширина без escape-последовательностей — иначе колонки разъезжаются. Кроме
+ * цвета снимается и OSC 8: в ячейке-ссылке сам адрес места не занимает, и
+ * посчитанный вместе с ним он растянул бы колонку на сотню пробелов.
+ */
+const OSC8_RE = /\x1b\]8;;[^\x07\x1b]*(\x1b\\|\x07)/g
+const visible = (s: string) => s.replace(OSC8_RE, "").replace(/\x1b\[[0-9;]*m/g, "").length
 
 export function table(rows: string[][], head?: string[]): string {
 	const all = head ? [head, ...rows] : rows
@@ -102,8 +162,9 @@ const cells = <T>(cols: Col<T>[], item: T, own: string[]): string[] => [...cols.
  * «ПРОВАЙДЕРА» и прочего, что добавляет агрегатор.
  */
 const headsNum = <T>(cols: Col<T>[], own: string[]): string[] => ["#", ...cols.map(c => c.head), ...own]
-const cellsNum = <T>(cols: Col<T>[], item: T, n: number, own: string[]): string[] =>
-	[String(n), ...cols.map(c => c.cell(item)), ...own]
+/** `url` — адрес строки: в режиме osc8 её номер становится ссылкой на него. */
+const cellsNum = <T>(cols: Col<T>[], item: T, n: number, own: string[], url?: string): string[] =>
+	[cellLink(url, String(n)), ...cols.map(c => c.cell(item)), ...own]
 
 export const ratingCell = (r: { average: number; count: number } | undefined) =>
 	r && r.count ? `${r.average.toFixed(1)}★ (${r.count})` : dim("—")
@@ -113,9 +174,9 @@ export const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim(
 export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "ничего не найдено"
 	return table(items.map((p, i) => cellsNum(cols, p, i + 1, [
-		cyan(p.article), bold(p.brand), p.name.slice(0, 50),
+		cyan(p.article), bold(p.brand), cellLink(p.url, p.name.slice(0, 50)),
 		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
-	])), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
+	], p.url)), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
 		+ urlList(items)
 }
 
@@ -123,13 +184,22 @@ export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []
 	if (!items.length) return "не найдено"
 	// имя режется: у armtek в него уезжает применимость целиком
 	return table(items.map((b, i) => cellsNum(cols, b, i + 1, [
-		bold(b.brand), cyan(b.article), (b.name ?? "").slice(0, 50), ratingCell(b.rating),
-	])), headsNum(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
+		cellLink(b.url, bold(b.brand)), cyan(b.article), (b.name ?? "").slice(0, 50), ratingCell(b.rating),
+	], b.url)), headsNum(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
 		+ urlList(items)
 }
 
-/** Адрес в заголовке блока: корзина, страница отзывов, карточка, список заказов. */
-export const link = (url: string | undefined): string => (url ? dim(url) : "")
+/**
+ * Адрес в заголовке блока: корзина, страница отзывов, карточка, список заказов.
+ * В режиме osc8 он прячется в слово («корзина», «отзывы»), в list печатается
+ * как есть — без кликабельного терминала нужен сам адрес, а не подпись к нему.
+ */
+export const link = (url: string | undefined, text?: string): string => {
+	if (!url) return ""
+	const mode = linksMode()
+	if (mode === "off") return ""
+	return mode === "osc8" ? dim(hyperlink(text ?? url, url)) : dim(url)
+}
 
 /**
  * Ссылки строк — списком под таблицей, а не колонкой в ней. Адреса у обоих
@@ -139,8 +209,12 @@ export const link = (url: string | undefined): string => (url ? dim(url) : "")
  *
  * Повторный адрес печатается один раз: у десятка предложений одной детали
  * карточка одна.
+ *
+ * Список — запасной путь: в режиме osc8 адрес уже вшит в номер и название той
+ * же строки, и повторять его под таблицей значило бы напечатать всё дважды.
  */
 export function urlList(items: { url?: string }[], from = 1): string {
+	if (linksMode() !== "list") return ""
 	const seen = new Set<string>()
 	const rows: string[][] = []
 	for (const [i, it] of items.entries()) {
@@ -162,15 +236,16 @@ export function renderOffers<T extends Offer>(items: T[], cols: Col<T>[] = [], f
 		// длины подобраны так, чтобы строка укладывалась в ~110 символов: у
 		// autodoc продавец бывает «Магазин CHEB · Наличие в магазине», а имя
 		// детали у armtek тянет за собой всю применимость
-		bold(o.brand), (o.name ?? "").slice(0, 32), money(o.price), qtyCell(o.quantity),
+		bold(o.brand), cellLink(o.url, (o.name ?? "").slice(0, 32)), money(o.price), qtyCell(o.quantity),
 		o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
 		(o.seller ?? "").slice(0, 26) || dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "",
-	])), headsNum(cols, ["БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
+	], o.url)), headsNum(cols, ["БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
 		+ urlList(items, from)
 }
 
 export function renderReviews(r: Reviews): string {
-	const out: string[] = [`${dim(`отзывов: ${r.total}`)}${r.url ? `  ${link(r.url)}` : ""}`]
+	const page = link(r.url, "отзывы")
+	const out: string[] = [`${dim(`отзывов: ${r.total}`)}${page ? `  ${page}` : ""}`]
 	if (r.rating) out.push(`${stars(r.rating.average)}  ${bold(r.rating.average.toFixed(2))}  ${dim(`${r.rating.count} оценок`)}`)
 	for (const l of bar(r.rating?.histogram)) out.push(l)
 	if (r.summary && (r.summary.pros.length || r.summary.cons.length)) {
@@ -180,7 +255,8 @@ export function renderReviews(r: Reviews): string {
 	}
 	for (const it of r.items) {
 		const who = [it.author, it.purchased ? "покупка подтверждена" : ""].filter(Boolean).join(" · ")
-		out.push(heading(`${it.rating ? stars(it.rating) + "  " : ""}${who || "аноним"}`) + (it.date ? dim(`  ${it.date}`) : "") + (it.url ? dim(`  ${it.url}`) : ""))
+		const own = link(it.url, "отзыв")
+		out.push(heading(`${it.rating ? stars(it.rating) + "  " : ""}${who || "аноним"}`) + (it.date ? dim(`  ${it.date}`) : "") + (own ? `  ${own}` : ""))
 		if (it.pros) out.push(`  ${green("+")} ${it.pros}`)
 		if (it.cons) out.push(`  ${red("−")} ${it.cons}`)
 		if (it.text) out.push(fold(it.text))
@@ -195,13 +271,14 @@ export const basketTotal = (b: Basket): number =>
 export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
 	if (!b.items.length) return "корзина пуста"
 	const rows = b.items.map((it, i) => cellsNum(cols, it, i + 1, [
-		dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 36),
+		dim(it.id), cyan(it.article), bold(it.brand), cellLink(it.url, (it.name ?? "").slice(0, 36)),
 		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
 		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
-	]))
+	], it.url))
+	const page = link(b.url, "корзина")
 	return table(rows, headsNum(cols, ["ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"])) +
 		urlList(b.items) +
-		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}${b.url ? `  ${link(b.url)}` : ""}`
+		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}${page ? `  ${page}` : ""}`
 }
 
 /**
@@ -210,7 +287,8 @@ export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
  * видно, не листая склады.
  */
 export function renderInfo(i: Info): string {
-	const out: string[] = [`${bold(i.name)}  ${cyan(i.article)}  ${i.brand}${i.url ? `\n${link(i.url)}` : ""}`]
+	const page = link(i.url, "карточка")
+	const out: string[] = [`${bold(i.name)}  ${cyan(i.article)}  ${i.brand}${page ? `\n${page}` : ""}`]
 
 	out.push(heading("Оценки"))
 	out.push(`  ${stars(i.rating?.average)}  ${bold(i.rating ? i.rating.average.toFixed(2) : "—")}  ${dim(`${i.rating?.count ?? 0} оценок`)}`)
@@ -254,13 +332,13 @@ export function renderOrders(items: Order[]): string {
 	const common = urls.size === 1 && items.every(o => o.url) ? [...urls][0] : undefined
 
 	const out: string[] = []
-	if (common) out.push(link(common))
+	if (common) out.push(link(common, "заказы"))
 	for (const o of items) {
-		const own = common ? undefined : o.url
-		out.push(`${bold(`№ ${o.id}`)}  ${dim(isoDate(o.date) || "—")}  ${green(o.status)}  ${bold(money(o.total))}${own ? `  ${link(own)}` : ""}`)
+		const own = common ? "" : link(o.url, "заказ")
+		out.push(`${bold(`№ ${o.id}`)}  ${dim(isoDate(o.date) || "—")}  ${green(o.status)}  ${bold(money(o.total))}${own ? `  ${own}` : ""}`)
 		if (o.items?.length) {
 			out.push(table(o.items.map((it, i) => [
-				`  ${i + 1}`, cyan(it.article), bold(it.brand), it.name.slice(0, 40),
+				`  ${cellLink(it.url, String(i + 1))}`, cyan(it.article), bold(it.brand), cellLink(it.url, it.name.slice(0, 40)),
 				`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
 			])))
 			// отступ тот же, что у номеров позиций: номер и адрес читаются парой

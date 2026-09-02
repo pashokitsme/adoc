@@ -7,16 +7,15 @@ import { CONFIG_DIR_ENV, accountStore } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { GARAGE_FILE, type Garage } from "../../src/core/garage.ts"
 import { filePath, readJson } from "../../src/core/store.ts"
+import { plainOutput } from "../plain.ts"
 
 let dir: string
-let color: string | undefined
+let restore: () => void
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "adoc-garage-"))
 	process.env[CONFIG_DIR_ENV] = dir
 	process.env[PROVIDERS_DIR_ENV] = join(import.meta.dir, "..", "fixtures", "providers")
-	// Таблицы сверяются как текст: цвета из TTY ломали бы toContain.
-	color = process.env.NO_COLOR
-	process.env.NO_COLOR = "1"
+	restore = plainOutput()
 	// `garage export` у фикстур помечен auth: без аккаунта импортировать нечего.
 	await accountStore("alpha").save({ token: "t", user: "pavel" })
 	await accountStore("beta").save({ token: "t", user: "pavel" })
@@ -24,8 +23,7 @@ beforeEach(async () => {
 afterEach(async () => {
 	delete process.env[CONFIG_DIR_ENV]
 	delete process.env[PROVIDERS_DIR_ENV]
-	if (color === undefined) delete process.env.NO_COLOR
-	else process.env.NO_COLOR = color
+	restore()
 	delete process.env.FAKE_ALPHA_NOGARAGE
 	await rm(dir, { recursive: true, force: true })
 })

@@ -7,6 +7,7 @@ import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import { GARAGE_FILE, type Garage } from "../../src/core/garage.ts"
 import { writeJson } from "../../src/core/store.ts"
+import { plainOutput } from "../plain.ts"
 
 type SearchJson = {
 	query: string
@@ -24,15 +25,12 @@ const oneCarGarage = (refs: Record<string, Record<string, unknown>> = { alpha: {
 	} satisfies Garage)
 
 let dir: string
-let color: string | undefined
+let restore: () => void
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "adoc-search-"))
 	process.env[CONFIG_DIR_ENV] = dir
 	process.env[PROVIDERS_DIR_ENV] = join(import.meta.dir, "..", "fixtures", "providers")
-	// Таблица сверяется как текст: escape-последовательности ломали бы toContain,
-	// если тест запущен из терминала.
-	color = process.env.NO_COLOR
-	process.env.NO_COLOR = "1"
+	restore = plainOutput()
 })
 afterEach(async () => {
 	delete process.env[CONFIG_DIR_ENV]
@@ -41,8 +39,7 @@ afterEach(async () => {
 	delete process.env.FAKE_BETA_FAIL
 	delete process.env.FAKE_ALPHA_NOCAR
 	delete process.env.FAKE_BETA_EMPTY_SEARCH
-	if (color === undefined) delete process.env.NO_COLOR
-	else process.env.NO_COLOR = color
+	restore()
 	await rm(dir, { recursive: true, force: true })
 })
 
@@ -104,6 +101,17 @@ describe("adoc search", () => {
 		expect(r.stdout).toContain("1  https://alpha.example/p/N90954802")
 		expect(r.stdout).toContain("ещё ссылки")
 		expect(r.stdout).toContain("1  beta  https://beta.example/p/N%20909%20548%2002")
+	})
+
+	test("в osc8 адреса сайтов вшиты в колонку ГДЕ, а «ещё ссылок» нет", async () => {
+		process.env.ADOC_LINKS = "osc8"
+		const r = await run(["search", "болт"])
+		const hyperlink = (text: string, url: string): string => `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`
+		expect(r.stdout).toContain(hyperlink("alpha", "https://alpha.example/p/N90954802"))
+		expect(r.stdout).toContain(hyperlink("beta", "https://beta.example/p/N%20909%20548%2002"))
+		expect(r.stdout).not.toContain("ещё ссылки")
+		// голого адреса на экране не остаётся: он весь внутри escape
+		expect(r.stdout.replace(/\x1b\]8;;[^\x07\x1b]*(\x1b\\|\x07)/g, "")).not.toContain("https://")
 	})
 
 	test("итог сайтов попадает в строку под таблицей, когда он больше склейки", async () => {

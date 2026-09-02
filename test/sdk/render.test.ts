@@ -1,11 +1,13 @@
-// Цвет решается на каждый вызов, поэтому под pty (bun test в терминале)
-// stdout — это TTY и escape-последовательности были бы включены. NO_COLOR
-// гасит их одинаково и в пайпе, и в терминале, так что строки сравниваются
-// напрямую.
+// Цвет и ссылки решаются на каждый вызов, поэтому под pty (bun test в
+// терминале) stdout — это TTY, и escape-последовательности были бы включены.
+// NO_COLOR гасит цвет одинаково и в пайпе, и в терминале, ADOC_LINKS=list
+// оставляет адреса списком под таблицей: строки сравниваются напрямую.
+// Режим osc8 проверяется отдельно, в своём describe.
 process.env.NO_COLOR = "1"
+process.env.ADOC_LINKS = "list"
 
-import { describe, expect, test } from "bun:test"
-import { days, isoDate, renderBasket, renderBrands, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews, table } from "../../src/sdk/render.ts"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { days, hyperlink, isoDate, linksMode, renderBasket, renderBrands, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews, table } from "../../src/sdk/render.ts"
 
 describe("days", () => {
 	test("склонение", () => {
@@ -227,5 +229,130 @@ describe("renderOrders", () => {
 
 	test("пусто — это не ошибка", () => {
 		expect(renderOrders([])).toBe("заказов нет")
+	})
+})
+
+// Переменные окружения и isTTY — глобальные на процесс: сохраняем и ставим
+// назад, иначе следующий файл тестов увидит чужой терминал.
+describe("linksMode", () => {
+	const KEYS = ["ADOC_LINKS", "TERM_PROGRAM", "TERM", "KITTY_WINDOW_ID", "WT_SESSION", "VTE_VERSION", "KONSOLE_VERSION", "NO_COLOR"] as const
+	let saved: (readonly [string, string | undefined])[]
+	let tty: unknown
+
+	beforeEach(() => {
+		saved = KEYS.map(k => [k, process.env[k]] as const)
+		for (const k of KEYS) delete process.env[k]
+		tty = process.stdout.isTTY
+	})
+	afterEach(() => {
+		for (const [k, v] of saved) {
+			if (v === undefined) delete process.env[k]
+			else process.env[k] = v
+		}
+		;(process.stdout as unknown as { isTTY: unknown }).isTTY = tty
+	})
+
+	const mode = (env: Record<string, string>, isTTY: boolean): string => {
+		for (const k of KEYS) delete process.env[k]
+		Object.assign(process.env, env)
+		;(process.stdout as unknown as { isTTY: unknown }).isTTY = isTTY
+		return linksMode()
+	}
+
+	test("ADOC_LINKS сильнее всего, мусор в ней не считается", () => {
+		expect(mode({ ADOC_LINKS: "off", TERM_PROGRAM: "iTerm.app" }, true)).toBe("off")
+		expect(mode({ ADOC_LINKS: "list", TERM_PROGRAM: "iTerm.app" }, true)).toBe("list")
+		// труба и незнакомый терминал — osc8 всё равно, раз попросили явно
+		expect(mode({ ADOC_LINKS: "osc8" }, false)).toBe("osc8")
+		expect(mode({ ADOC_LINKS: "да", TERM_PROGRAM: "iTerm.app" }, true)).toBe("osc8")
+	})
+
+	test("знакомый терминал в TTY — osc8", () => {
+		for (const p of ["iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper", "alacritty"]) {
+			expect(mode({ TERM_PROGRAM: p }, true)).toBe("osc8")
+		}
+		expect(mode({ TERM: "xterm-kitty" }, true)).toBe("osc8")
+		expect(mode({ KITTY_WINDOW_ID: "1" }, true)).toBe("osc8")
+		expect(mode({ WT_SESSION: "…" }, true)).toBe("osc8")
+		expect(mode({ VTE_VERSION: "5000" }, true)).toBe("osc8")
+		expect(mode({ KONSOLE_VERSION: "220400" }, true)).toBe("osc8")
+	})
+
+	test("незнакомый терминал, старая VTE и труба — list", () => {
+		expect(mode({ TERM_PROGRAM: "Apple_Terminal", TERM: "xterm-256color" }, true)).toBe("list")
+		expect(mode({ VTE_VERSION: "4600" }, true)).toBe("list")
+		expect(mode({}, true)).toBe("list")
+		// труба: `| grep` и агенты обязаны видеть голый адрес
+		expect(mode({ TERM_PROGRAM: "iTerm.app" }, false)).toBe("list")
+	})
+
+	test("NO_COLOR ссылок не касается", () => {
+		expect(mode({ NO_COLOR: "1", TERM_PROGRAM: "iTerm.app" }, true)).toBe("osc8")
+	})
+})
+
+describe("ссылки в тексте (osc8)", () => {
+	const OSC8 = /\x1b\]8;;[^\x07\x1b]*(\x1b\\|\x07)/g
+	const strip = (s: string): string => s.replace(OSC8, "")
+	const osc8 = <T>(f: () => T): T => {
+		process.env.ADOC_LINKS = "osc8"
+		try { return f() } finally { process.env.ADOC_LINKS = "list" }
+	}
+
+	test("ширина колонки считается без адреса", () => {
+		const cell = hyperlink("a", "https://x/очень/длинный/адрес")
+		expect(osc8(() => table([[cell, "bb"], ["ccc", "d"]]))).toBe(`${cell}    bb\nccc  d`)
+	})
+
+	test("адрес вшит в номер и название, списка под таблицей нет", () => {
+		const out = osc8(() => renderProducts([{ article: "N1", brand: "VAG", name: "Болт", url: "https://x/1" }]))
+		expect(out).toContain(hyperlink("Болт", "https://x/1"))
+		expect(out).toContain(hyperlink("1", "https://x/1"))
+		// на экране адреса нет вовсе: он только внутри escape
+		expect(strip(out)).not.toContain("https://")
+	})
+
+	test("вёрстка та же, что со списком", () => {
+		const items = [
+			{ article: "N1", brand: "VAG", name: "Болт", price: 407, url: "https://x/1" },
+			{ article: "N2", brand: "VAG", name: "Гайка" },
+		]
+		const list = renderProducts(items)
+		// список адресов — последние строки; таблица обязана совпасть посимвольно
+		expect(strip(osc8(() => renderProducts(items)))).toBe(list.split("\n").slice(0, 3).join("\n"))
+	})
+
+	test("бренд, предложение и позиция корзины кликаются", () => {
+		expect(osc8(() => renderBrands([{ brand: "VAG", article: "N1", url: "https://x/b" }])))
+			.toContain(hyperlink("VAG", "https://x/b"))
+		expect(osc8(() => renderOffers([{ article: "N1", brand: "VAG", name: "Болт", price: 1, currency: "RUB", url: "https://x/o" }])))
+			.toContain(hyperlink("Болт", "https://x/o"))
+		expect(osc8(() => renderBasket({ currency: "RUB", items: [{ id: "1", article: "N1", brand: "VAG", name: "Болт", price: 1, quantity: 1, url: "https://x/i" }] })))
+			.toContain(hyperlink("Болт", "https://x/i"))
+	})
+
+	test("адрес целой страницы прячется в слово", () => {
+		expect(osc8(() => renderBasket({ currency: "RUB", url: "https://x/cart", items: [{ id: "1", article: "N1", brand: "VAG", price: 1, quantity: 1 }] })))
+			.toContain(hyperlink("корзина", "https://x/cart"))
+		expect(osc8(() => renderReviews({ total: 1, items: [{ text: "ок" }], url: "https://x/r" })))
+			.toContain(hyperlink("отзывы", "https://x/r"))
+		expect(osc8(() => renderInfo({ article: "N1", brand: "VAG", name: "Болт", url: "https://x/1" })))
+			.toContain(hyperlink("карточка", "https://x/1"))
+		expect(osc8(() => renderOrders([{ id: "1", date: "2026-09-01", status: "ок", total: 1, currency: "RUB", url: "https://x/orders" }])))
+			.toContain(hyperlink("заказы", "https://x/orders"))
+	})
+})
+
+describe("ссылки выключены (off)", () => {
+	const off = <T>(f: () => T): T => {
+		process.env.ADOC_LINKS = "off"
+		try { return f() } finally { process.env.ADOC_LINKS = "list" }
+	}
+
+	test("ни списка, ни escape, ни адреса страницы", () => {
+		const out = off(() => renderProducts([{ article: "N1", brand: "VAG", name: "Болт", url: "https://x/1" }]))
+		expect(out).not.toContain("https://")
+		expect(out).not.toContain("\x1b]8")
+		expect(off(() => renderInfo({ article: "N1", brand: "VAG", name: "Болт", url: "https://x/1" }))).not.toContain("https://")
 	})
 })

@@ -1,8 +1,9 @@
-// Цвет решается на каждый вызов, поэтому под pty (bun test в терминале)
-// stdout — это TTY и escape-последовательности были бы включены. NO_COLOR
-// гасит их одинаково и в пайпе, и в терминале, так что строки сравниваются
-// напрямую.
+// Цвет и ссылки решаются на каждый вызов, поэтому под pty (bun test в
+// терминале) stdout — это TTY, и escape-последовательности были бы включены.
+// NO_COLOR гасит цвет одинаково и в пайпе, и в терминале, ADOC_LINKS=list
+// оставляет адреса списком под таблицей: строки сравниваются напрямую.
 process.env.NO_COLOR = "1"
+process.env.ADOC_LINKS = "list"
 
 import { describe, expect, test } from "bun:test"
 import { allFailed, blame, failureLine, fanout, report, type Failure } from "../../src/core/partial.ts"

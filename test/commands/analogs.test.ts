@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV, accountStore } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
+import { plainOutput } from "../plain.ts"
 
 type AnalogsJson = {
 	article: string
@@ -14,22 +15,19 @@ type AnalogsJson = {
 }
 
 let dir: string
-let color: string | undefined
+let restore: () => void
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "adoc-analogs-"))
 	process.env[CONFIG_DIR_ENV] = dir
 	process.env[PROVIDERS_DIR_ENV] = join(import.meta.dir, "..", "fixtures", "providers")
-	// Таблица сверяется как текст: цвета из TTY ломали бы toContain.
-	color = process.env.NO_COLOR
-	process.env.NO_COLOR = "1"
+	restore = plainOutput()
 })
 afterEach(async () => {
 	delete process.env[CONFIG_DIR_ENV]
 	delete process.env[PROVIDERS_DIR_ENV]
 	delete process.env.FAKE_ALPHA_FAIL_ANALOGS
 	delete process.env.FAKE_BETA_FAIL_ANALOGS
-	if (color === undefined) delete process.env.NO_COLOR
-	else process.env.NO_COLOR = color
+	restore()
 	await rm(dir, { recursive: true, force: true })
 })
 

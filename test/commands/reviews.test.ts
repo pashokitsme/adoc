@@ -6,6 +6,7 @@ import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 import type { Reviews } from "../../src/sdk/index.ts"
+import { plainOutput } from "../plain.ts"
 
 type ReviewsJson = {
 	article: string
@@ -15,23 +16,19 @@ type ReviewsJson = {
 }
 
 let dir: string
-let color: string | undefined
+let restore: () => void
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "adoc-rev-"))
 	process.env[CONFIG_DIR_ENV] = dir
 	process.env[PROVIDERS_DIR_ENV] = join(import.meta.dir, "..", "fixtures", "providers")
-	// Отзывы сверяются как текст: escape-последовательности внутри строки
-	// ломали бы toContain, если тест запущен из терминала.
-	color = process.env.NO_COLOR
-	process.env.NO_COLOR = "1"
+	restore = plainOutput()
 })
 afterEach(async () => {
 	delete process.env[CONFIG_DIR_ENV]
 	delete process.env[PROVIDERS_DIR_ENV]
 	delete process.env.FAKE_ALPHA_FAIL
 	delete process.env.FAKE_BETA_NOREVIEWS
-	if (color === undefined) delete process.env.NO_COLOR
-	else process.env.NO_COLOR = color
+	restore()
 	await rm(dir, { recursive: true, force: true })
 })
 

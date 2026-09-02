@@ -12,7 +12,7 @@ afterEach(async () => { delete process.env[CONFIG_DIR_ENV]; await rm(dir, { recu
 
 async function run(args: string[], env: Record<string, string> = {}) {
 	const proc = Bun.spawn(["bun", BIN, ...args], {
-		env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ...env },
+		env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ADOC_LINKS: "list", ...env },
 		stdin: "ignore", stdout: "pipe", stderr: "pipe",
 	})
 	const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -154,7 +154,7 @@ describe("runProvider", () => {
 	test("большой ответ не режется на пайпе", async () => {
 		// Bun.spawn отдаёт stdout целиком, обрезание видно только через пайп самой оболочки
 		const proc = Bun.spawn(["sh", "-c", `bun ${JSON.stringify(BIN)} big --json | cat`], {
-			env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1" },
+			env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ADOC_LINKS: "list" },
 			stdin: "ignore", stdout: "pipe", stderr: "pipe",
 		})
 		const out = await new Response(proc.stdout).text()

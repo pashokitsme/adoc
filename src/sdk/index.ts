@@ -17,9 +17,9 @@ export type { AccountStore } from "./account.ts"
 export { CONFIG_DIR_ENV, TOOL, configDir } from "./config.ts"
 export * from "./contract.ts"
 export {
-	bar, basketTotal, bold, cyan, days, dim, fields, fold, green, heading, isoDate, link, money,
-	qtyCell, ratingCell, red, renderBasket, renderBrands, renderCars, renderDisplay, renderInfo,
-	renderOffers, renderOrders, renderProducts, renderReviews, stars, table, urlList, yellow,
+	bar, basketTotal, bold, cyan, days, dim, fields, fold, green, heading, hyperlink, isoDate, link,
+	linksMode, money, qtyCell, ratingCell, red, renderBasket, renderBrands, renderCars, renderDisplay,
+	renderInfo, renderOffers, renderOrders, renderProducts, renderReviews, stars, table, urlList, yellow,
 } from "./render.ts"
-export type { CarLike, Col } from "./render.ts"
+export type { CarLike, Col, LinksMode } from "./render.ts"
 export * as render from "./render.ts"

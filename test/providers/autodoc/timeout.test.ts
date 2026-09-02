@@ -22,7 +22,7 @@ describe("таймаут сети", () => {
 			env: {
 				...process.env,
 				[CONFIG_DIR_ENV]: dir,
-				NO_COLOR: "1",
+				NO_COLOR: "1", ADOC_LINKS: "list",
 				ADOC_AUTODOC_BASE: `http://localhost:${server.port}`,
 				ADOC_TIMEOUT_MS: "300",
 			},
@@ -40,7 +40,7 @@ describe("таймаут сети", () => {
 			env: {
 				...process.env,
 				[CONFIG_DIR_ENV]: dir,
-				NO_COLOR: "1",
+				NO_COLOR: "1", ADOC_LINKS: "list",
 				ADOC_FIXTURES: join(import.meta.dir, "../../fixtures/autodoc/http"),
 				ADOC_AUTODOC_BASE: `http://localhost:${server.port}`,
 				ADOC_TIMEOUT_MS: "300",

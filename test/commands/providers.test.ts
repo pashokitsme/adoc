@@ -5,25 +5,22 @@ import { join } from "node:path"
 import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV, accountStore } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
+import { plainOutput } from "../plain.ts"
 
 const FIXTURES = join(import.meta.dir, "..", "fixtures", "providers")
 
 let dir: string
-let color: string | undefined
+let restore: () => void
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "adoc-cmd-"))
 	process.env[CONFIG_DIR_ENV] = dir
 	process.env[PROVIDERS_DIR_ENV] = FIXTURES
-	// Таблицы сверяются как текст: escape-последовательности внутри ячейки
-	// ломали бы toContain, если тест запущен из терминала.
-	color = process.env.NO_COLOR
-	process.env.NO_COLOR = "1"
+	restore = plainOutput()
 })
 afterEach(async () => {
 	delete process.env[CONFIG_DIR_ENV]
 	delete process.env[PROVIDERS_DIR_ENV]
-	if (color === undefined) delete process.env.NO_COLOR
-	else process.env.NO_COLOR = color
+	restore()
 	await rm(dir, { recursive: true, force: true })
 })
 

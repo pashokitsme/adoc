@@ -15,7 +15,7 @@ const live = () => accountStore("autodoc").save({ access_token: "a.b.c", refresh
 
 async function run(args: string[]) {
 	const proc = Bun.spawn(["bun", BIN, ...args, "--json"], {
-		env: { ...process.env, [CONFIG_DIR_ENV]: dir, ADOC_FIXTURES: FIX, NO_COLOR: "1" },
+		env: { ...process.env, [CONFIG_DIR_ENV]: dir, ADOC_FIXTURES: FIX, NO_COLOR: "1", ADOC_LINKS: "list" },
 		stdin: "ignore", stdout: "pipe", stderr: "pipe",
 	})
 	const out = await new Response(proc.stdout).text()

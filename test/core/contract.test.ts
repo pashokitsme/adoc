@@ -71,7 +71,7 @@ beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), "adoc-contract-")); 
 afterEach(async () => { delete process.env[CONFIG_DIR_ENV]; await rm(dir, { recursive: true, force: true }) })
 
 /** Окружение вызова: свой каталог конфига и фикстуры провайдера, ничего больше. */
-const envOf = (c: Case): Record<string, string> => ({ ...c.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1" })
+const envOf = (c: Case): Record<string, string> => ({ ...c.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ADOC_LINKS: "list" })
 
 const call = (c: Case, args: string[]) => invoke(c.bin, args, { env: envOf(c), id: c.id })
 
