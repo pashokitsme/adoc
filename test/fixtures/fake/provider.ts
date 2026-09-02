@@ -54,7 +54,10 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 	}
 	const store = async (b: Basket): Promise<Basket> => {
 		const total = b.items.reduce((s, it) => s + it.price * it.quantity, 0)
-		const full: Basket = { ...b, total, currency: "RUB" }
+		// Адрес корзины стоит во всех ответах, а не только в list: контракт
+		// требует от add/set/rm вернуть корзину целиком, и заголовок блока после
+		// изменения должен выглядеть так же, как после `adoc basket`.
+		const full: Basket = { ...b, total, currency: "RUB", url: `${site}/basket` }
 		await mkdir(configDir(), { recursive: true })
 		await writeFile(basketFile(), JSON.stringify(full))
 		return full
