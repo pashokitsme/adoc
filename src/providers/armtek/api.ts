@@ -82,6 +82,20 @@ export function errorTexts(env: unknown): string[] {
 }
 
 /**
+ * 429 с captchaHash — отдельный класс, а не просто текст: сайт ограничивает
+ * ровно того, кто спрашивает, и вызывающий, у которого есть второй токен,
+ * должен уметь опознать этот случай, не сверяя сообщение построчно.
+ */
+export class ThrottledError extends ProviderError {
+	constructor() {
+		super("http", "armtek: слишком много запросов подряд — сайт просит подождать и показать капчу; повторить через несколько минут")
+	}
+}
+
+/** Тот самый случай: сайт просит капчу, а не отвечает данными. */
+export const isThrottled = (e: unknown): e is ThrottledError => e instanceof ThrottledError
+
+/**
  * HttpError → ошибка контракта. 401 отдельно: агрегатору нужен код `auth`,
  * чтобы сказать «нужен вход», а не «сайт ответил 401».
  */
@@ -93,7 +107,7 @@ export function mapHttpError(e: unknown): ProviderError | null {
 	if (e.status === 404) return new ProviderError("notfound", text || `armtek: ${e.url} — не найдено`)
 	// 429 приходит телом с captchaHash: сайт не сломался, а просит подождать.
 	// Без этой ветки человек видел бы простыню с хэшем вместо совета.
-	if (e.status === 429) return new ProviderError("http", "armtek: слишком много запросов подряд — сайт просит подождать и показать капчу; повторить через несколько минут")
+	if (e.status === 429) return new ThrottledError()
 	return new ProviderError("http", text ? `armtek: ${text}` : e.message)
 }
 

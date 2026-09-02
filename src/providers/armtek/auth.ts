@@ -70,6 +70,29 @@ export async function guestToken(ctx: Ctx<Account>): Promise<string> {
 export const readToken = (ctx: Ctx<Account>): Promise<string> =>
 	ctx.account?.access ? accessToken(ctx) : guestToken(ctx)
 
+/**
+ * Публичное чтение — поиск, бренды, предложения, карточка, аналоги, отзывы,
+ * точки выдачи. Идёт с токеном вошедшего: цена, срок и наличие у армтека
+ * зависят от договора, и подменять их гостевыми молча нельзя.
+ *
+ * Но сайт умеет ограничить именно аккаунт: тот же запрос с гостевым токеном
+ * отвечает данными, а с аккаунтным — 429 с капчей (проверено вживую). Тогда
+ * ровно один повтор гостевым и строка в stderr: без неё человек решил бы, что
+ * видит свои цены. Повтор безопасен — это чтение, и оно идемпотентно.
+ *
+ * Гостя, которого ограничили, повторять нечем: у него второго токена нет.
+ */
+export async function publicRead<T>(ctx: Ctx<Account>, run: (token: string) => Promise<T>): Promise<T> {
+	const own = !!ctx.account?.access
+	try {
+		return await run(own ? await accessToken(ctx) : await guestToken(ctx))
+	} catch (e) {
+		if (!own || !api.isThrottled(e)) throw e
+		ctx.warn("armtek: аккаунт ограничен сайтом, цены показаны как для гостя")
+		return await run(await guestToken(ctx))
+	}
+}
+
 // --- вход и обновление ----------------------------------------------------
 
 /** Живой access-токен; молча обновляет протухший. Без входа — ошибка `auth`. */

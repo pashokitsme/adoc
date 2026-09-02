@@ -5,7 +5,7 @@
 import { ProviderError, render } from "../../sdk/index.ts"
 import type { ProviderCommand } from "../../sdk/define.ts"
 import * as api from "./api.ts"
-import { readToken, type Account } from "./auth.ts"
+import { publicRead, readToken, type Account } from "./auth.ts"
 
 const { bold, cyan, dim, table, yellow } = render
 
@@ -26,7 +26,7 @@ const kv = (rest: string[]): Record<string, string> =>
 const vstel: Cmd = {
 	usage: "vstel [поиск]", about: "точки выдачи; текущая помечена ★", auth: false,
 	run: async (ctx, args) => {
-		const r = await api.vstelList(await readToken(ctx), args.join(" "))
+		const r = await publicRead(ctx, token => api.vstelList(token, args.join(" ")))
 		const cur = place(ctx.account).vstel
 		return {
 			json: r,

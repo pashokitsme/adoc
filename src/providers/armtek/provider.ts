@@ -6,7 +6,7 @@ import { ProviderError, articleKey, brandKey, defineProvider, type Offer } from 
 import type { Ctx } from "../../sdk/define.ts"
 import * as api from "./api.ts"
 import { mapHttpError } from "./api.ts"
-import { accessToken, decodeClaims, login, readToken, whoami, type Account } from "./auth.ts"
+import { accessToken, decodeClaims, login, publicRead, whoami, type Account } from "./auth.ts"
 import * as brand from "./brand.ts"
 import { commands } from "./commands.ts"
 import {
@@ -54,8 +54,7 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 	 * считается найденной, только если хоть одно слово её названия есть в
 	 * запросе: на артикул подсказка тоже отвечает какой-нибудь категорией.
 	 */
-	search: async (ctx, text, { car }) => {
-		const token = await readToken(ctx)
+	search: async (ctx, text, { car }) => await publicRead(ctx, async token => {
 		const p = place(ctx)
 		const target = carTarget(car)
 		if (car && !target) ctx.warn("armtek: в ref машины нет идентификатора модификации TecDoc — ищу без машины")
@@ -81,14 +80,13 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 			total: r.pagination?.totalCount,
 			extra: { page: r.pagination?.currentPage, perPage: r.pagination?.perPage, pageCount: r.pagination?.pageCount },
 		}
-	},
-
-	brands: async (ctx, article) => ({
-		items: toBrandHits(await brand.exactSearch(article, await readToken(ctx), place(ctx), ctx.warn)),
 	}),
 
-	offers: async (ctx, article, brandName, { analogs }) => {
-		const token = await readToken(ctx)
+	brands: async (ctx, article) => await publicRead(ctx, async token => ({
+		items: toBrandHits(await brand.exactSearch(article, token, place(ctx), ctx.warn)),
+	})),
+
+	offers: async (ctx, article, brandName, { analogs }) => await publicRead(ctx, async token => {
 		const p = place(ctx)
 		const { row } = await brand.resolve(article, brandName, token, p, ctx.warn)
 		const want = { article, brand: row.BRAND }
@@ -111,14 +109,13 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 		// сколько предложений насчитал сайт — чтобы агрегатор не выдавал одну
 		// страницу за всю выдачу; строк в items меньше на весь хвост страниц
 		return { items: toOffers(hasExact ? rows : [row, ...rows], want, p.vstel), total: all.pagination?.totalCount }
-	},
+	}),
 
 	/**
 	 * Карточка. Форма `card` сливает предложение с артикулом, поэтому склады,
 	 * цены и сроки видно одним списком — это и есть наличие в `Info.stock`.
 	 */
-	info: async (ctx, article, brandName) => {
-		const token = await readToken(ctx)
+	info: async (ctx, article, brandName) => await publicRead(ctx, async token => {
 		const p = place(ctx)
 		const r = await api.search({ query: article, queryType: 2, typeView: "card", ...p }, token)
 		const wantArticle = articleKey(article)
@@ -133,12 +130,11 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 			.then(({ row }) => toOffers([row], { article, brand: row.BRAND }, p.vstel))
 			.catch(() => [] as Offer[])
 		return { info: toInfo(rows, stats[0]), offers: offers.sort((a, b) => a.price - b.price) }
-	},
+	}),
 
 	// Только аналоги: точные строки отдаёт offers, и повторять их здесь значит
 	// заставить агрегатора отличать одно от другого руками.
-	analogs: async (ctx, article, brandName) => {
-		const token = await readToken(ctx)
+	analogs: async (ctx, article, brandName) => await publicRead(ctx, async token => {
 		const p = place(ctx)
 		const { row } = await brand.resolve(article, brandName, token, p, ctx.warn)
 		const all = await api.search({ query: article, queryType: 1, page: ctx.page, typeView: "list", ...p }, token)
@@ -149,10 +145,9 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 		const rows = (all.articlesData ?? []).filter(a =>
 			articleKey(a.PIN) !== articleKey(article) || brandKey(a.BRAND) !== brandKey(row.BRAND))
 		return { items: toOffers(rows, { article, brand: row.BRAND }, p.vstel), total: all.pagination?.totalCount }
-	},
+	}),
 
-	reviews: async (ctx, article, brandName) => {
-		const token = await readToken(ctx)
+	reviews: async (ctx, article, brandName) => await publicRead(ctx, async token => {
 		const { row } = await brand.resolve(article, brandName, token, place(ctx), ctx.warn)
 		const [list, stats] = await Promise.all([
 			api.reviewsByArtId(row.ARTID, token, { page: ctx.page, limit: ctx.limit }),
@@ -160,7 +155,7 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 			api.reviewRating(row.ARTID, token).catch(() => [] as api.RawReviewRating[]),
 		])
 		return toReviews(list, stats[0], productUrl(row.ARTICLE_ALIAS, row.ARTID))
-	},
+	}),
 
 	orders: async ctx => {
 		const token = await accessToken(ctx)

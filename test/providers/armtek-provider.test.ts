@@ -7,7 +7,7 @@ import * as api from "../../src/providers/armtek/api.ts"
 import { emptyAccount, type Account } from "../../src/providers/armtek/auth.ts"
 import { MAX_PAGES } from "../../src/providers/armtek/brand.ts"
 import { armtek } from "../../src/providers/armtek/provider.ts"
-import { ProviderError } from "../../src/sdk/index.ts"
+import { HttpError, ProviderError } from "../../src/sdk/index.ts"
 import type { Ctx } from "../../src/sdk/define.ts"
 
 const DIR = join(import.meta.dir, "..", "fixtures", "armtek")
@@ -291,6 +291,55 @@ describe("offers", () => {
 		expect(n).toBe(2)
 		expect(r.items.some(o => !o.analog && o.brand === "BOSCH")).toBe(true)
 		expect(r.items.some(o => o.analog)).toBe(true)
+	})
+})
+
+describe("ограничение аккаунта — повтор гостем", () => {
+	// Сайт умеет ответить 429 с капчей именно вошедшему, а гостю — данными.
+	// Публичное чтение обязано это пережить: один повтор гостевым токеном и
+	// строка в stderr, чтобы человек не принял гостевые цены за свои.
+	const throttled = () => { throw new HttpError(429, "https://armtek.ru/rest/ru/search-microservice/v1/search", JSON.stringify({ data: { captchaHash: "x" }, arr_messages: [] })) }
+
+	test("429 аккаунту — тот же запрос гостевым токеном, и предупреждение", async () => {
+		const rows = (await fixture("search-list.json")).data.articlesData
+		const reply = envelope({ typeView: "list", articlesData: rows.filter((a: any) => a.BRAND === "BOSCH"), pagination: { currentPage: 1, perPage: 36, totalCount: 1, pageCount: 1 } })
+		let first = true
+		const warns: string[] = []
+		const seen = route([
+			["/guest", guestReply],
+			["v1/search", () => { if (first) { first = false; throttled() } return reply }],
+		])
+		const r = await armtek.offers(makeCtx(loggedIn(), { warn: m => warns.push(m) }), "0986452041", "bosch", { analogs: false })
+
+		expect(r.items).toHaveLength(1)
+		expect(warns.join("\n")).toContain("аккаунт ограничен сайтом")
+		// первый поиск — токеном аккаунта, второй — гостевым, взятым между ними
+		expect(seen.map(c => c.url.split("rest/ru/")[1]!.split("?")[0])).toEqual([
+			"search-microservice/v1/search", "auth-microservice/v1/guest", "search-microservice/v1/search",
+		])
+	})
+
+	test("повтор ровно один: 429 и гостю — это отказ", async () => {
+		const warns: string[] = []
+		route([["/guest", guestReply], ["v1/search", () => throttled()]])
+		const e = await armtek.offers(makeCtx(loggedIn(), { warn: m => warns.push(m) }), "0986452041", "bosch", { analogs: false }).catch(x => x)
+		expect(e).toBeInstanceOf(ProviderError)
+		expect((e as ProviderError).message).toContain("капчу")
+	})
+
+	test("гостя повторять нечем: второго токена у него нет", async () => {
+		const calls = route([["/guest", guestReply], ["v1/search", () => throttled()]])
+		const e = await armtek.offers(makeCtx(null), "0986452041", "bosch", { analogs: false }).catch(x => x)
+		expect(e).toBeInstanceOf(ProviderError)
+		expect(calls.filter(c => c.url.includes("v1/search"))).toHaveLength(1)
+	})
+
+	test("корзина остаётся на токене аккаунта: гостевой корзины не бывает", async () => {
+		const calls = route([["/guest", guestReply], ["cart-microservice", () => { throw new HttpError(429, "cart", '{"data":{"captchaHash":"x"}}') }]])
+		const e = await armtek.basket!.list(makeCtx(loggedIn())).catch(x => x)
+		expect(e).toBeInstanceOf(ProviderError)
+		expect((e as ProviderError).message).toContain("капчу")
+		expect(calls.some(c => c.url.includes("/guest"))).toBe(false)
 	})
 })
 
