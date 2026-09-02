@@ -8,6 +8,7 @@
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
 //   NOREVIEWS=1    в describe нет capability reviews (метод при этом есть)
 //   NOBASKET=1     в describe нет capability basket (метод при этом есть)
+//   NOGARAGE=1     в describe нет capability garage (метод при этом есть)
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -160,5 +161,6 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 	const off = new Set<Capability>()
 	if (knob(id, "NOREVIEWS")) off.add("reviews")
 	if (knob(id, "NOBASKET")) off.add("basket")
+	if (knob(id, "NOGARAGE")) off.add("garage")
 	return off.size ? { ...spec, capabilities: spec.capabilities.filter(c => !off.has(c)) } : spec
 }

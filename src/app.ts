@@ -54,6 +54,7 @@ const HELP = `adoc — поиск запчастей сразу по неско�
   basket set <provider> <id>|--id <id> --qty <n>
   basket rm <provider> <id>|--id <id>
   garage [add|rm|main]       свой гараж, живёт локально
+  garage import <provider>   забрать машины из аккаунта на сайте
   login|logout <provider>    вход и выход у сайта
   accounts | whoami          кто авторизован
   providers                  какие сайты подключены
