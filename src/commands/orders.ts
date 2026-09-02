@@ -3,13 +3,47 @@
 // оттуда. Общего итога тут нет нарочно: складывать заказы разных сайтов в
 // одно число бессмысленно — у каждого свои сроки и своя история.
 
-import { dim, renderOrders } from "../sdk/index.ts"
+import { articleKey, brandKey, dim, renderOrders, type OrderWithNow } from "../sdk/index.ts"
 import { limitOf } from "../core/args.ts"
 import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
 import { blockTitle, cut } from "../core/render.ts"
-import { parseOrders } from "../core/validate.ts"
+import { parseOffers, parseOrders } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
+import type { Provider } from "../core/registry.ts"
+
+/**
+ * Сегодняшняя цена позиций заказа. Запрос на позицию, поэтому строго по
+ * очереди и с памятью: один и тот же артикул в разных заказах спрашивается
+ * один раз. Сайт ограничил темп — останавливаемся совсем: остальные позиции
+ * получили бы не цену, а капчу, и стоили бы того же ожидания.
+ *
+ * Цена берётся из первой строки `offers` — она же самая дешёвая: рендер и
+ * склейка сортируют предложения по цене.
+ */
+async function priceNow(ctx: Ctx, p: Provider, orders: OrderWithNow[]): Promise<void> {
+	const seen = new Map<string, number | undefined>()
+	for (const o of orders) {
+		for (const it of o.items ?? []) {
+			const key = `${articleKey(it.article)}|${brandKey(it.brand)}`
+			if (seen.has(key)) {
+				const known = seen.get(key)
+				if (known !== undefined) it.now = known
+				continue
+			}
+			const r = await invoke(p.bin, ["offers", it.article, "--brand", it.brand], { id: p.id })
+			if (!r.ok) {
+				// Отказ по темпу — не «у этой позиции нет цены», а «дальше не
+				// спрашиваем»: остальные позиции получат тот же отказ.
+				ctx.warn(dim(`${p.id}: цены «сейчас» дальше не спрашиваем — ${r.error.message}`))
+				return
+			}
+			const first = parseOffers(r.json, p.id).items[0]
+			seen.set(key, first?.price)
+			if (first) it.now = first.price
+		}
+	}
+}
 
 export async function cmdOrders(ctx: Ctx): Promise<Output> {
 	const all = await ctx.pick()
@@ -28,7 +62,17 @@ export async function cmdOrders(ctx: Ctx): Promise<Output> {
 	const shown = f.got.map(g => ({ provider: g.provider, items: g.value.slice(0, limit), total: g.value.length }))
 	const code = report(f, [], ctx.warn)
 
+	// Цены «сейчас» спрашиваются только по просьбе: это запрос на каждую
+	// позицию, и молча тратить их время (и терпение сайта) нельзя.
+	if (ctx.flags.prices === true) {
+		for (const g of shown) {
+			const p = providers.find(x => x.id === g.provider)
+			if (p) await priceNow(ctx, p, g.items)
+		}
+	}
+
 	return {
+		// В --json уходит то же, что на экран: `now` проставлен в тех же объектах.
 		json: { providers: Object.fromEntries(f.got.map(g => [g.provider, g.value])), errors: f.failures },
 		code,
 		render: () => shown.length

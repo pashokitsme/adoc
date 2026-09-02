@@ -26,6 +26,7 @@ afterEach(async () => {
 	delete process.env.FAKE_BETA_NOORDERS
 	delete process.env.FAKE_ALPHA_FAIL_ORDERS
 	delete process.env.FAKE_BETA_FAIL_ORDERS
+	delete process.env.FAKE_ALPHA_FAIL_OFFERS
 	restore()
 	await rm(dir, { recursive: true, force: true })
 })
@@ -47,6 +48,31 @@ describe("adoc orders", () => {
 		expect(r.stdout).toContain("2026-01-02")
 		expect(r.stdout).toContain("выдан")
 		expect(r.stdout).toContain("https://alpha.example/orders/1")
+	})
+
+	test("--prices: сегодняшняя цена и разница с уплаченной", async () => {
+		const r = await run(["orders", "--prices"])
+		expect(r.code).toBe(0)
+		expect(r.stdout).toContain("СЕЙЧАС")
+		expect(r.stdout).toContain("Δ")
+		const j = JSON.parse((await run(["orders", "--prices", "--json"])).stdout) as OrdersJson
+		const it = j.providers.alpha![0]!.items![0]! as { price: number; now?: number }
+		expect(it.now).toBe(407)
+		expect(it.price).toBe(407)
+	})
+
+	test("без --prices колонок «сейчас» нет вовсе", async () => {
+		const r = await run(["orders"])
+		expect(r.stdout).not.toContain("СЕЙЧАС")
+	})
+
+	test("сайт ограничил темп — цены дальше не спрашиваем, заказы остаются", async () => {
+		process.env.FAKE_ALPHA_FAIL_OFFERS = "http"
+		const r = await run(["orders", "--prices"])
+		expect(r.code).toBe(0)
+		expect(r.stdout).toContain("№ alpha-1")
+		expect(r.stderr).toContain("цены «сейчас» дальше не спрашиваем")
+		delete process.env.FAKE_ALPHA_FAIL_OFFERS
 	})
 
 	test("сайт без заказов не спрашивается, но назван в stderr", async () => {

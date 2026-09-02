@@ -30,7 +30,7 @@ Playwright — пустой `body`, «сайт мёртв». Данные тол
 | Корзины всех сайтов | `adoc basket` |
 | Положить строку выдачи `part`/`analogs` | `adoc basket add <#> [--qty <n>]` |
 | Убрать / изменить | `adoc basket rm <сайт> <ID>` · `adoc basket set <сайт> <ID> --qty <n>` |
-| Заказы | `adoc orders` |
+| Заказы | `adoc orders` · `adoc orders --prices` (колонки СЕЙЧАС и Δ к уплаченной) |
 | Машины | `adoc garage` |
 | Кто авторизован | `adoc accounts` (= `adoc whoami`) |
 | Сайты и их умения | `adoc providers` |

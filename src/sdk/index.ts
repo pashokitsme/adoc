@@ -21,5 +21,5 @@ export {
 	linksHint, linksMode, money, qtyCell, ratingCell, red, renderBasket, renderBrands, renderCars, renderDisplay,
 	renderCrosses, renderFits, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews, stars, table, urlList, yellow,
 } from "./render.ts"
-export type { CarLike, Col, LinksMode } from "./render.ts"
+export type { CarLike, Col, LinksMode, OrderItemNow, OrderWithNow } from "./render.ts"
 export * as render from "./render.ts"

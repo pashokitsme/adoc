@@ -2,7 +2,7 @@
 // чтобы `adoc ... | grep` не ловил escape-последовательности.
 
 import { noWarn } from "./config.ts"
-import type { Basket, BasketItem, BrandHit, Car, CrossItem, Display, FitsResult, Info, Offer, Order, Product, Reviews } from "./contract.ts"
+import type { Basket, BasketItem, BrandHit, Car, CrossItem, Display, FitsResult, Info, Offer, Order, OrderItem, Product, Reviews } from "./contract.ts"
 
 // Решение принимается на каждый вызов, а не один раз при импорте: модуль
 // грузится раньше, чем становится известно, куда пойдёт вывод, и запомненное
@@ -363,7 +363,23 @@ export function renderInfo(i: Info, offers: Offer[] = []): string {
  * под таблицей. Общий адрес (у сайта без страницы отдельного заказа он один на
  * весь список) уходит в заголовок блока и у строк не повторяется.
  */
+/**
+ * Позиция заказа с сегодняшней ценой. `now` считает обёртка (`orders --prices`),
+ * сайт её не присылает: заказ — это история, а цена — сейчас.
+ */
+export type OrderItemNow = OrderItem & { now?: number }
+export type OrderWithNow = Omit<Order, "items"> & { items?: OrderItemNow[] }
+
 const ORDER_HEAD = ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "КОЛ", "ЦЕНА", "СУММА"]
+const ORDER_HEAD_NOW = [...ORDER_HEAD, "СЕЙЧАС", "Δ"]
+
+/** Разница с уплаченным: дешевле — зелёное, дороже — красное. */
+const delta = (paid: number, now: number): string => {
+	const d = Math.round((now - paid) * 100) / 100
+	if (!d) return dim("—")
+	const text = `${d > 0 ? "+" : "−"}${money(Math.abs(d))}`
+	return d > 0 ? red(text) : green(text)
+}
 
 /** Вид кросс-ссылки словом: коды контракта человеку ничего не говорят. */
 const KIND_WORD: Record<string, string> = {
@@ -397,7 +413,7 @@ export function renderFits(r: FitsResult, who?: string): string {
 	return `${head}${r.reason ? ` ${dim(`— ${r.reason}`)}` : ""}${page ? `  ${page}` : ""}`
 }
 
-export function renderOrders(items: Order[]): string {
+export function renderOrders(items: OrderWithNow[]): string {
 	if (!items.length) return "заказов нет"
 	const urls = new Set(items.map(o => o.url).filter((v): v is string => !!v))
 	const common = urls.size === 1 && items.every(o => o.url) ? [...urls][0] : undefined
@@ -405,14 +421,20 @@ export function renderOrders(items: Order[]): string {
 	// Позиции всех заказов считаются на ширины разом: у каждого заказа своя
 	// таблица, но колонки в них общие — иначе соседние блоки стоят уступом и
 	// глазу не за что зацепиться, сравнивая цену в разных заказах.
-	const rowsOf = (o: Order): string[][] => (o.items ?? []).map((it, i) => [
+	// Колонки «сейчас» и «Δ» появляются только тогда, когда цену и правда
+	// спрашивали: пустые колонки в каждом заказе — шум, а не сведения.
+	const withNow = items.some(o => (o.items ?? []).some(it => it.now !== undefined))
+	const rowsOf = (o: OrderWithNow): string[][] => (o.items ?? []).map((it, i) => [
 		`  ${cellLink(it.url, String(i + 1))}`, cellLink(it.url, cyan(it.article)), bold(it.brand),
 		cellLink(it.url, it.name.slice(0, 40)),
 		`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
+		...(withNow ? [it.now === undefined ? dim("—") : money(it.now), it.now === undefined ? dim("—") : delta(it.price, it.now)] : []),
 	])
 	const perOrder = items.map(rowsOf)
-	const width = tableWidths([["  " + (ORDER_HEAD[0] ?? ""), ...ORDER_HEAD.slice(1)], ...perOrder.flat()])
-	const head = dim(tableRow(["  " + (ORDER_HEAD[0] ?? ""), ...ORDER_HEAD.slice(1)], width))
+	const headCells = withNow ? ORDER_HEAD_NOW : ORDER_HEAD
+	const headRow = ["  " + (headCells[0] ?? ""), ...headCells.slice(1)]
+	const width = tableWidths([headRow, ...perOrder.flat()])
+	const head = dim(tableRow(headRow, width))
 
 	const blocks = items.map((o, i) => {
 		// Шапка заказа целиком — ссылка: у сайта без страницы отдельного заказа
