@@ -538,62 +538,77 @@ exit `1`. Exit `2` только за неоднозначный бренд.
 ## Провайдер armtek
 
 Сайт armtek.ru — Angular SPA, свой REST по адресу `https://armtek.ru/rest/ru/`.
-Карта из бандла: 191 вызов по микросервисам (`auth-microservice`,
-`search-microservice`, `cart-microservice`, `order-microservice`, `garage`,
-`favorites`, `stock-microservice` и другие). Полная карта и рецепт снятия —
-`docs/armtek-api.md`; рецепт тот же, что у autodoc: скачать `main.*.js` и
-чанки с `--compressed`, грепать `setUrl("…").setMethod("…")`.
+В бандле 294 вызова по 37 микросервисам; полная карта, снятые ответы и рецепт
+снятия — `docs/armtek-api.md`. Ниже — только то, что определяет форму
+провайдера; подробности каждой ручки не дублируются.
 
-Проверено против прода 2026-09-01:
+Проверено против прода 2026-09-02 (реализовано в `src/providers/armtek/`):
 
 - Ответ всегда `{data, arr_messages: [{type, text, …}], execution_time}`;
-  ошибки — HTTP-статус плюс `arr_messages[].type === "E"`.
-- `POST auth-microservice/v1/guest` с заголовками `X-AUTH-SYSTEM: AUTH_MICROSERVICE_V1_ARMTEK_RU`
-  и `X-AUTH-TOKEN: nJhNK87gJOOU6dfr` (константы фронта из бандла) → `data.accessToken`,
-  гостевой JWT. С ним поиск работает без входа.
-- `POST auth-microservice/v1/auth/login` с теми же заголовками и телом
-  `{login, password}` → `data.accessToken`, `data.refreshToken`.
-  `POST auth-microservice/v1/auth/refresh` с `Authorization: Bearer <refreshToken>`.
-  Остальные вызовы — `Authorization: Bearer <accessToken>`.
-- `POST search-microservice/v1/search`, тело
-  `{query, queryType: 1, page: 1, userInfo: {VKORG: "4000", VSTELS_LIST: ["ME86"]}, ZZSIGN: "S"}`.
-  `VKORG 4000` — Россия. `VSTELS_LIST` обязателен; `ME86` — точка выдачи
-  «Москва» по умолчанию из бандла. Список точек — `GET delivery-microservice/v1/custom-vstel/list?search=&viewAll=true`.
-  `queryType: 2` — с аналогами.
-- Позиция выдачи: `PIN`, `BRAND`, `BRAND_ID`, `NAME`, `PRICES1` (цена),
-  `RVALUE` (количество), `DLVDT` (`YYYYMMDDHHmmss`, срок), `KEYZAK` (склад),
-  `RATING`, `REVIEW_COUNT`, `PHOTO[]`, `ARTICLE_ALIAS`, `BRAND_ALIAS`;
-  `pagination.{currentPage, perPage, totalCount, pageCount}`.
-- `GET auth-microservice/v1/profile` — профиль по токену.
-- Гараж: `garage/v2/*` и `task-selection-microservice/v1/garage/get-transport-list-by-filter?client_id=…`.
-- Корзина: `cart-microservice/v1/base` (POST — добавить, PUT — изменить,
-  DELETE — убрать), `cart-microservice/v1/cart/items-total-count`. Список
-  позиций — либо GET того же `base`, либо GraphQL; тела и ответ снять с фронта
-  при реализации. `Offer.ref` для armtek — `ARTID`, `KEYZAK`, `PARNR`,
-  `CHARG`, `NUMZAK` и что ещё фронт кладёт в POST.
-- Ленты отзывов в карте по имени нет; она либо в GraphQL, либо в чанках карточки
-  товара. Найти на этапе реализации. Если ленты нет, `reviews` отдаёт `rating`
-  и `total` без `items`.
+  ошибка — HTTP-статус плюс `arr_messages[].type === "E"`. Заголовки фронта
+  `X-AUTH-SYSTEM`/`X-AUTH-TOKEN` обязательны везде, `X-CA-VKORG` — тоже:
+  без него корзина отвечает 200 и пустотой вместо ошибки.
+- Токены: `POST auth-microservice/v1/guest` — гостевой JWT (с ним работают
+  поиск, отзывы и список точек выдачи), `POST auth-microservice/v1/auth/login`
+  с `{login, password}` и `POST auth-microservice/v1/auth/refresh` с
+  refresh-токеном в `Authorization`. Refresh ротируется — новый обязателен к
+  сохранению.
+- Поиск — `POST search-microservice/v1/search`. `queryType: 1` — точные
+  совпадения **вместе с аналогами**, `queryType: 2` — только точные.
+  `typeView` задаём всегда (`list` или `card`): без него сервер сам выбирает
+  форму ответа, а форма `card` приходит без `SUGGESTIONS`. `userInfo`
+  (`VKORG`, `VSTELS_LIST`) обязателен: от точки выдачи зависят цена, срок и
+  наличие.
+- Цены, наличие и сроки лежат не в строке артикула, а в её `SUGGESTIONS[]` —
+  одна строка выдачи разворачивается в столько предложений, сколько складов.
+  В строке: `PIN`, `BRAND`, `NAME`, `RATING`, `REVIEW_COUNT`, `PHOTO[]`,
+  `ARTICLE_ALIAS`, `ARTID`. В предложении: `PRICES1` (цена строкой),
+  `RVALUE` — остаток **строкой**, на больших складах это `">20"` (нижняя
+  граница, а не точное число), `DLVDT`/`ORDDT` — даты SAP `YYYYMMDD[HHMMSS]`
+  с пустым значением `"00000000"`, `KEYZAK` — код склада, `MINBM` —
+  минимальная партия. Пагинация — `pagination.{currentPage, perPage,
+  totalCount, pageCount}`, страница 36 строк.
+- Профиль — `GET client-microservice/v1/client/individual/get-client`
+  (не `auth-microservice`): оттуда имя, почта, телефон, `VSTEL_DATA` и коды
+  клиента.
+- Отзывы есть отдельным сервисом: лента —
+  `GET review-microservice/v2/review/get-list-by-artid?artId=…`, оценки и
+  гистограмма — `GET review-microservice/v2/review/get-rating-by-artids`.
+  Ленту сайт отдаёт с ФИО и телефоном автора; наружу уходит только «Имя Ф.».
+- Гараж — `GET task-selection-microservice/v1/garage/get-transport-list-by-filter?client_id=…`,
+  `client_id` — из клеймов токена.
+- Корзина — `cart-microservice/v1/base`: GET (со списком точек в `vstels[]`) —
+  состояние, POST — добавить, PUT — изменить количество, DELETE — убрать.
+  POST по существующей позиции сайт отбивает, поэтому смена количества —
+  только PUT.
 
 Провайдер:
 
 - `describe`: capabilities `reviews`, `garage`, `analogs`, `basket`.
-- `search <текст>`: тот же `search-microservice/v1/search` с текстом в `query`
-  и `page`; Product из позиции выдачи: `PIN`, `BRAND`, `NAME`, `PRICES1`,
-  `RVALUE`, `RATING`/`REVIEW_COUNT`, `PHOTO`. Проверено: `typeView: "list"`,
-  557 позиций на «0986452041», пагинация по 36.
-- `brands`: `search` с `queryType: 1`, группировка выдачи по `BRAND` среди
-  позиций с совпавшим ключом артикула, `rating` из `RATING`/`REVIEW_COUNT`.
-- `offers`: тот же `search`, фильтр по бренду, каждая позиция — Offer:
-  `price = PRICES1`, `quantity = RVALUE`, `deliveryDate` из `DLVDT`,
-  `deliveryDays` = разница с сегодня, `seller`/`stock` из `KEYZAK`,
-  `url = https://armtek.ru/product/<ARTICLE_ALIAS>` (проверить формат),
-  `extra` — вся сырая позиция.
-- Токены: `accounts/armtek.json` — `{access, refresh, expires, guest: {token, expires}, vstel}`.
-  Без входа поиск идёт гостевым токеном, он кэшируется в том же файле.
-- `login`: логин и пароль через tty, как у autodoc; пароль на диск не пишется.
-- Свои команды: `search <текст>`, `stores [поиск]`, `vstel <код>`, `garage`,
-  `basket`, `orders`, `profile`, `get <путь> [k=v…]`, `post <путь> [k=v…]`.
+- `search <текст>`: `queryType: 1`, `typeView: "list"`, страница из `--page`.
+- `brands`: `queryType: 2` постранично до потолка в 5 страниц, группировка по
+  `BRAND` среди строк с совпавшим ключом артикула. Упёрлись в потолок — в
+  stderr предупреждение: список брендов неполный.
+- `offers`: бренд выбирается среди точных совпадений (`queryType: 2`), без
+  `--analogs` разворачиваются `SUGGESTIONS` только его строки. С `--analogs`
+  берётся `queryType: 1`, и, поскольку `--page` контракт для `offers` не
+  предусматривает, о неполноте выдачи провайдер говорит в stderr.
+- `Offer.ref` — всё, что нужно телу POST корзины, чтобы не спрашивать сайт
+  заново: `artid`, `keyzak`, `parnr`, `numZak`, `prices`, `pricem`, `waers`,
+  `charg`, `vstels`, `zzsign`, `minbm`, `article`, `brand`.
+- `Offer.seller` — «armtek»: продавец один, а `KEYZAK` это код склада и
+  живёт в `extra.keyzak`. Строка без цены предложением не считается.
+- Файл аккаунта `accounts/armtek.json`:
+  `{access, refresh, expires, guest: {token, expires}, vkorg, vstel, clientId,
+  category, segment}`. Персональных данных в нём нет — профиль каждый раз
+  спрашивается у сайта.
+- `login`: телефон `7XXXXXXXXXX` или e-mail с паролем в терминале, либо
+  `ARMTEK_PHONE` и `ARMTEK_PASSWORD` из окружения, когда заданы обе. Из argv
+  пароль не принимается.
+- Свои команды: `info <артикул> --brand <имя>` (карточка формой `card`),
+  `vstel [поиск]` (точки выдачи, текущая помечена), `raw <METHOD> <путь>`
+  (любой вызов `rest/ru` с токеном аккаунта — умеет и писать, поэтому
+  объявлена `auth: true`).
 
 ## Тесты
 

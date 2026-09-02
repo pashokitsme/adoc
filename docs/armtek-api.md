@@ -491,11 +491,12 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 
 | контракт | откуда | оговорка |
 |---|---|---|
-| `Product.price`, `Offer.price` | `PRICES1` | строка, `""` — это «нет цены», а не ноль |
-| `Offer.deliveryDate` | `DLVDT` → `YYYY-MM-DD` | |
+| `Product.price`, `Offer.price` | `PRICES1` | строка, `""` — это «нет цены», а не ноль: строка без цены предложением не считается и в выдачу не идёт |
+| `Offer.deliveryDate` | `DLVDT` → `YYYY-MM-DD` | пустая дата SAP (`"00000000"`) и несуществующие числа — не дата: срока просто нет |
 | `Offer.deliveryDays` | `DLVDT` минус сегодня, **по календарным датам** | прошедшая дата даёт 0, не минус |
 | `quantity` | `RVALUE` | строка; `">20"` → 20 плюс `extra.quantityAtLeast: true` |
-| `Offer.seller`, `Offer.stock.code` | `KEYZAK` | продавец везде один, различает строки склад |
+| `Offer.seller` | константа `armtek` | продавец везде один, а человекочитаемого названия склада сайт не отдаёт |
+| `extra.keyzak` | `KEYZAK` | код склада; `Offer.stock` не заполняется — в контракте это код со своим названием, а названия нет |
 | `Offer.analog` | сравнение `articleKey`/`brandKey` с запрошенной парой | |
 | `Offer.ref` | `ARTID`, `KEYZAK`, `PARNR`, `NUMZAK`, `PRICES1`, `PRICEP`, `WAERS`, `CHARG`, `MINBM`, `VSTEL` | этого хватает, чтобы собрать тело POST корзины без второго запроса |
 | `BasketItem.id` | `posnr` | им же идут PUT и DELETE |

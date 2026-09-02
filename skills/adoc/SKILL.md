@@ -31,8 +31,23 @@ CLI поверх недокументированного API autodoc.ru. Бин
 таблица для человека; цвет гаснет сам при пайпе. Ошибка в `--json` приходит
 телом `{"error":{"code":"…","message":"…"}}`, без `--json` — текстом в stderr.
 
-Флаг со значением пишется `--flag value` или `--flag=value`: он забирает
-следующий токен, поэтому `--page --json` съест `--json` как номер страницы.
+Флаг со значением пишется `--flag value` или `--flag=value`, и значение
+обязательно: `--page --json` — это `bad_args`, а не страница «--json».
+Переключатель значения не берёт: `--json=true` — то же, что `--json`,
+`--json=false` — то же, что флага нет.
+
+## Второй сайт: `adoc-armtek`
+
+Рядом живёт `adoc-armtek` — armtek.ru тем же контрактом: `brands`, `offers`,
+`reviews`, `search`, `basket`, `garage export`, `login`/`whoami`/`logout`,
+`--json` и коды выхода у него ровно те же, так что всё сказанное здесь про
+порядок «артикул → бренд» и про `ambiguous` работает и там. Свои команды —
+`info`, `vstel` (точки выдачи: от выбранной зависят цена и срок) и `raw`
+(любой вызов `rest/ru`, нужен вход). Справка — `adoc-armtek --help`, карта
+API — `docs/armtek-api.md`, вход — телефон `7XXXXXXXXXX` или e-mail с
+паролем в терминале либо `ARMTEK_PHONE`/`ARMTEK_PASSWORD` в окружении.
+Аккаунты у сайтов раздельные: `accounts/autodoc.json` и
+`accounts/armtek.json`.
 
 ## Обязательный порядок: артикул → бренд
 
