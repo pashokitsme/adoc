@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import * as api from "../../src/providers/armtek/api.ts"
 import { emptyAccount, type Account } from "../../src/providers/armtek/auth.ts"
+import { MAX_PAGES } from "../../src/providers/armtek/brand.ts"
 import { armtek } from "../../src/providers/armtek/provider.ts"
 import { ProviderError } from "../../src/sdk/index.ts"
 import type { Ctx } from "../../src/sdk/define.ts"
@@ -95,6 +96,31 @@ describe("brands", () => {
 		const r = await armtek.brands(makeCtx(loggedIn()), pin)
 		expect(r.items.length).toBeGreaterThan(1)
 		expect(seen[0]!.body.queryType).toBe(2)
+	})
+
+	// Один артикул выпускают и полсотни брендов, а страница — 36 строк:
+	// обрезать список на первой странице значит соврать в ответе.
+	test("список брендов добирается со всех страниц", async () => {
+		const group = (await fixture("search-brand-group.json")).data.articlesData
+		const seen = route([["/search", (c: Call) => envelope({
+			typeView: "list",
+			articlesData: c.body.page === 1 ? group : [{ ...group[0], BRAND: "ВТОРАЯ СТРАНИЦА", ARTID: 999 }],
+			pagination: { currentPage: c.body.page, perPage: 36, totalCount: group.length + 1, pageCount: 2 },
+		})]])
+		const r = await armtek.brands(makeCtx(loggedIn()), group[0].PIN)
+		expect(seen).toHaveLength(2)
+		expect(seen.map(c => c.body.page)).toEqual([1, 2])
+		expect(r.items.map(h => h.brand)).toContain("ВТОРАЯ СТРАНИЦА")
+	})
+
+	test("страниц берём не больше потолка", async () => {
+		const group = (await fixture("search-brand-group.json")).data.articlesData
+		const seen = route([["/search", (c: Call) => envelope({
+			typeView: "list", articlesData: group,
+			pagination: { currentPage: c.body.page, perPage: 36, totalCount: 10_000, pageCount: 300 },
+		})]])
+		await armtek.brands(makeCtx(loggedIn()), group[0].PIN)
+		expect(seen).toHaveLength(MAX_PAGES)
 	})
 })
 

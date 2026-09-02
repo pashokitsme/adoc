@@ -51,7 +51,8 @@ const info: Cmd = {
 		return {
 			json: { article: head.PIN, brand: head.BRAND, artId: head.ARTID, url: productUrl(head.ARTICLE_ALIAS), rating: s ?? null, offers: rows },
 			render: () => [
-				`${bold(head.NAME ?? head.PIN)}  ${dim(head.PIN)}`,
+				// в форме card NAME — это название предложения, человеческое лежит в CUSTOM_NAME
+				`${bold(head.CUSTOM_NAME || head.NAME || head.PIN)}  ${dim(head.PIN)}`,
 				`${head.BRAND}  ${dim(`artId ${head.ARTID}`)}`,
 				heading("Оценки"),
 				`  ${stars(num(s?.rating))}  ${bold(s?.rating ?? "—")}  ${dim(`${s?.reviewCount ?? 0} отзывов`)}`,

@@ -194,7 +194,9 @@ curl -s -X POST https://armtek.ru/rest/ru/auth-microservice/v1/guest \
   `SUGGESTIONS[]`. То, что нужно и для `search`, и для `brands`/`offers`.
 - **`"card"`** — строка на **отдельное предложение**: поля предложения слиты с
   полями артикула, `SUGGESTIONS` нет вовсе. Итоги разные: на «фильтр масляный»
-  `list` даёт `totalCount` 997, `card` — 1313.
+  `list` даёт `totalCount` 997, `card` — 1313. Осторожно с названием: в этой
+  форме `NAME` — это название **предложения** (`"фильтр масляный!\\ Mazda 626…"`),
+  а человеческое лежит в `CUSTOM_NAME`.
 
 Естественный выбор сервера непредсказуем («фильтр масляный» → `list`,
 «щётка стеклоочистителя» → `card`), поэтому клиенту стоит **всегда явно слать
@@ -260,6 +262,11 @@ curl -s -X POST https://armtek.ru/rest/ru/auth-microservice/v1/guest \
 `perPage` = 36 и в теле не меняется (`perPage`/`limit` в теле игнорируются);
 `pageCount` = 16 на 557 позиций. Страницы обходятся `page: 1..pageCount`,
 выдача стабильна между вызовами.
+
+Точная выдача (`queryType: 2`) тоже бывает многостраничной: `MD360935`
+выпускают 45 брендов, то есть две страницы. Клиент, читающий только первую,
+теряет девять брендов из сорока пяти, поэтому провайдер добирает страницы —
+до потолка в пять.
 
 ### Смежное **[из бандла]**
 
@@ -474,13 +481,37 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 
 ## Что провайдер уже умеет
 
-`login`, `logout`, `whoami` — работают. `search`, `brands`, `offers`, отзывы,
-корзина и гараж пока не реализованы; всё, что для них нужно, описано выше.
+Контракт закрыт целиком: `login`, `logout`, `whoami`, `search`, `brands`,
+`offers` (с `--analogs`), `reviews`, `basket` (список, add, set, rm),
+`garage export`. Capabilities — `reviews`, `garage`, `analogs`, `basket`.
+Сверх контракта: `info <артикул> --brand`, `vstel [поиск]`,
+`raw <METHOD> <путь> [k=v…] [--body <json>]`.
+
+Как сырые поля ложатся в контракт:
+
+| контракт | откуда | оговорка |
+|---|---|---|
+| `Product.price`, `Offer.price` | `PRICES1` | строка, `""` — это «нет цены», а не ноль |
+| `Offer.deliveryDate` | `DLVDT` → `YYYY-MM-DD` | |
+| `Offer.deliveryDays` | `DLVDT` минус сегодня, **по календарным датам** | прошедшая дата даёт 0, не минус |
+| `quantity` | `RVALUE` | строка; `">20"` → 20 плюс `extra.quantityAtLeast: true` |
+| `Offer.seller`, `Offer.stock.code` | `KEYZAK` | продавец везде один, различает строки склад |
+| `Offer.analog` | сравнение `articleKey`/`brandKey` с запрошенной парой | |
+| `Offer.ref` | `ARTID`, `KEYZAK`, `PARNR`, `NUMZAK`, `PRICES1`, `PRICEP`, `WAERS`, `CHARG`, `MINBM`, `VSTEL` | этого хватает, чтобы собрать тело POST корзины без второго запроса |
+| `BasketItem.id` | `posnr` | им же идут PUT и DELETE |
+| `Reviews.rating.histogram` | `get-rating-by-artids`, от 5★ к 1★ | |
+| `Review.author` | `firstName` плюс первая буква `lastName` | телефон и полное ФИО наружу не отдаём |
+| `Car.*` | `brand`/`model_name`/`manufacture_year` — объекты `{value}`; пробег и двигатель — в `options[]` по ключам `mileage`, `engine_capacity`, `engine_type` | строки с `active !== "1"` пропускаем |
+
+Неоднозначности: бренд, которого нет среди точных совпадений, — ошибка
+`ambiguous` со списком брендов (exit 2); артикул, которого нет вовсе, —
+`notfound`.
 
 Вход без терминала: `login` берёт `ARMTEK_PHONE` и `ARMTEK_PASSWORD` из
 окружения, когда заданы обе переменные, иначе спрашивает в tty. Пароль на диск
 не попадает; в `accounts/armtek.json` лежат только `access`, `refresh`,
-`expires`, `vkorg`, `vstel` и кэш гостевого токена.
+`expires`, `vkorg`, `vstel`, `clientId`, `category`, `segment` и кэш гостевого
+токена.
 
 ## Фикстуры
 
@@ -488,9 +519,10 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 `search-list.json`, `search-card.json`, `search-brand-group.json`,
 `reviews-list.json`, `reviews-rating.json`, `cart-list.json`, `cart-add.json`,
 `cart-put.json`, `cart-delete.json`, `cart-count.json`, `vstel-list.json`,
-`garage-empty.json`, `orders-empty.json`, `error-validation.json` и
-синтетический `client.json` (карточка клиента целиком выдумана: настоящая
-состоит из персональных данных).
+`garage-empty.json`, `orders-empty.json`, `error-validation.json` и два
+синтетических: `client.json` (настоящая карточка клиента состоит из
+персональных данных целиком) и `garage-cars.json` (гараж тестового аккаунта
+пуст, форма собрана из бандла фронта).
 
 ## Что ещё есть в бандле
 

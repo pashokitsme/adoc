@@ -18,10 +18,26 @@ export type Resolved = {
 	rows: RawArticle[]
 }
 
+/**
+ * Сколько страниц точной выдачи забираем. Страница — 36 строк, а один артикул
+ * выпускают до полусотни брендов: обрезать список на первой странице значит
+ * соврать в ответе на вопрос «кто это выпускает». Потолок нужен на случай,
+ * если сайт когда-нибудь сочтёт точным совпадением полтысячи строк.
+ */
+export const MAX_PAGES = 5
+
 /** Точные совпадения артикула: queryType 2 отсекает аналоги на стороне сайта. */
-export async function exactSearch(article: string, token: string, place: Place, page = 1): Promise<RawArticle[]> {
-	const r = await api.search({ query: article, queryType: 2, page, typeView: "list", ...place }, token)
-	return exactRows(r.articlesData ?? [], article)
+export async function exactSearch(article: string, token: string, place: Place): Promise<RawArticle[]> {
+	const first = await api.search({ query: article, queryType: 2, page: 1, typeView: "list", ...place }, token)
+	const rows = [...(first.articlesData ?? [])]
+	const pages = Math.min(first.pagination?.pageCount ?? 1, MAX_PAGES)
+	if (pages > 1) {
+		const rest = await Promise.all(
+			Array.from({ length: pages - 1 }, (_, i) =>
+				api.search({ query: article, queryType: 2, page: i + 2, typeView: "list", ...place }, token)))
+		for (const r of rest) rows.push(...(r.articlesData ?? []))
+	}
+	return exactRows(rows, article)
 }
 
 /**
