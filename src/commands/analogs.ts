@@ -63,7 +63,9 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 			// Пометку «аналог» рендер SDK ставит каждой такой строке, а здесь
 			// такие все: колонка повторяла бы заголовок таблицы сверху вниз.
 			// В --json пометка остаётся — там она несёт смысл.
-			renderOffers(rows.map(o => ({ ...o, analog: false })), [providerCol]),
+			// Пустая таблица говорит своими словами: «предложений нет» из SDK
+			// здесь не про то — предложения-то есть, их показывает `part`.
+			rows.length ? renderOffers(rows.map(o => ({ ...o, analog: false })), [providerCol]) : "заменителей нет",
 			...cut(rows.length, split.analogs.length, site),
 			...(rows.length ? ["", hint(`${TOOL} basket add <#> [--qty <n>] — положить строку в корзину её сайта`)] : []),
 		].join("\n"),

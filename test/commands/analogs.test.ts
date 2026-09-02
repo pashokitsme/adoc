@@ -78,6 +78,13 @@ describe("adoc analogs", () => {
 		expect((await run(["analogs", "n90954802", "--json"])).code).toBe(1)
 	})
 
+	test("заменителей нет — говорим про них, а не про предложения", async () => {
+		process.env.FAKE_BETA_EMPTY_ANALOGS = "1"
+		const r = await run(["analogs", "n90954802", "--skip", "alpha"])
+		expect(r.stdout).toContain("заменителей нет")
+		delete process.env.FAKE_BETA_EMPTY_ANALOGS
+	})
+
 	test("брендов несколько — «уточни бренд» с кодом 2", async () => {
 		const r = await run(["analogs", "MULTI-1"])
 		expect(r.code).toBe(2)

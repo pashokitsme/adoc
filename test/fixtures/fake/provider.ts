@@ -6,6 +6,7 @@
 //   FAIL_OFFERS=<код>  падает только offers, а brands отвечает как обычно
 //   EMPTY_OFFERS=1 offers отвечает пустым списком, а brands — как обычно
 //   EMPTY_SEARCH=1 search отвечает пустым списком, не ошибкой
+//   EMPTY_ANALOGS=1 analogs отвечает пустым списком: заменителей у сайта нет
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
 //   FAIL_INFO / FAIL_ANALOGS / FAIL_ORDERS=<код>  падает только эта команда
 //   NOREVIEWS=1    в describe нет capability reviews (метод при этом есть)
@@ -148,7 +149,7 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		analogs: async (_ctx, article, brand) => {
 			await gate("ANALOGS")
 			const hit = find(article).filter(r => brandKey(r.brand) === brandKey(brand))
-			if (!hit.length) return { items: [] }
+			if (!hit.length || knob(id, "EMPTY_ANALOGS")) return { items: [] }
 			return { items: [{ ...toOffer(hit[0]!, 9), article: "AN-1", brand: "ANALOG", price: data.price + 50, analog: true, analogOf: { article, brand }, url: page("AN-1") }] }
 		},
 
