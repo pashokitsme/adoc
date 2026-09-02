@@ -9,6 +9,7 @@ import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
 import { cmdPart } from "./commands/part.ts"
 import { cmdProviders } from "./commands/providers.ts"
+import { cmdReviews } from "./commands/reviews.ts"
 import { cmdSearch } from "./commands/search.ts"
 import type { Ctx, Output } from "./core/ctx.ts"
 import { Ambiguous } from "./core/errors.ts"
@@ -31,6 +32,7 @@ type Handler = (ctx: Ctx) => Promise<Output>
 const COMMANDS: Record<string, Handler> = {
 	part: cmdPart,
 	search: cmdSearch,
+	reviews: cmdReviews,
 	providers: cmdProviders,
 	accounts: cmdAccounts,
 	whoami: cmdAccounts,

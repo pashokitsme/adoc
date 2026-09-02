@@ -5,6 +5,7 @@
 //   FAIL=<код>     любая контрактная команда падает этим кодом
 //   FAIL_OFFERS=<код>  падает только offers, а brands отвечает как обычно
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
+//   NOREVIEWS=1    в describe нет capability reviews (метод при этом есть)
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -64,7 +65,7 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		ref: { line: `${id}-${n}` },
 	})
 
-	return defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket"]>({
+	const spec = defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket"]>({
 		id, name: `Fake ${id}`, site: `https://${id}.example`,
 		capabilities: ["reviews", "garage", "analogs", "basket"],
 
@@ -146,4 +147,9 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			hello: { usage: "hello [имя]", about: "своя команда провайдера", auth: false, run: async (_ctx, args) => ({ json: { hello: args[0] ?? id }, render: () => `привет, ${args[0] ?? id}` }) },
 		},
 	})
+
+	// Сайт без отзывов: capability снимается уже с готовой спеки, потому что
+	// defineProvider обязан видеть реализацию рядом с объявлением. Обёртка
+	// смотрит только в describe — этого хватает, чтобы её не спросили.
+	return knob(id, "NOREVIEWS") ? { ...spec, capabilities: spec.capabilities.filter(c => c !== "reviews") } : spec
 }
