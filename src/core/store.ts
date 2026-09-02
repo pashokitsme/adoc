@@ -38,7 +38,8 @@ export async function writeJson(name: string, data: unknown): Promise<void> {
 
 const accountsDir = (): string => join(configDir(), "accounts")
 
-const ID_RE = /^[a-z0-9][a-z0-9_-]*$/
+/** Допустимый id провайдера: из него складываются пути, поэтому правило одно на всю обёртку. */
+export const ID_RE = /^[a-z0-9][a-z0-9_-]*$/
 
 /**
  * id провайдера приходит из аргументов пользователя (`adoc logout <id>`), а
