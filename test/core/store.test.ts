@@ -44,6 +44,15 @@ describe("аккаунты", () => {
 		expect(await listAccountIds()).toEqual(["alpha", "beta"])
 	})
 
+	test("имя файла не по правилам id аккаунтом не считается", async () => {
+		// Провайдера с таким id быть не может (реестр отбирает по ID_RE), а
+		// удалить такой файл обёртка всё равно откажется: показывать его как
+		// «есть вход» значило бы предлагать команду, которая упадёт.
+		await accountStore("призрак").save({ t: 1 })
+		await accountStore("alpha").save({ t: 2 })
+		expect(await listAccountIds()).toEqual(["alpha"])
+	})
+
 	test("удаление аккаунта", async () => {
 		await accountStore("alpha").save({ t: 1 })
 		expect(await removeAccount("alpha")).toBe(true)

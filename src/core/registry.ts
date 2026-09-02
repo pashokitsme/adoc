@@ -84,8 +84,17 @@ export async function discover(): Promise<ProviderEntry[]> {
 const list = (v: string | true | undefined): string[] =>
 	typeof v === "string" ? v.split(",").map(s => s.trim()).filter(Boolean) : []
 
+export type SelectOpts = {
+	/**
+	 * Пустой выбор — не ошибка. Нужно `accounts`: провайдеров может не быть
+	 * вовсе, а файлы аккаунтов от них остаться, и показать их важнее, чем
+	 * ругаться на пустой список.
+	 */
+	allowEmpty?: boolean
+}
+
 /** `--only`/`--providers`, `--skip` и фильтр по capability. */
-export function select(ok: Provider[], flags: Flags, cap?: Capability): Provider[] {
+export function select(ok: Provider[], flags: Flags, cap?: Capability, opts: SelectOpts = {}): Provider[] {
 	const known = new Set(ok.map(p => p.id))
 	const check = (ids: string[], flag: string): string[] => {
 		for (const id of ids) if (!known.has(id)) throw new ProviderError("bad_args", `--${flag}: нет провайдера «${id}» — есть ${[...known].join(", ") || "ни одного"}`)
@@ -97,7 +106,7 @@ export function select(ok: Provider[], flags: Flags, cap?: Capability): Provider
 
 	let out = ok.filter(p => (only.length ? only.includes(p.id) : true) && !skip.has(p.id))
 	if (cap) out = out.filter(p => p.describe.capabilities.includes(cap))
-	if (!out.length) {
+	if (!out.length && !opts.allowEmpty) {
 		throw new ProviderError("bad_args", cap
 			? `ни один выбранный провайдер не умеет ${cap} — смотри ${TOOL} providers`
 			: `не осталось ни одного провайдера — смотри ${TOOL} providers`)

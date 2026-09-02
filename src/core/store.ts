@@ -51,11 +51,16 @@ function checkId(id: string): string {
 	return id
 }
 
-/** Кто вошёл хоть раз: имена файлов accounts/<id>.json. Содержимое не читается. */
+/**
+ * Кто вошёл хоть раз: имена файлов accounts/<id>.json. Содержимое не читается.
+ * Имя, не подходящее под ID_RE, провайдером быть не может (реестр отбирает по
+ * тому же правилу), а removeAccount на нём падает bad_args: показывать такой
+ * файл значило бы советовать `logout`, который заведомо не сработает.
+ */
 export async function listAccountIds(): Promise<string[]> {
 	try {
 		const names = await readdir(accountsDir())
-		return names.filter(n => n.endsWith(".json")).map(n => n.slice(0, -".json".length)).sort()
+		return names.filter(n => n.endsWith(".json")).map(n => n.slice(0, -".json".length)).filter(id => ID_RE.test(id)).sort()
 	} catch (e) {
 		if (missing(e)) return []
 		throw e

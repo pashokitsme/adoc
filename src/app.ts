@@ -4,7 +4,13 @@
 // Единственное исключение — интерактивный `login`: его диалог идёт прямо в
 // терминал, иначе подсказка «Пароль >» появилась бы после ввода пароля.
 
-import { ProviderError, errorBody, exitCode, parseArgv, red } from "./sdk/index.ts"
+import { ProviderError, errorBody, exitCode, parseArgv, red, yellow } from "./sdk/index.ts"
+import type { Flags } from "./sdk/index.ts"
+import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
+import { cmdProviders } from "./commands/providers.ts"
+import type { Ctx, Output } from "./core/ctx.ts"
+import { blame } from "./core/partial.ts"
+import { load, select, type Loaded } from "./core/registry.ts"
 
 // Флаги обёртки, которые берут значение. Булевы (--json, --analogs) сюда не
 // входят: parseArgv развернёт их сам.
@@ -12,6 +18,18 @@ const VALUE_FLAGS = [
 	"only", "providers", "skip", "limit", "page", "qty", "ref",
 	"brand", "model", "modification", "year", "engine", "vin", "odometer",
 ]
+
+type Handler = (ctx: Ctx) => Promise<Output>
+
+// Таблица команд обёртки. Остальные имена — не ошибка разбора, а вопрос к
+// самому провайдеру: `adoc armtek hello` появится в задаче 14.
+const COMMANDS: Record<string, Handler> = {
+	providers: cmdProviders,
+	accounts: cmdAccounts,
+	whoami: cmdAccounts,
+	login: cmdLogin,
+	logout: cmdLogout,
+}
 
 const HELP = `adoc — поиск запчастей сразу по нескольким магазинам
 
@@ -39,7 +57,7 @@ export async function run(argv: string[]): Promise<RunResult> {
 
 	try {
 		const { args, flags } = parseArgv(argv, VALUE_FLAGS)
-		const name = args[0]
+		const [name, ...rest] = args
 		if (!name || flags.help) {
 			// Машинному вызову справка бесполезна: он ждёт JSON и споткнулся бы
 			// на разборе таблицы вместо внятной ошибки.
@@ -49,8 +67,14 @@ export async function run(argv: string[]): Promise<RunResult> {
 			}
 			return { stdout: HELP, stderr, code: 0 }
 		}
-		// Команды появляются в задачах 6–14; до тех пор известных имён нет.
-		throw new ProviderError("bad_args", `неизвестная команда: ${name} — смотри adoc --help`)
+		// Только собственные ключи: `adoc toString` иначе доставал бы из
+		// прототипа объекта функцию и печатал бы «undefined» с кодом 0.
+		const handler = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined
+		// Остальные команды появятся в задачах 7–14.
+		if (!handler) throw new ProviderError("bad_args", `неизвестная команда: ${name} — смотри adoc --help`)
+
+		const out = await handler(makeCtx(rest, flags, json, warn))
+		return { stdout: `${json ? JSON.stringify(out.json) : out.render()}\n`, stderr, code: out.code ?? 0 }
 	} catch (e) {
 		// Код в теле и код возврата — из одного места, иначе текстовый и
 		// машинный ответы разошлись бы.
@@ -59,4 +83,28 @@ export async function run(argv: string[]): Promise<RunResult> {
 		if (json) return { stdout: `${JSON.stringify(body)}\n`, stderr, code }
 		return { stdout: "", stderr: `${stderr}${red(body.error.message)}\n`, code }
 	}
+}
+
+function makeCtx(args: string[], flags: Flags, json: boolean, warn: (line: string) => void): Ctx {
+	// describe снимается один раз на запуск: `part` спрашивает провайдеров
+	// дважды, а список их команд за время одной команды не меняется.
+	let loaded: Promise<Loaded> | null = null
+	let toldAboutBad = false
+	const ctx: Ctx = {
+		args, flags, json, warn,
+		// Предупреждения и stderr от describe тоже принадлежат человеку.
+		load: () => (loaded ??= load(warn)),
+		pick: async (cap, opts) => {
+			const l = await ctx.load()
+			// Про сломанного провайдера говорим один раз за запуск, а не на
+			// каждом вопросе к реестру. Имя приписывается тем же blame, что и
+			// строкам отказа: правило подписи в обёртке одно.
+			if (!toldAboutBad) {
+				toldAboutBad = true
+				for (const b of l.bad) warn(yellow(blame(b.id, `провайдер не отвечает по контракту — ${b.message}`)))
+			}
+			return select(l.ok, flags, cap, opts)
+		},
+	}
+	return ctx
 }

@@ -71,7 +71,11 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			if (password !== "pw") throw new ProviderError("auth", "Логин или пароль не подошли")
 			return { account: { token: `t-${user}`, user }, display: { name: user, email: `${user}@${id}.example` } }
 		},
-		whoami: async ctx => (ctx.account ? { name: ctx.account.user, email: `${ctx.account.user}@${id}.example` } : null),
+		// gate и здесь: на FAIL проверяется случай «вошли, а whoami не ответил».
+		whoami: async ctx => {
+			await gate()
+			return ctx.account ? { name: ctx.account.user, email: `${ctx.account.user}@${id}.example` } : null
+		},
 
 		search: async (_ctx, text) => {
 			await gate()

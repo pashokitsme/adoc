@@ -64,6 +64,23 @@ describe("run", () => {
 		}
 	})
 
+	test("унаследованные имена командами не считаются", async () => {
+		// COMMANDS — обычный объект, и `adoc toString` доставал бы из прототипа
+		// функцию: она вернула бы «undefined» с кодом 0 вместо честной ошибки.
+		for (const name of ["toString", "constructor", "valueOf", "hasOwnProperty"]) {
+			const r = await run([name, "--json"])
+			expect(r.code).toBe(1)
+			expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
+		}
+	})
+
+	test("constructor без --json — тоже неизвестная команда", async () => {
+		const r = await run(["constructor"])
+		expect(r.code).toBe(1)
+		expect(r.stdout).toBe("")
+		expect(r.stderr).toContain("неизвестная команда")
+	})
+
 	test("бинарь запускается и печатает справку", async () => {
 		const bin = join(import.meta.dir, "..", "..", "src", "main.ts")
 		const proc = Bun.spawn(["bun", bin, "--help"], {
