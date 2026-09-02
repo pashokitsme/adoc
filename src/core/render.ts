@@ -3,7 +3,8 @@
 // провайдера одни и те же колонки должны выглядеть одинаково.
 
 import { TOOL, bold, dim, green, red, table, yellow } from "../sdk/index.ts"
-import type { Display } from "../sdk/index.ts"
+import type { Col, Display } from "../sdk/index.ts"
+import type { OfferRow } from "./merge.ts"
 import type { BadProvider, Provider } from "./registry.ts"
 
 /** Подсказка под таблицей: что делать дальше. */
@@ -37,3 +38,10 @@ export function accountsTable(rows: AccountRow[]): string {
 		r.display?.name ?? dim("—"), r.display?.email ?? dim("—"), r.display?.phone ?? dim("—"),
 	]), ["ПРОВАЙДЕР", "СТАТУС", "ИМЯ", "EMAIL", "ТЕЛЕФОН"])
 }
+
+/** Колонка «ПРОВАЙДЕР»: в таблице обёртки строки приходят из разных мест. */
+export const providerCol: Col<OfferRow> = { head: "ПРОВАЙДЕР", cell: o => dim(o.provider) }
+
+/** Колонка «ГДЕ»: у каких сайтов есть эта строка. */
+export const whereCol = <T extends { providers: string[] }>(): Col<T> =>
+	({ head: "ГДЕ", cell: x => dim(x.providers.join(", ")) })
