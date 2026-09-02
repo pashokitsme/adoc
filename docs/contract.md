@@ -72,7 +72,10 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 
 `login` ведёт диалог через терминал (логин, пароль без эха). Без tty он обязан
 ответить `{"error":{"code":"tty"}}` и не спрашивать ничего. Пароль не
-принимается аргументом — он осел бы в истории шелла и в `ps`.
+принимается аргументом — он осел бы в истории шелла и в `ps`. Терминал нужен
+именно вопросу, а не команде: `tty` летит из `ctx.prompt()`/`ctx.secret()`,
+поэтому провайдер, который берёт учётку иначе (переменные окружения, файл),
+входит и без терминала.
 
 > **`login --json` печатает поле `account` целиком — то есть токены.** Так
 > задумано: агрегатору нужна копия того, что записано в файл аккаунта. Это
@@ -82,6 +85,11 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 
 `logout` забывает аккаунт; `had` говорит, был ли он вообще. Команда не ошибка,
 даже когда забывать нечего.
+
+`whoami` отвечает про пригодность входа, а не про наличие файла: `ok: true` —
+аккаунт есть и провайдер считает его рабочим (проверяет токен, если умеет);
+`ok: false` — аккаунта нет или токен не годится. Команда не ходит в сеть без
+нужды и не трогает файл аккаунта.
 
 `brands` — первый шаг поиска по партномеру: кто выпускает этот артикул.
 `offers` — второй: предложения конкретного бренда. Разделение обязательно,
@@ -118,11 +126,17 @@ JSON-объект, который `basket add` принимает обратно
 ```json
 {"contract":1,"id":"autodoc","name":"Autodoc","site":"https://www.autodoc.ru",
  "capabilities":["reviews","garage","analogs","basket"],
- "commands":[{"name":"brands","usage":"brands <артикул>","about":"кто выпускает артикул","auth":false}]}
+ "commands":[{"name":"brands","usage":"brands <артикул>","about":"кто выпускает артикул","auth":false},
+             {"name":"basket add","usage":"basket add --ref <json> [--qty <n>]","about":"положить предложение (ref из offers)","auth":true}]}
 ```
 
 `commands` — контрактные команды плюс свои, каждая с `name`, `usage`, `about`,
 `auth`. `describe` обязан работать без входа и без сети.
+
+`name` подкоманды — полное имя в два слова через пробел, ровно как её зовут:
+`garage export`, `basket add`, `basket set`, `basket rm`. Отдельной записи
+`garage` в списке нет, а `export`/`add`/`set`/`rm` сами по себе именами команд
+не бывают; `basket` без второго слова — это команда «показать корзину».
 
 Поле `auth` — **информационное**: подсказка для справки и для агрегатора, а не
 гарантия. Провайдер может потребовать вход и на команде, помеченной
@@ -405,9 +419,12 @@ export const fake = defineProvider<Account, ["reviews", "garage", "basket"]>({
 	capabilities: ["reviews", "garage", "basket"],
 	valueFlags: ["echo"],
 
+	// FAKE_LOGIN/FAKE_PASSWORD — вход без терминала: так живут провайдеры,
+	// которые берут учётку из окружения (armtek), и так проверяется, что
+	// tty требуется вопросу, а не команде login.
 	login: async ctx => {
-		const user = await ctx.prompt("Логин > ")
-		const password = await ctx.secret("Пароль > ")
+		const user = process.env.FAKE_LOGIN ?? await ctx.prompt("Логин > ")
+		const password = process.env.FAKE_PASSWORD ?? await ctx.secret("Пароль > ")
 		if (password !== "pw") throw new ProviderError("auth", "Логин или пароль не подошли")
 		return { account: { token: "t-" + user, user }, display: { name: user } }
 	},
@@ -420,6 +437,9 @@ export const fake = defineProvider<Account, ["reviews", "garage", "basket"]>({
 SDK). Публичная поверхность SDK — `src/sdk/index.ts`:
 
 - `defineProvider`, `runProvider` — описание и запуск;
+- `Ctx`, `ProviderSpec`, `BasketOps`, `ProviderCommand`, `CommandResult` — типы
+  объявления: контекст вызова, готовое описание провайдера, четыре операции
+  корзины, своя команда и её ответ (`{json, render?}`);
 - `ProviderError`, `ErrorMapper` — ошибки контракта;
 - `HttpError`, `fetchJson` — fetch с таймаутом (пользоваться необязательно);
 - `articleKey`, `brandKey` — нормализация для склейки;
@@ -428,9 +448,10 @@ SDK). Публичная поверхность SDK — `src/sdk/index.ts`:
 - все типы из `contract.ts`.
 
 Контекст вызова `ctx`: `ctx.account` (уже прочитанный аккаунт или `null`),
-`ctx.saveAccount()` (запись с правами `600`, для refresh-токенов), `ctx.json`,
-`ctx.flags`, `ctx.page`, `ctx.limit`, `ctx.prompt()` и `ctx.secret()`
-(терминальный ввод, `secret` — без эха), `ctx.warn()` (строка в stderr).
+`ctx.saveAccount(a)` (запись с правами `600`, для refresh-токенов;
+`ctx.saveAccount(null)` — удалить файл аккаунта), `ctx.json`, `ctx.flags`,
+`ctx.page`, `ctx.limit`, `ctx.prompt()` и `ctx.secret()` (терминальный ввод,
+`secret` — без эха; без tty оба бросают `tty`), `ctx.warn()` (строка в stderr).
 
 Флаги своих команд, которые принимают значение, объявляются в `valueFlags`;
 контрактные (`--brand`, `--page`, `--limit`, `--qty`, `--ref`) SDK добавляет сам.

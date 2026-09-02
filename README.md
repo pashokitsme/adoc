@@ -58,7 +58,7 @@ $ gh skill install pashokitsme/adoc adoc
 | `describe` | что умеет провайдер | |
 | `login` | войти (диалог в терминале) | |
 | `logout` | забыть аккаунт | |
-| `whoami` | кто авторизован | |
+| `whoami` | кто авторизован и годен ли вход | |
 | `search <текст> [--page <n>] [--limit <n>]` | поиск по названию | |
 | `brands <артикул>` | кто выпускает артикул | |
 | `offers <артикул> --brand <имя> [--analogs]` | предложения: цена, наличие, срок | да |
@@ -142,7 +142,7 @@ $ adoc-autodoc offers n90954802 --brand VAG --json
 
 ```sh
 $ adoc-autodoc login      # логин и пароль, ввод только с терминала
-$ adoc-autodoc whoami     # кто авторизован
+$ adoc-autodoc whoami     # кто авторизован; ok:false, если токен уже не годен
 $ adoc-autodoc logout     # забыть аккаунт
 ```
 
