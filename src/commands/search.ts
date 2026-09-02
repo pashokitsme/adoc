@@ -113,8 +113,10 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 		render: () => [
 			// Заголовок только тогда, когда машина и правда доехала до сайтов:
 			// иначе он обещал бы подбор, которого не было.
+			// Заголовок держим коротким: имя машины у иных модификаций само по
+			// себе в полстроки, и совет про --no-car уезжает вниз, к остальным.
 			...(car && used.length
-				? [`${dim("машина:")} ${carLabel(car)} ${dim(`· ${used.map(id => (borrowed.includes(id) ? `${id} (через ${shared!.from})` : id)).join(", ")} · искать без машины: --no-car`)}`, ""]
+				? [`${dim("машина:")} ${carLabel(car)} ${dim(`· ${used.map(id => (borrowed.includes(id) ? `${id} (через ${shared!.from})` : id)).join(", ")}`)}`, ""]
 				: []),
 			renderProducts(items, [whereCol<MergedProduct>()]),
 			// «Показано X из Y» — подпись к таблице и её списку адресов, поэтому
@@ -127,6 +129,7 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 			// выдачей — совет в никуда: там нет строки, по которой спрашивать.
 			...tips([
 				...(items.length ? [`${TOOL} part <артикул> <бренд> — цены, сроки и наличие по строке`] : []),
+				...(car && used.length ? ["--no-car — искать без машины, --car <id> — под другую машину гаража"] : []),
 				...(!car && ctx.flags["no-car"] !== true ? [`${TOOL} garage import <provider> — и поиск будет учитывать машину`] : []),
 			]),
 		].join("\n"),
