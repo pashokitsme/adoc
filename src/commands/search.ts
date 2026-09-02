@@ -58,16 +58,6 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 	const shared = car ? tecdoc(car.refs) : undefined
 	const refOf = (id: string): Record<string, unknown> | undefined =>
 		car?.refs?.[id] ?? (shared && shared.from !== id ? { linkingTargetId: shared.id } : undefined)
-	const used = providers.filter(p => refOf(p.id)).map(p => p.id)
-	// Кто ищет по чужой привязке — говорим прямо: выдача у него собрана не по
-	// его собственному идентификатору машины.
-	const borrowed = shared ? providers.filter(p => !car?.refs?.[p.id] && refOf(p.id)).map(p => p.id) : []
-	// Машина в гараже есть, а на этом сайте её нет: он ищет без неё. Молчать
-	// нельзя — иначе непонятно, почему у одного сайта выдача под машину, а у
-	// другого весь каталог.
-	const blind = car ? providers.filter(p => !refOf(p.id)).map(p => p.id) : []
-	if (blind.length) ctx.warn(dim(`без машины ищут: ${blind.join(", ")} — нет привязки, ${TOOL} garage import <provider>`))
-
 	const f = await fanout(
 		providers,
 		// Страницу и размер отдаём сайтам: листает каждый у себя, склейка
@@ -85,6 +75,19 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 		parseProducts,
 		ctx.warn,
 	)
+	// Про машину говорим только за тех, кто ответил: у упавшего сайта уже есть
+	// своя строка отказа, и «искал под машину» рядом с ней — неправда.
+	const answered = f.got.map(g => g.provider)
+	const used = answered.filter(id => refOf(id))
+	// Кто ищет по чужой привязке — говорим прямо: выдача у него собрана не по
+	// его собственному идентификатору машины.
+	const borrowed = shared ? used.filter(id => !car?.refs?.[id]) : []
+	// Машина в гараже есть, а на этом сайте её нет: он ищет без неё. Молчать
+	// нельзя — иначе непонятно, почему у одного сайта выдача под машину, а у
+	// другого весь каталог.
+	const blind = car ? answered.filter(id => !refOf(id)) : []
+	if (blind.length) ctx.warn(dim(`без машины ищут: ${blind.join(", ")} — нет привязки, ${TOOL} garage import <provider>`))
+
 	// Сначала то, что есть у большего числа сайтов: такой товар легче купить.
 	const merged = mergeProducts(f.got.map(g => ({ provider: g.provider, items: g.value.items })))
 	const items = merged.slice(0, limit)
