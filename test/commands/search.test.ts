@@ -5,12 +5,22 @@ import { join } from "node:path"
 import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
+import { GARAGE_FILE, type Garage } from "../../src/core/garage.ts"
+import { writeJson } from "../../src/core/store.ts"
 
 type SearchJson = {
 	query: string
-	items: { article: string; price?: number; providers: string[]; prices: Record<string, number> }[]
+	car: { id: number; name: string; providers: string[] } | null
+	items: { article: string; name: string; providers: string[]; price?: number; prices: Record<string, number>; urls: Record<string, string> }[]
 	errors: { provider: string }[]
 }
+
+// Гараж, в котором машина знакома только alpha: на нём проверяется и подбор,
+// и предупреждение про сайт без привязки.
+const oneCarGarage = (): Promise<void> => writeJson(GARAGE_FILE, {
+	mainId: 1, nextId: 2,
+	cars: [{ id: 1, brand: "SKODA", model: "OCTAVIA III", year: 2017, refs: { alpha: { carId: 42 } } }],
+} satisfies Garage)
 
 let dir: string
 let color: string | undefined
@@ -28,6 +38,7 @@ afterEach(async () => {
 	delete process.env[PROVIDERS_DIR_ENV]
 	delete process.env.FAKE_ALPHA_FAIL
 	delete process.env.FAKE_BETA_FAIL
+	delete process.env.FAKE_ALPHA_NOCAR
 	if (color === undefined) delete process.env.NO_COLOR
 	else process.env.NO_COLOR = color
 	await rm(dir, { recursive: true, force: true })
@@ -84,5 +95,63 @@ describe("adoc search", () => {
 		process.env.FAKE_ALPHA_FAIL = "http"
 		process.env.FAKE_BETA_FAIL = "http"
 		expect((await run(["search", "болт", "--json"])).code).toBe(1)
+	})
+
+	test("ссылки строк идут списком под таблицей, по одной на сайт", async () => {
+		const r = await run(["search", "болт"])
+		expect(r.stdout).toContain("ссылки")
+		expect(r.stdout).toContain("alpha  https://alpha.example/p/N90954802")
+		expect(r.stdout).toContain("beta   https://beta.example/p/N%20909%20548%2002")
+	})
+
+	test("адреса обоих сайтов лежат в JSON одной строкой выдачи", async () => {
+		const j = await search(["болт"])
+		expect(j.items[0]!.urls).toEqual({
+			alpha: "https://alpha.example/p/N90954802",
+			beta: "https://beta.example/p/N%20909%20548%2002",
+		})
+	})
+
+	test("без гаража ищем без машины и зовём импорт", async () => {
+		const r = await run(["search", "болт"])
+		expect(r.stdout).toContain("garage import")
+		expect((await search(["болт"])).car).toBeNull()
+	})
+
+	test("основная машина гаража уходит сайту его же ref-ом", async () => {
+		await oneCarGarage()
+		const j = await search(["болт"])
+		expect(j.car).toEqual({ id: 1, name: "SKODA OCTAVIA III 2017", providers: ["alpha"] })
+		// Фейк кладёт в выдачу строку с carId из полученного ref.
+		expect(j.items.some(i => i.name === "под машину 42")).toBe(true)
+	})
+
+	test("сайту без привязки говорим об этом один раз", async () => {
+		await oneCarGarage()
+		const r = await run(["search", "болт"])
+		expect(r.stderr).toContain("без машины ищут: beta")
+		expect(r.stdout).toContain("машина: SKODA OCTAVIA III 2017")
+	})
+
+	test("--no-car выключает подбор", async () => {
+		await oneCarGarage()
+		const j = await search(["болт", "--no-car"])
+		expect(j.car).toBeNull()
+		expect(j.items.some(i => i.name.startsWith("под машину"))).toBe(false)
+	})
+
+	test("--car <id> берёт названную машину, чужой номер — bad_args", async () => {
+		await oneCarGarage()
+		expect((await search(["болт", "--car", "1"])).car!.id).toBe(1)
+		const r = await run(["search", "болт", "--car", "9"])
+		expect(r.code).toBe(1)
+		expect(r.stderr).toContain("нет машины 9")
+	})
+
+	test("сайт не умеет искать по машине — его предупреждение доезжает до человека", async () => {
+		process.env.FAKE_ALPHA_NOCAR = "1"
+		await oneCarGarage()
+		const r = await run(["search", "болт"])
+		expect(r.stderr).toContain("alpha: поиск по машине не поддерживается")
 	})
 })

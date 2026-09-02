@@ -48,6 +48,23 @@ function noSuchCar(g: Garage, id: number): ProviderError {
 	return new ProviderError("bad_args", `нет машины ${id} — ${have}, смотри adoc garage`)
 }
 
+/** Машина по локальному номеру: чужой номер — тот же список, что у rm и main. */
+export function carById(g: Garage, id: number): GarageCar {
+	const car = g.cars.find(c => c.id === id)
+	if (!car) throw noSuchCar(g, id)
+	return car
+}
+
+/**
+ * Основная машина. Явной может не быть только в старом файле — тогда берётся
+ * первая: гараж из одной машины без основной не повод спрашивать владельца.
+ */
+export const mainCar = (g: Garage): GarageCar | undefined => g.cars.find(c => c.id === g.mainId) ?? g.cars[0]
+
+/** Название машины одной строкой — для заголовков и подсказок. */
+export const carLabel = (c: GarageCar): string =>
+	[c.brand, c.model, c.modification, c.year ? String(c.year) : ""].filter(Boolean).join(" ")
+
 export function addCar(g: Garage, car: Omit<GarageCar, "id">): { garage: Garage; car: GarageCar } {
 	const added: GarageCar = { id: nextId(g), ...car }
 	// Первая машина сама становится основной: гараж из одной машины без
