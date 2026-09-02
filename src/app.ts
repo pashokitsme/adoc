@@ -17,7 +17,7 @@ import type { Ctx, Output } from "./core/ctx.ts"
 import { Ambiguous } from "./core/errors.ts"
 import type { MergedBrand } from "./core/merge.ts"
 import { blame, failureLine } from "./core/partial.ts"
-import { load, select, type Loaded } from "./core/registry.ts"
+import { discover, load, select, type Loaded } from "./core/registry.ts"
 import { hint, whereCol } from "./core/render.ts"
 
 // Флаги обёртки, которые берут значение. Булевы (--json, --analogs) сюда не
@@ -30,7 +30,7 @@ const VALUE_FLAGS = [
 type Handler = (ctx: Ctx) => Promise<Output>
 
 // Таблица команд обёртки. Остальные имена — не ошибка разбора, а вопрос к
-// самому провайдеру: `adoc armtek hello` появится в задаче 14.
+// самому провайдеру: `adoc armtek hello` разбирает commands/passthrough.ts.
 const COMMANDS: Record<string, Handler> = {
 	part: cmdPart,
 	basket: cmdBasket,
@@ -43,6 +43,9 @@ const COMMANDS: Record<string, Handler> = {
 	login: cmdLogin,
 	logout: cmdLogout,
 }
+
+/** Имена команд обёртки: их не отдаёт провайдеру проброс. */
+export const COMMAND_NAMES = Object.keys(COMMANDS)
 
 const HELP = `adoc — поиск запчастей сразу по нескольким магазинам
 
@@ -87,8 +90,13 @@ export async function run(argv: string[]): Promise<RunResult> {
 		// Только собственные ключи: `adoc toString` иначе доставал бы из
 		// прототипа объекта функцию и печатал бы «undefined» с кодом 0.
 		const handler = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined
-		// Остальные команды появятся в задачах 7–14.
-		if (!handler) throw new ProviderError("bad_args", `неизвестная команда: ${name} — смотри adoc --help`)
+		// Сюда доходит только то, что не забрал проброс: значит, ни команды
+		// обёртки, ни сайта с таким именем нет. Перечисляем оба списка — чаще
+		// всего это опечатка ровно в одном из них.
+		if (!handler) {
+			const ids = (await discover()).map(p => p.id)
+			throw new ProviderError("bad_args", `неизвестная команда: ${name} — команды: ${COMMAND_NAMES.join(", ")}; сайты: ${ids.join(", ") || "ни одного"}`)
+		}
 
 		const out = await handler(makeCtx(rest, flags, json, warn))
 		return { stdout: `${json ? JSON.stringify(out.json) : out.render()}\n`, stderr, code: out.code ?? 0 }
