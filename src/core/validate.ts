@@ -91,6 +91,25 @@ const parseBrandHit = (v: unknown, who: string): BrandHit => {
 export const parseBrands = (v: unknown, who: string): BrandHit[] =>
 	arr(obj(v, who, "ответ brands").items, who, "items").map(x => parseBrandHit(x, who))
 
+/** Одна строка предложения: её же читает карточка `info`, где цены идут под ней. */
+function parseOffer(x: unknown, who: string): Offer {
+	const o = obj(x, who, "предложение")
+	return {
+		article: str(o, "article", who), brand: str(o, "brand", who), price: num(o, "price", who),
+		currency: "RUB",
+		...(optStr(o, "name") ? { name: optStr(o, "name") } : {}),
+		...(optNum(o, "quantity") !== undefined ? { quantity: optNum(o, "quantity") } : {}),
+		...(optNum(o, "deliveryDays") !== undefined ? { deliveryDays: optNum(o, "deliveryDays") } : {}),
+		...(optStr(o, "deliveryDate") ? { deliveryDate: optStr(o, "deliveryDate") } : {}),
+		...(optStr(o, "seller") ? { seller: optStr(o, "seller") } : {}),
+		...(optRating(o) ? { rating: optRating(o) } : {}),
+		...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
+		...(optObj(o, "ref") ? { ref: optObj(o, "ref") } : {}),
+		...(optBool(o, "analog") !== undefined ? { analog: optBool(o, "analog") } : {}),
+		...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
+	}
+}
+
 /**
  * Предложения вместе с итогом сайта: `total` — сколько их у него всего, а не
  * сколько приехало страницей. Сайт его не назвал — обёртка считает по своей
@@ -98,23 +117,7 @@ export const parseBrands = (v: unknown, who: string): BrandHit[] =>
  */
 export function parseOffers(v: unknown, who: string): { items: Offer[]; total?: number } {
 	const body = obj(v, who, "ответ offers")
-	const items: Offer[] = arr(body.items, who, "items").map(x => {
-		const o = obj(x, who, "предложение")
-		return {
-			article: str(o, "article", who), brand: str(o, "brand", who), price: num(o, "price", who),
-			currency: "RUB",
-			...(optStr(o, "name") ? { name: optStr(o, "name") } : {}),
-			...(optNum(o, "quantity") !== undefined ? { quantity: optNum(o, "quantity") } : {}),
-			...(optNum(o, "deliveryDays") !== undefined ? { deliveryDays: optNum(o, "deliveryDays") } : {}),
-			...(optStr(o, "deliveryDate") ? { deliveryDate: optStr(o, "deliveryDate") } : {}),
-			...(optStr(o, "seller") ? { seller: optStr(o, "seller") } : {}),
-			...(optRating(o) ? { rating: optRating(o) } : {}),
-			...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
-			...(optObj(o, "ref") ? { ref: optObj(o, "ref") } : {}),
-			...(optBool(o, "analog") !== undefined ? { analog: optBool(o, "analog") } : {}),
-			...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
-		}
-	})
+	const items: Offer[] = arr(body.items, who, "items").map(x => parseOffer(x, who))
 	return { items, ...(optNum(body, "total") !== undefined ? { total: optNum(body, "total") } : {}) }
 }
 
@@ -202,8 +205,12 @@ export function parseCars(v: unknown, who: string): Car[] {
  * и требовать от каждого цену со сроком значило бы забраковать половину
  * честных ответов. Обязателен только сам предмет разговора: артикул и бренд.
  */
-export function parseInfo(v: unknown, who: string): Info {
-	const o = obj(obj(v, who, "ответ info").info, who, "info")
+export function parseInfo(v: unknown, who: string): { info: Info; offers: Offer[] } {
+	const body = obj(v, who, "ответ info")
+	const o = obj(body.info, who, "info")
+	// Предложений может и не быть: сайт, который их к карточке не даёт, отдаёт
+	// одну карточку, и это не повод забраковать ответ целиком.
+	const offers = body.offers === undefined ? [] : arr(body.offers, who, "offers").map(x => parseOffer(x, who))
 	const r = optObj(o, "rating")
 	const rating = r && optNum(r, "average") !== undefined && optNum(r, "count") !== undefined
 		? {
@@ -224,7 +231,7 @@ export function parseInfo(v: unknown, who: string): Info {
 			...(optNum(s, "deliveryDays") !== undefined ? { deliveryDays: optNum(s, "deliveryDays") } : {}),
 		}]
 	})
-	return {
+	const info: Info = {
 		article: str(o, "article", who), brand: str(o, "brand", who), name: optStr(o, "name") ?? "",
 		...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
 		...(rating ? { rating } : {}),
@@ -237,6 +244,7 @@ export function parseInfo(v: unknown, who: string): Info {
 		...(optStr(o, "description") ? { description: optStr(o, "description") } : {}),
 		...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
 	}
+	return { info, offers }
 }
 
 /** Заказы сайта. Позиции необязательны: их отдают не все. */

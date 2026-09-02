@@ -4,6 +4,7 @@
 // беден. Поэтому здесь блок на сайт, как у reviews.
 
 import { need, renderInfo } from "../sdk/index.ts"
+import { limitOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
@@ -33,6 +34,9 @@ export async function cmdInfo(ctx: Ctx): Promise<Output> {
 		ctx.warn,
 	)
 	const code = report(f, failures, ctx.warn)
+	// Предложения режутся тем же --limit, что и таблицы part: у autodoc их
+	// на популярный артикул несколько десятков, и карточка утонула бы в них.
+	const limit = limitOf(ctx.flags)
 
 	return {
 		json: {
@@ -44,7 +48,7 @@ export async function cmdInfo(ctx: Ctx): Promise<Output> {
 		render: () => f.got.length
 			// Карточку целиком рисует SDK: у провайдера и у обёртки она обязана
 			// выглядеть одинаково. Обёртка добавляет только имя сайта.
-			? f.got.map(g => `\n${blockTitle(g.provider)}\n${renderInfo(g.value)}`).join("\n")
+			? f.got.map(g => `\n${blockTitle(g.provider)}\n${renderInfo(g.value.info, g.value.offers.slice(0, limit))}`).join("\n")
 			: allFailed(f) ? "ни один сайт не ответил" : "карточки нет",
 	}
 }

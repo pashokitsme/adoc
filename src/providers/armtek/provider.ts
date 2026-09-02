@@ -2,7 +2,7 @@
 // api.ts (запросы), auth.ts (токены), map.ts (перевод в типы контракта) и
 // brand.ts (выбор бренда); здесь только склейка.
 
-import { ProviderError, articleKey, brandKey, defineProvider } from "../../sdk/index.ts"
+import { ProviderError, articleKey, brandKey, defineProvider, type Offer } from "../../sdk/index.ts"
 import type { Ctx } from "../../sdk/define.ts"
 import * as api from "./api.ts"
 import { mapHttpError } from "./api.ts"
@@ -126,7 +126,13 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 		const rows = (r.articlesData ?? []).filter(c => articleKey(c.PIN) === wantArticle && brandKey(c.BRAND) === wantBrand)
 		if (!rows.length) throw new ProviderError("notfound", `armtek: ${article} (${brandName}) — ничего не найдено`)
 		const stats = await api.reviewRating(rows[0]!.ARTID, token).catch(() => [] as api.RawReviewRating[])
-		return { info: toInfo(rows, stats[0]) }
+		// Предложения к карточке — те же строки, что отдаёт `offers`: карточка
+		// без них отвечает на «сколько стоит» одним числом «от». Отдельный
+		// запрос: карточный вид (typeView card) цену по точкам выдачи не даёт.
+		const offers = await brand.resolve(article, brandName, token, p, ctx.warn)
+			.then(({ row }) => toOffers([row], { article, brand: row.BRAND }, p.vstel))
+			.catch(() => [] as Offer[])
+		return { info: toInfo(rows, stats[0]), offers: offers.sort((a, b) => a.price - b.price) }
 	},
 
 	// Только аналоги: точные строки отдаёт offers, и повторять их здесь значит

@@ -137,13 +137,18 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			await gate("INFO")
 			const hit = find(article).filter(r => brandKey(r.brand) === brandKey(brand))[0]
 			if (!hit) throw new ProviderError("notfound", `${id}: ${article} (${brand}) не найден`)
-			return { info: {
-				article: hit.article, brand: hit.brand, name: hit.name, price: hit.price, currency: "RUB",
-				deliveryDays: 2, rating: { average: 4.5, count: 10, histogram: [8, 1, 1, 0, 0] },
-				url: page(hit.article),
-				stock: [{ code: "S1", name: "склад", quantity: 3 }],
-				description: `Карточка ${hit.name} у ${id}`,
-			} }
+			return {
+				info: {
+					article: hit.article, brand: hit.brand, name: hit.name, price: hit.price, currency: "RUB",
+					deliveryDays: 2, rating: { average: 4.5, count: 10, histogram: [8, 1, 1, 0, 0] },
+					url: page(hit.article),
+					stock: [{ code: "S1", name: "склад", quantity: 3 }],
+					description: `Карточка ${hit.name} у ${id}`,
+				},
+				// Карточка отдаёт и цены — те же строки, что и offers: настоящий
+				// провайдер берёт их оттуда же, и обёртке они приезжают так же.
+				offers: [toOffer(hit, 1), { ...toOffer(hit, 2), price: hit.price + 30, seller: "второй продавец" }],
+			}
 		},
 
 		analogs: async (_ctx, article, brand) => {

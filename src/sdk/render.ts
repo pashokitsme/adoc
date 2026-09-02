@@ -314,8 +314,8 @@ export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
  * цена и наличие, характеристики — и ссылка последней строкой, чтобы её было
  * видно, не листая склады.
  */
-export function renderInfo(i: Info): string {
-	const page = link(i.url, "карточка")
+export function renderInfo(i: Info, offers: Offer[] = []): string {
+	const page = link(i.url, "карточка на сайте")
 	const out: string[] = [`${bold(i.name)}  ${cyan(i.article)}  ${i.brand}${page ? `\n${page}` : ""}`]
 
 	out.push(heading("Оценки"))
@@ -344,6 +344,13 @@ export function renderInfo(i: Info): string {
 	if (i.description) {
 		out.push(heading("Описание"))
 		out.push(fold(i.description))
+	}
+
+	// Предложения — тот же рендер, что у `part`: карточка без цен отвечает на
+	// «сколько стоит» одним числом «от», а покупают по конкретной строке.
+	if (offers.length) {
+		out.push(heading("Предложения"))
+		out.push(renderOffers(offers))
 	}
 
 	return out.join("\n")

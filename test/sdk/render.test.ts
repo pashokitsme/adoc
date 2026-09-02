@@ -375,7 +375,7 @@ describe("ссылки в тексте (osc8)", () => {
 		expect(osc8(() => renderReviews({ total: 1, items: [{ text: "ок" }], url: "https://x/r" })))
 			.toContain(hyperlink("отзывы", "https://x/r"))
 		expect(osc8(() => renderInfo({ article: "N1", brand: "VAG", name: "Болт", url: "https://x/1" })))
-			.toContain(hyperlink("карточка", "https://x/1"))
+			.toContain(hyperlink("карточка на сайте", "https://x/1"))
 		expect(osc8(() => renderOrders([{ id: "1", date: "2026-09-01", status: "ок", total: 1, currency: "RUB", url: "https://x/orders" }])))
 			.toContain(hyperlink("заказы", "https://x/orders"))
 	})

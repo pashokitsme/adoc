@@ -148,10 +148,18 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		return { items, total: items.length }
 	},
 
+	// Карточка вместе с предложениями: строки те же, что у `offers` без
+	// аналогов, и берутся они тем же offerRows — второго правила «что считать
+	// предложением» в провайдере нет.
 	info: async (_ctx, article, brand) => {
 		const b = await resolveBrand(article, brand)
-		const [inf, price] = await Promise.all([api.goodsInfo(article, b.id), api.goodsPrice(article, b.id).catch(() => null)])
-		return { info: toInfo(inf, price) }
+		const [inf, price, offers] = await Promise.all([
+			api.goodsInfo(article, b.id),
+			api.goodsPrice(article, b.id).catch(() => null),
+			offerRows(article, b, brandLabel(b, brand), false).catch(() => [] as Offer[]),
+		])
+		// по цене: карточка отвечает на «сколько стоит», и первым читается дешёвое
+		return { info: toInfo(inf, price), offers: offers.sort((a, b) => a.price - b.price) }
 	},
 
 	// Только аналоги: ровно те строки `offers --analogs`, у которых analog:true.

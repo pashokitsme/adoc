@@ -149,7 +149,7 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 | `search <текст> [--car <json>] [--page <n>] [--limit <n>]` | `{items, total?, extra?}` | `SearchResult` |
 | `brands <артикул>` | `{items}` | `BrandsResult` |
 | `offers <артикул> --brand <имя> [--analogs]` | `{items}` | `OffersResult` |
-| `info <артикул> --brand <имя>` | `{info}` | `InfoResult` |
+| `info <артикул> --brand <имя>` | `{info, offers?}` | `InfoResult` |
 | `analogs <артикул> --brand <имя>` | `{items}` | `OffersResult` |
 
 `login` обычно ведёт диалог через терминал (логин, пароль без эха). Если
@@ -185,6 +185,12 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 (оценки, цена «от», минимальный срок, склады, характеристики). Все поля кроме
 `article`, `brand` и `name` необязательны: провайдер отдаёт то, что у сайта
 есть, и не выдумывает остального.
+
+Вместе с карточкой возвращаются и `offers` — те же строки, что отдал бы
+`offers` без аналогов, отсортированные по цене: одна цена «от» на вопрос
+«сколько стоит» не отвечает. Поле необязательное, и данные для него лучше
+брать из того же места, откуда их берёт команда `offers`, — второе правило
+«что считать предложением» провайдеру не нужно.
 
 `analogs` — **только аналоги**, без точных совпадений: каждая строка идёт с
 `analog: true`. Провайдер может собрать её из своего `offers --analogs`,
@@ -444,7 +450,7 @@ export type BrandsResult = { items: BrandHit[] }
  *  `items` может быть меньше (страница, лимит). */
 export type OffersResult = { items: Offer[]; total?: number }
 export type CarsResult = { cars: Car[] }
-export type InfoResult = { info: Info }
+export type InfoResult = { info: Info; offers?: Offer[] }
 export type OrdersResult = { items: Order[] }
 ```
 

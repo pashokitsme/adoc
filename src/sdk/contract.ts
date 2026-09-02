@@ -170,5 +170,10 @@ export type BrandsResult = { items: BrandHit[] }
  *  `items` может быть меньше (страница, лимит). */
 export type OffersResult = { items: Offer[]; total?: number }
 export type CarsResult = { cars: Car[] }
-export type InfoResult = { info: Info }
+/**
+ * Карточка и цены под ней: `info` — это не только «от», а весь список
+ * предложений сайта по этому артикулу и бренду. `offers` необязателен —
+ * провайдер, которому они не даются, отдаёт одну карточку.
+ */
+export type InfoResult = { info: Info; offers?: Offer[] }
 export type OrdersResult = { items: Order[] }

@@ -5,13 +5,13 @@ import { join } from "node:path"
 import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
 import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
-import type { Info } from "../../src/sdk/index.ts"
+import type { Info, Offer } from "../../src/sdk/index.ts"
 import { plainOutput } from "../plain.ts"
 
 type InfoJson = {
 	article: string
 	brand: string | null
-	providers: Record<string, Info>
+	providers: Record<string, { info: Info; offers: Offer[] }>
 	errors: { provider: string; code: string }[]
 }
 
@@ -40,15 +40,17 @@ describe("adoc info", () => {
 		const j = await info(["n90954802"])
 		expect(j.brand).toBe("VAG")
 		expect(Object.keys(j.providers)).toEqual(["alpha", "beta"])
-		expect(j.providers.alpha).toMatchObject({ article: "N90954802", brand: "VAG", price: 407, deliveryDays: 2 })
-		expect(j.providers.beta!.price).toBe(380)
+		expect(j.providers.alpha!.info).toMatchObject({ article: "N90954802", brand: "VAG", price: 407, deliveryDays: 2 })
+		expect(j.providers.beta!.info.price).toBe(380)
 	})
 
 	test("адрес карточки, склады и гистограмма доезжают до JSON", async () => {
 		const j = await info(["n90954802"])
-		expect(j.providers.alpha!.url).toBe("https://alpha.example/p/N90954802")
-		expect(j.providers.alpha!.stock).toEqual([{ code: "S1", name: "склад", quantity: 3 }])
-		expect(j.providers.alpha!.rating!.histogram).toEqual([8, 1, 1, 0, 0])
+		expect(j.providers.alpha!.info.url).toBe("https://alpha.example/p/N90954802")
+		expect(j.providers.alpha!.info.stock).toEqual([{ code: "S1", name: "склад", quantity: 3 }])
+		expect(j.providers.alpha!.info.rating!.histogram).toEqual([8, 1, 1, 0, 0])
+		// цены сайта приезжают вместе с карточкой: `info` — это карточка и все цены
+		expect(j.providers.alpha!.offers).toHaveLength(2)
 	})
 
 	test("блок на сайт: имя сайта, карточка рендером SDK и адрес в ней", async () => {
@@ -58,14 +60,23 @@ describe("adoc info", () => {
 		expect(r.stdout).toContain("alpha\nБолт  N90954802  VAG")
 		expect(r.stdout).toContain("Наличие")
 		expect(r.stdout).toContain("Цена и срок")
+		// под карточкой — таблица предложений этого сайта
+		expect(r.stdout).toContain("Предложения")
+		expect(r.stdout).toContain("ПРОДАВЕЦ")
+		expect(r.stdout).toContain("второй продавец")
 		expect(r.stdout).toContain("https://alpha.example/p/N90954802")
 		expect(r.stdout).toContain("https://beta.example/p/N%20909%20548%2002")
+	})
+
+	test("--limit режет предложения под карточкой", async () => {
+		const r = await run(["info", "n90954802", "--limit", "1"])
+		expect(r.stdout).not.toContain("второй продавец")
 	})
 
 	test("бренд вторым словом и флагом — одно и то же", async () => {
 		const a = await info(["MULTI-1", "vag"])
 		const b = await info(["MULTI-1", "--brand", "VAG"])
-		expect(a.providers.alpha!.article).toBe(b.providers.alpha!.article)
+		expect(a.providers.alpha!.info.article).toBe(b.providers.alpha!.info.article)
 	})
 
 	test("брендов несколько — «нужен бренд» с кодом 2 и подсказкой про info", async () => {

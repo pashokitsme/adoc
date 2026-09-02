@@ -41,7 +41,7 @@ function contractCommands<A>(spec: ProviderSpec<A>): Command[] {
 		{ name: "search", usage: "search <текст> [--car <json>] [--page <n>] [--limit <n>]", about: "поиск по названию; --car — ref машины из `garage export`", auth: false },
 		{ name: "brands", usage: "brands <артикул>", about: "кто выпускает артикул", auth: false },
 		{ name: "offers", usage: "offers <артикул> --brand <имя> [--analogs]", about: "предложения: цена, наличие, срок", auth: false },
-		{ name: "info", usage: "info <артикул> --brand <имя>", about: "карточка: оценки, цена от, наличие", auth: false },
+		{ name: "info", usage: "info <артикул> --brand <имя>", about: "карточка и все предложения по артикулу", auth: false },
 		{ name: "analogs", usage: "analogs <артикул> --brand <имя>", about: "только аналоги, без точных совпадений", auth: false },
 	]
 	if (spec.orders) c.push({ name: "orders", usage: "orders", about: "заказы на сайте", auth: true })
@@ -119,7 +119,7 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 		}
 		case "info": {
 			const r = await spec.info(ctx, need(rest[0], "артикул"), brandFlag())
-			return { json: r, render: () => renderInfo(r.info) }
+			return { json: r, render: () => renderInfo(r.info, r.offers ?? []) }
 		}
 		case "analogs": {
 			const r = await spec.analogs(ctx, need(rest[0], "артикул"), brandFlag())
