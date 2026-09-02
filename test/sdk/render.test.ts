@@ -1,7 +1,11 @@
+// Цвет решается на каждый вызов, поэтому под pty (bun test в терминале)
+// stdout — это TTY и escape-последовательности были бы включены. NO_COLOR
+// гасит их одинаково и в пайпе, и в терминале, так что строки сравниваются
+// напрямую.
+process.env.NO_COLOR = "1"
+
 import { describe, expect, test } from "bun:test"
 import { days, isoDate, renderBasket, renderOffers, renderReviews, table } from "../../src/sdk/render.ts"
-
-// цвета гаснут вне TTY, так что строки сравниваются напрямую
 
 describe("days", () => {
 	test("склонение", () => {

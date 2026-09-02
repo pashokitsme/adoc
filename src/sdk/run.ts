@@ -2,7 +2,7 @@
 // рендер → exit-код. С --json в stdout ровно один объект.
 
 import { accountStore } from "./account.ts"
-import { hasTTY, parseArgv, readLine, readSecret } from "./cli.ts"
+import { hasTTY, parseArgv, positiveInt, readLine, readSecret } from "./cli.ts"
 import { CONTRACT_VERSION, type Basket, type Command, type Describe } from "./contract.ts"
 import type { Ctx, ProviderSpec } from "./define.ts"
 import { ProviderError, errorBody, exitCode, type ErrorMapper } from "./errors.ts"
@@ -34,6 +34,10 @@ function num(name: string, v: string | true | undefined, def: number): number {
 	if (!Number.isFinite(n) || n < 0) throw new ProviderError("bad_args", `--${name}: нужно неотрицательное число, а не «${v}»`)
 	return n
 }
+
+/** Номер страницы и размер выдачи: только целое ≥ 1. */
+const pageNum = (name: string, v: string | true | undefined, def: number): number =>
+	v === undefined ? def : positiveInt(`--${name}`, v)
 
 function contractCommands<A>(spec: ProviderSpec<A>): Command[] {
 	const c: Command[] = [
@@ -181,39 +185,42 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 }
 
 export async function runProvider<A>(spec: ProviderSpec<A>, argv: string[] = process.argv.slice(2)): Promise<never> {
-	const { args, flags } = parseArgv(argv, [...CONTRACT_VALUE_FLAGS, ...(spec.valueFlags ?? [])])
-	const json = flags.json === true
-
-	if (!args.length || flags.help) {
-		// Машинному вызову таблица бесполезна: он ждёт JSON и получил бы
-		// исключение разбора вместо внятной ошибки.
-		if (json) {
-			const why = flags.help ? "--help не отдаётся в JSON: список команд — describe --json" : "нужна команда: смотри --help или describe"
-			return await emit(process.stdout, JSON.stringify(errorBody(new ProviderError("bad_args", why))) + "\n", 1)
-		}
-		return await emit(process.stdout, usage(spec) + "\n", 0)
-	}
-
-	const store = accountStore<A>(spec.id)
-	const ctx: Ctx<A> = {
-		account: await store.load(),
-		saveAccount: async a => {
-			if (a === null) await store.clear()
-			else await store.save(a)
-			ctx.account = a
-		},
-		json,
-		flags,
-		page: 1,
-		limit: 10,
-		prompt: needTTY(readLine),
-		secret: needTTY(readSecret),
-		warn: m => process.stderr.write(`${m}\n`),
-	}
+	// Разбор argv умеет падать, а форма ответа зависит от --json: флаг ищем в
+	// сыром argv, иначе ошибка разбора уехала бы машинному вызову таблицей.
+	const json = argv.some(a => a === "--json" || a === "--json=true")
 
 	try {
-		ctx.page = num("page", flags.page, 1)
-		ctx.limit = num("limit", flags.limit, 10)
+		const { args, flags } = parseArgv(argv, [...CONTRACT_VALUE_FLAGS, ...(spec.valueFlags ?? [])])
+
+		if (!args.length || flags.help) {
+			// Машинному вызову таблица бесполезна: он ждёт JSON и получил бы
+			// исключение разбора вместо внятной ошибки.
+			if (json) {
+				const why = flags.help ? "--help не отдаётся в JSON: список команд — describe --json" : "нужна команда: смотри --help или describe"
+				return await emit(process.stdout, JSON.stringify(errorBody(new ProviderError("bad_args", why))) + "\n", 1)
+			}
+			return await emit(process.stdout, usage(spec) + "\n", 0)
+		}
+
+		const store = accountStore<A>(spec.id)
+		const ctx: Ctx<A> = {
+			account: await store.load(),
+			saveAccount: async a => {
+				if (a === null) await store.clear()
+				else await store.save(a)
+				ctx.account = a
+			},
+			json,
+			flags,
+			page: 1,
+			limit: 10,
+			prompt: needTTY(readLine),
+			secret: needTTY(readSecret),
+			warn: m => process.stderr.write(`${m}\n`),
+		}
+
+		ctx.page = pageNum("page", flags.page, 1)
+		ctx.limit = pageNum("limit", flags.limit, 10)
 		const out = await dispatch(spec, ctx, args)
 		return await emit(process.stdout, (json ? JSON.stringify(out.json) : out.render()) + "\n", 0)
 	} catch (e) {

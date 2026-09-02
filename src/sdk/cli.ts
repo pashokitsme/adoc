@@ -1,23 +1,62 @@
 // cli.ts — argv и ввод с терминала. Подсказки идут в stderr: stdout при --json
 // должен содержать ровно один JSON-объект.
 
+import { ProviderError } from "./errors.ts"
+
 export type Flags = Record<string, string | true>
 
+/**
+ * argv → позиционные аргументы и флаги.
+ *
+ * Флаг со значением (`valueFlags`) требует значения: `--page --json` раньше
+ * съедал бы `--json` как значение страницы и молча терял бы формат вывода.
+ * Остальные флаги булевы и принимают только `=true`/`=false`: `--json=1` —
+ * это опечатка, а не «включено», и лучше сказать об этом сразу.
+ */
 export function parseArgv(argv: string[], valueFlags: string[]): { args: string[]; flags: Flags } {
 	const flags: Flags = {}
 	const args: string[] = []
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i]!
-		if (a === "-h" || a === "--help") flags.help = true
-		else if (a.startsWith("--")) {
-			const eq = a.indexOf("=")
-			const k = eq >= 0 ? a.slice(2, eq) : a.slice(2)
-			if (eq >= 0) flags[k] = a.slice(eq + 1)
-			else if (valueFlags.includes(k)) flags[k] = argv[++i] ?? ""
-			else flags[k] = true
-		} else args.push(a)
+		if (a === "-h") { flags.help = true; continue }
+		if (!a.startsWith("--")) { args.push(a); continue }
+
+		const eq = a.indexOf("=")
+		const k = eq >= 0 ? a.slice(2, eq) : a.slice(2)
+		const wantsValue = valueFlags.includes(k)
+
+		if (eq >= 0) {
+			const v = a.slice(eq + 1)
+			if (wantsValue) { flags[k] = v; continue }
+			// «=false» — то же самое, что флаг не указан вовсе
+			if (v === "false") delete flags[k]
+			else if (v === "true") flags[k] = true
+			else throw new ProviderError("bad_args", `--${k}: булев флаг, значение бывает только true или false, а не «${v}»`)
+			continue
+		}
+
+		if (wantsValue) {
+			const next = argv[i + 1]
+			if (next === undefined || next.startsWith("--")) throw new ProviderError("bad_args", `--${k}: нужно значение`)
+			flags[k] = next
+			i++
+			continue
+		}
+		flags[k] = true
 	}
 	return { args, flags }
+}
+
+/**
+ * Целое ≥ 1: `--page`, `--limit`, `--sort` и числовые аргументы вроде
+ * `garage main <carId>`. Ноль и дробное сайту бессмысленны и вернулись бы
+ * пустой выдачей или невнятной ошибкой сервера вместо честного bad_args.
+ */
+export function positiveInt(what: string, v: string | true | undefined): number {
+	if (v === undefined || v === true || v === "") throw new ProviderError("bad_args", `${what}: нужно значение`)
+	const n = Number(v)
+	if (!Number.isInteger(n) || n < 1) throw new ProviderError("bad_args", `${what}: нужно целое число не меньше 1, а не «${v}»`)
+	return n
 }
 
 export const hasTTY = (): boolean => !!process.stdin.isTTY

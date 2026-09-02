@@ -1,8 +1,7 @@
 // provider.ts — autodoc.ru как провайдер контракта. Вся сайтоспецифика — в
 // api.ts/auth.ts/map.ts; здесь только склейка вызовов и свои команды.
 
-import { ProviderError, defineProvider } from "../../sdk/index.ts"
-import type { Display } from "../../sdk/contract.ts"
+import { ProviderError, defineProvider, type Display } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import { ApiError } from "./api.ts"
 import * as auth from "./auth.ts"

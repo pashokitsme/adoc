@@ -1,10 +1,12 @@
 // map.ts — сырые ответы web.autodoc.ru → типы контракта. Формы ответов см. в
 // docs/autodoc-api.md и test/fixtures/autodoc/*.json.
 
-import type { Basket, BasketItem, BrandHit, Car, Offer, Product, Rating, Review, Reviews } from "../../sdk/contract.ts"
-import { articleKey, brandKey } from "../../sdk/keys.ts"
-import { isoDate } from "../../sdk/render.ts"
+import { articleKey, brandKey, render } from "../../sdk/index.ts"
+import type { Basket, BasketItem, BrandHit, Car, Offer, Product, Rating, Review, Reviews } from "../../sdk/index.ts"
+
 import type { Car as ApiCar, CatalogGood, GoodsInfo, Reviews as ApiReviews, SearchHit, Suggestion } from "./api.ts"
+
+const { isoDate } = render
 
 export type OriginalsItem = {
 	id: number; price: number; quantity?: number; deliveryDays?: number; deliveryDate?: string

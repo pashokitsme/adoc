@@ -1,8 +1,7 @@
 // brand.ts — артикул → производитель. Один артикул бывает у нескольких
 // производителей, и цены/отзывы у них разные, поэтому без уточнения — ambiguous.
 
-import { ProviderError } from "../../sdk/errors.ts"
-import { brandKey } from "../../sdk/keys.ts"
+import { ProviderError, brandKey } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import type { SearchHit } from "./api.ts"
 

@@ -3,15 +3,17 @@
 
 import type { Basket, BrandHit, Car, Display, Offer, Product, Reviews } from "./contract.ts"
 
-const plain = !process.stdout.isTTY || !!process.env.NO_COLOR
-const wrap = (code: string) => (s: string) => (plain ? s : `\x1b[${code}m${s}\x1b[0m`)
+// Решение принимается на каждый вызов, а не один раз при импорте: модуль
+// грузится раньше, чем становится известно, куда пойдёт вывод, и запомненное
+// значение делало бы NO_COLOR и перенаправление stdout невидимыми.
+const plain = (): boolean => !process.stdout.isTTY || !!process.env.NO_COLOR
+const wrap = (code: string) => (s: string) => (plain() ? s : `\x1b[${code}m${s}\x1b[0m`)
 
 export const bold = wrap("1")
 export const dim = wrap("2")
 export const red = wrap("31")
 export const green = wrap("32")
 export const yellow = wrap("33")
-export const blue = wrap("34")
 export const cyan = wrap("36")
 
 export const money = (v: number | undefined | null) =>
@@ -80,10 +82,6 @@ export function fields(rows: [string, string][], indent = "  "): string {
 	if (!rows.length) return ""
 	const w = Math.max(...rows.map(r => r[0].length))
 	return rows.map(([k, v]) => `${indent}${dim(k.padEnd(w))}  ${v}`).join("\n")
-}
-
-export function rule(width = 44): string {
-	return dim("─".repeat(width))
 }
 
 export const isoDate = (s: string | undefined): string | undefined => s?.slice(0, 10)

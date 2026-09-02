@@ -31,7 +31,7 @@ describe("свои команды autodoc", () => {
 		const r = await run(["goods", "408", "--sort", "abc"])
 		expect(r.code).toBe(1)
 		expect(r.json().error.code).toBe("bad_args")
-		expect(r.json().error.message).toBe("--sort: нужно неотрицательное целое число, а не «abc»")
+		expect(r.json().error.message).toBe("--sort: нужно целое число не меньше 1, а не «abc»")
 	})
 	test("--sort отрицательным — bad_args", async () => {
 		expect((await run(["goods", "408", "--sort", "-1"])).json().error.code).toBe("bad_args")

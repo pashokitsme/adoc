@@ -1,12 +1,12 @@
 // commands.ts — команды autodoc сверх контракта. Всё, что раньше было в
 // src/main.ts, кроме контрактных операций.
 
-import type { ProviderCommand } from "../../sdk/define.ts"
-import { ProviderError } from "../../sdk/errors.ts"
-import { bar, bold, cyan, days, dim, green, heading, money, stars, table, yellow } from "../../sdk/render.ts"
+import { ProviderError, positiveInt, render, type ProviderCommand } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import type { Tokens } from "./auth.ts"
 import { resolveBrand } from "./brand.ts"
+
+const { bar, bold, cyan, days, dim, green, heading, money, stars, table, yellow } = render
 
 type Cmd = ProviderCommand<Tokens>
 
@@ -15,11 +15,8 @@ const need = (v: string | undefined, what: string): string => {
 	return v
 }
 
-const numArg = (v: string | undefined, what: string): number => {
-	const n = Number(need(v, what))
-	if (!Number.isFinite(n)) throw new ProviderError("bad_args", `${what} должен быть числом, а не «${v}»`)
-	return n
-}
+/** Числовой аргумент-идентификатор: у сайта они всегда целые и с единицы. */
+const numArg = (v: string | undefined, what: string): number => positiveInt(what, need(v, what))
 
 /** Хвост вида `k=v` — параметры запроса для произвольных get/post. */
 const kv = (rest: string[]): Record<string, string> =>
@@ -30,13 +27,8 @@ const kv = (rest: string[]): Record<string, string> =>
  * run.ts: без неё NaN уехал бы в параметры запроса и вернулся бы невнятной
  * ошибкой сервера вместо честного bad_args.
  */
-const numFlag = (name: string, v: string | true | undefined): number | undefined => {
-	if (v === undefined) return undefined
-	if (v === true || v === "") throw new ProviderError("bad_args", `--${name}: нужно значение`)
-	const n = Number(v)
-	if (!Number.isInteger(n) || n < 0) throw new ProviderError("bad_args", `--${name}: нужно неотрицательное целое число, а не «${v}»`)
-	return n
-}
+const numFlag = (name: string, v: string | true | undefined): number | undefined =>
+	v === undefined ? undefined : positiveInt(`--${name}`, v)
 
 /** brandId позиционно или --brand по имени. */
 const brandArg = (args: string[], flags: Record<string, string | true>): string | undefined =>

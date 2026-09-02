@@ -10,7 +10,7 @@
 // В файле аккаунта — токены, сбытовая организация, точка выдачи и коды
 // клиента, нужные корзине и гаражу.
 
-import { ProviderError, type Ctx, type Display } from "../../sdk/index.ts"
+import { ProviderError, decodeClaims as jwtClaims, type Ctx, type Display } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import { DEFAULT_VKORG, DEFAULT_VSTEL, type ClientData, type Tokens } from "./api.ts"
 
@@ -46,16 +46,7 @@ export type Claims = {
 	data?: { login?: string; utype?: string; clientId?: string; clientSapId?: number }
 }
 
-export function decodeClaims(token: string): Claims | null {
-	const part = token.split(".")[1]
-	if (!part) return null
-	try {
-		// не atob: он отдаёт байты как Latin-1 и портит кириллицу в клеймах
-		return JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Claims
-	} catch {
-		return null
-	}
-}
+export const decodeClaims = (token: string): Claims | null => jwtClaims<Claims>(token)
 
 /** Срок жизни токена по его клейму; час — запасной вариант для токена без exp. */
 export const expiresOf = (token: string): number => decodeClaims(token)?.exp ?? now() + 3600

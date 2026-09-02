@@ -9,8 +9,7 @@
 
 import { readFile, unlink } from "node:fs/promises"
 import { join } from "node:path"
-import { accountStore } from "../../sdk/account.ts"
-import { configDir } from "../../sdk/config.ts"
+import { accountStore, configDir, decodeClaims as jwtClaims } from "../../sdk/index.ts"
 
 export const AUTH = "https://login.autodoc.ru"
 export const CLIENT_ID = "Angular"
@@ -29,7 +28,6 @@ export type Tokens = {
 
 export const ACCOUNT_ID = "autodoc"
 const store = () => accountStore<Tokens>(ACCOUNT_ID)
-export const accountPath = () => store().path
 
 export const loadTokens = (): Promise<Tokens | null> => store().load()
 export const saveTokens = (t: Tokens): Promise<void> => store().save(t)
@@ -78,16 +76,7 @@ export type Claims = {
 	iat?: number
 }
 
-export function decodeClaims(accessToken: string): Claims | null {
-	const part = accessToken.split(".")[1]
-	if (!part) return null
-	try {
-		// не atob: он отдаёт байты как Latin-1 и портит кириллицу в именах
-		return JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Claims
-	} catch {
-		return null
-	}
-}
+export const decodeClaims = (accessToken: string): Claims | null => jwtClaims<Claims>(accessToken)
 
 // --- обмен и обновление ---------------------------------------------------
 

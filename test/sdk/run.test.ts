@@ -173,6 +173,33 @@ describe("runProvider", () => {
 		}
 	})
 
+	test("--page и --limit: только целое ≥ 1", async () => {
+		for (const v of ["0", "-1", "1.5", "abc"]) {
+			const r = await run(["search", "болт", "--page", v, "--json"])
+			expect(r.code).toBe(1)
+			expect(r.json().error.code).toBe("bad_args")
+		}
+		const r = await run(["search", "болт", "--limit", "0", "--json"])
+		expect(r.json().error.code).toBe("bad_args")
+	})
+
+	test("флаг со значением не съедает следующий флаг, а ошибка всё равно JSON", async () => {
+		const r = await run(["search", "болт", "--page", "--json"])
+		expect(r.code).toBe(1)
+		expect(r.out.trim().split("\n")).toHaveLength(1)
+		expect(r.json().error.code).toBe("bad_args")
+		expect(r.json().error.message).toContain("--page")
+	})
+
+	test("--json=false — как будто флага нет, --json=1 — bad_args", async () => {
+		const plain = await run(["brands", "N1", "--json=false"])
+		expect(plain.code).toBe(0)
+		expect(plain.out).toContain("БРЕНД")
+		const bad = await run(["brands", "N1", "--json=1"])
+		expect(bad.code).toBe(1)
+		expect(bad.err).toContain("--json")
+	})
+
 	test("--help печатает usage со своими командами", async () => {
 		const r = await run(["--help"])
 		expect(r.code).toBe(0)
