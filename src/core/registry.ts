@@ -10,6 +10,8 @@ import { delimiter, join } from "node:path"
 import { ProviderError, TOOL } from "../sdk/index.ts"
 import type { Capability, Describe, Flags } from "../sdk/index.ts"
 import { ID_RE } from "./store.ts"
+import { DESCRIBE_TIMEOUT_MS, invoke, passNoise } from "./invoke.ts"
+import { parseDescribe } from "./validate.ts"
 
 export const PROVIDERS_DIR_ENV = `${TOOL.toUpperCase()}_PROVIDERS_DIR`
 
@@ -101,4 +103,31 @@ export function select(ok: Provider[], flags: Flags, cap?: Capability): Provider
 			: `не осталось ни одного провайдера — смотри ${TOOL} providers`)
 	}
 	return out
+}
+
+/**
+ * describe у всех найденных провайдеров параллельно. Ответ кэшируется на
+ * запуск (кэшем владеет app.ts), но не на диск: список команд провайдера
+ * меняется вместе с его версией, а протухший кэш врал бы в справке.
+ * Таймаут короче общего: describe обязан работать без сети.
+ * `warn` необязателен только для тестов реестра; команды передают свой.
+ */
+export async function load(warn: (line: string) => void = () => {}): Promise<Loaded> {
+	const entries = await discover()
+	const settled = await Promise.all(entries.map(async (e): Promise<Provider | BadProvider> => {
+		// id уезжает в invoke: наши собственные ошибки — «не запустился»,
+		// «вышел с кодом», «не ответил» — обязаны называть, кто именно.
+		const r = await invoke(e.bin, ["describe"], { timeoutMs: DESCRIBE_TIMEOUT_MS, id: e.id })
+		passNoise(e.id, r, warn)
+		if (!r.ok) return { ...e, message: r.error.message }
+		try {
+			return { ...e, describe: parseDescribe(r.json, e.id) }
+		} catch (err) {
+			return { ...e, message: err instanceof Error ? err.message : String(err) }
+		}
+	}))
+	return {
+		ok: settled.filter((p): p is Provider => "describe" in p),
+		bad: settled.filter((p): p is BadProvider => "message" in p),
+	}
 }
