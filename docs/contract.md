@@ -566,7 +566,8 @@ SDK). Публичная поверхность SDK — `src/sdk/index.ts`:
 - `accountStore`, `configDir`, `CONFIG_DIR_ENV`, `TOOL` — файл аккаунта;
 - `render` — таблицы и цвета для вывода человеку (`renderProducts`,
   `renderOffers`, `renderInfo`, `renderReviews`, `renderBasket`, `renderCars`,
-  `renderOrders`, а из мелочей — `table`, `fields`, `link`, `money`, `days`);
+  `renderOrders`, а из мелочей — `table`, `fields`, `link`, `urlList`, `money`,
+  `days`);
 - все типы из `contract.ts`.
 
 Контекст вызова `ctx`: `ctx.account` (уже прочитанный аккаунт или `null`),
