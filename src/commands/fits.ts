@@ -13,8 +13,49 @@ import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
 import { chooseCar, refsOf } from "../core/car.ts"
 import { tips } from "../core/render.ts"
-import { parseFits } from "../core/validate.ts"
+import { parseCrosses, parseFits } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
+import type { Provider } from "../core/registry.ts"
+import type { CrossItem, FitsResult } from "../sdk/index.ts"
+
+/**
+ * Сколько кросс-номеров пробовать, когда сайт не признал сам артикул. Пять —
+ * это цена ответа: каждый номер стоит сайту отдельного подбора, а дальше
+ * пятого начинаются замены замен, за которые уже никто не ручается.
+ */
+const CROSS_TRIES = 5
+
+/**
+ * Ответ через кросс-ссылку. Сайт сказал «нет» или «не знаю» про сам номер, но
+ * тот же узел он знает под другим номером — и вот его-то машине и подбирает.
+ * Сначала оригинальные номера: они и есть то, что стоит на машине с завода.
+ */
+async function throughCrosses(
+	ctx: Ctx, p: Provider, article: string, spelling: string, ref: Record<string, unknown>,
+): Promise<FitsResult | null> {
+	const r = await invoke(p.bin, ["crosses", article, "--brand", spelling], { id: p.id })
+	if (!r.ok) return null
+	let items: CrossItem[]
+	try {
+		items = parseCrosses(r.json, p.id)
+	} catch {
+		// Кривой ответ на необязательном шаге — не повод ронять весь ответ:
+		// прямой вердикт у нас уже есть.
+		return null
+	}
+	const order = [...items].sort((a, b) => Number(b.kind === "oe") - Number(a.kind === "oe"))
+	for (const c of order.slice(0, CROSS_TRIES)) {
+		const one = await invoke(p.bin, ["fits", c.article, "--brand", c.brand, "--car", JSON.stringify(ref)], { id: p.id })
+		if (!one.ok) continue
+		try {
+			const v = parseFits(one.json, p.id)
+			if (v.fits === true) {
+				return { fits: true, reason: `через кросс ${c.article} ${c.brand}`, ...(c.url ? { url: c.url } : {}) }
+			}
+		} catch { /* та же причина: шаг необязательный */ }
+	}
+	return null
+}
 
 export async function cmdFits(ctx: Ctx): Promise<Output> {
 	const article = need(ctx.args[0], "артикул")
@@ -59,23 +100,34 @@ export async function cmdFits(ctx: Ctx): Promise<Output> {
 	)
 	const code = report(f, failures, ctx.warn)
 
+	// Кросс-проверка: сайт не знает номер, но знает его замену. Данные для
+	// этого у нас уже есть — их отдаёт `crosses`, — и промолчать, имея их на
+	// руках, значит ответить «не знаю» там, где ответ известен.
+	const checked = await Promise.all(f.got.map(async g => {
+		if (g.value.fits === true) return g
+		const p = holders.find(x => x.id === g.provider)
+		if (!p || !p.describe.capabilities.includes("crosses")) return g
+		const through = await throughCrosses(ctx, p, article, brand.spelling[p.id]!, refOf(p.id)!)
+		return through ? { ...g, value: through } : g
+	}))
+
 	return {
 		json: {
 			article, brand: brand.brand,
-			car: { id: car.id, name: carLabel(car), providers: f.got.map(g => g.provider) },
-			providers: Object.fromEntries(f.got.map(g => [g.provider, g.value])),
+			car: { id: car.id, name: carLabel(car), providers: checked.map(g => g.provider) },
+			providers: Object.fromEntries(checked.map(g => [g.provider, g.value])),
 			errors: [...failures, ...f.failures],
 		},
 		code,
 		render: () => [
 			`${dim("машина:")} ${carLabel(car)}`,
 			"",
-			...(f.got.length
-				? f.got.map(g => renderFits(g.value, g.provider))
+			...(checked.length
+				? checked.map(g => renderFits(g.value, g.provider))
 				: [allFailed(f) ? "ни один сайт не ответил" : "применимость спросить не у кого"]),
 			// «Не знает» — не тупик: у сайта есть страница детали, где применимость
 			// видно глазами, и подбор по машине через search.
-			...tips(f.got.some(g => g.value.fits === null)
+			...tips(checked.some(g => g.value.fits === null)
 				? [`${TOOL} search "<название детали>" — подбор по машине, если сайт не знает применимости`]
 				: []),
 		].join("\n"),

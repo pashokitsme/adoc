@@ -2,7 +2,7 @@
 // api.ts (запросы), auth.ts (токены), map.ts (перевод в типы контракта) и
 // brand.ts (выбор бренда); здесь только склейка.
 
-import { ProviderError, articleKey, brandKey, defineProvider, type Offer } from "../../sdk/index.ts"
+import { ProviderError, articleKey, brandKey, defineProvider, fitsVerdict, type Offer } from "../../sdk/index.ts"
 import type { Ctx } from "../../sdk/define.ts"
 import * as api from "./api.ts"
 import { mapHttpError } from "./api.ts"
@@ -15,10 +15,11 @@ import {
 } from "./map.ts"
 
 /**
- * Сколько страниц категории пролистать, проверяя применимость. Три — это ~108
- * позиций: дальше вопрос стоит дороже ответа, а темп сайт считает по аккаунту.
+ * Потолок страниц каталога при проверке применимости. Страница у armtek — 36
+ * позиций, так что 50 страниц это 1800: столько категорий под одну машину не
+ * бывает, а упёршись в потолок, ответ становится «не знаю», а не «не подходит».
  */
-const FIT_PAGES = 3
+const FIT_PAGES = 50
 
 /** Точка выдачи и организация аккаунта; без входа — умолчания фронта. */
 const place = (ctx: Ctx<Account>): brand.Place => ({
@@ -162,29 +163,31 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 			if (cat) break
 		}
 		if (!cat) return { fits: null, reason: "категория детали не нашлась — применимость не проверить", url }
+
+		// Каталог категории под машину листается целиком: «нет на первых трёх
+		// страницах» — не ответ. Потолок нужен от категорий-гигантов, и
+		// упёршись в него, мы говорим «не знаю», а не «не подходит».
 		const want = articleKey(article)
 		const wantBrand = brandKey(row.BRAND)
-		// Категория отдаётся страницами по 36. Листаем не больше FIT_PAGES: сайт
-		// считает темп по аккаунту, и «не знаю» дешевле, чем 429 на весь запуск.
-		let seen = 0
-		let pageCount = 1
-		let total: number | undefined
+		let brandSeen = false
+		let scanned = 0
+		let total = 0
+		let complete = false
 		for (let page = 1; page <= FIT_PAGES; page++) {
 			const r = await api.searchByCategory({ categoryAlias: cat.ALIAS, page, ...p, ...target }, token)
 			const rows = r.articlesData ?? []
-			seen += rows.length
-			pageCount = r.pagination?.pageCount ?? 1
-			total = r.pagination?.totalCount
-			if (rows.some(a => articleKey(a.PIN) === want && brandKey(a.BRAND) === wantBrand)) {
-				return { fits: true, reason: `есть в «${cat.NAME}» под эту машину`, url }
+			total = r.pagination?.totalCount ?? rows.length
+			scanned += rows.length
+			for (const a of rows) {
+				const brandHere = brandKey(a.BRAND) === wantBrand
+				if (brandHere) brandSeen = true
+				if (brandHere && articleKey(a.PIN) === want) {
+					return { fits: true, reason: `есть в «${cat.NAME}» под эту машину`, url }
+				}
 			}
-			if (page >= pageCount) break
+			if (!rows.length || page >= (r.pagination?.pageCount ?? 1)) { complete = true; break }
 		}
-		// Просмотрели не всё — это «не знаю», а не «не подходит».
-		if (pageCount > FIT_PAGES) {
-			return { fits: null, reason: `в «${cat.NAME}» под эту машину ${total ?? "?"} позиций на ${pageCount} страницах, просмотрены первые ${FIT_PAGES}`, url }
-		}
-		return { fits: false, reason: `нет в «${cat.NAME}» под эту машину (${total ?? seen} позиций)`, url }
+		return { ...fitsVerdict({ found: false, brandSeen, total, scanned, complete, where: cat.NAME, brand: row.BRAND }), url }
 	}),
 
 	/**

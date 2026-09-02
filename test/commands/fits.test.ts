@@ -37,6 +37,7 @@ afterEach(async () => {
 	delete process.env[PROVIDERS_DIR_ENV]
 	delete process.env.FAKE_ALPHA_UNKNOWNFIT
 	delete process.env.FAKE_ALPHA_FAIL_FITS
+	delete process.env.FAKE_ALPHA_EMPTY_CROSSES
 	restore()
 	await rm(dir, { recursive: true, force: true })
 })
@@ -79,6 +80,29 @@ describe("adoc fits", () => {
 		const { j, stderr } = await fits(["n90954802"])
 		expect(Object.keys(j.providers)).toEqual(["alpha"])
 		expect(stderr).toContain("нет привязки машины: beta")
+	})
+
+	test("сам не подходит, но подходит его кросс — это «подходит через кросс»", async () => {
+		await garage({ alpha: { carId: 42 }, beta: { carId: 7 } })
+		const { code, j } = await fits(["NOFIT-1"])
+		expect(code).toBe(0)
+		expect(j.providers.alpha).toMatchObject({ fits: true })
+		expect(j.providers.alpha!.reason).toContain("через кросс CROSS-1")
+		expect((await run(["fits", "NOFIT-1"])).stdout).toContain("alpha: подходит")
+	})
+
+	test("кросс тоже не подходит — остаётся прямой ответ сайта", async () => {
+		await garage({ alpha: { carId: 42 } })
+		process.env.FAKE_ALPHA_EMPTY_CROSSES = "1"
+		const { j } = await fits(["NOFIT-1"])
+		expect(j.providers.alpha!.fits).toBe(false)
+	})
+
+	test("«не знаю» тоже проверяется кроссом", async () => {
+		await garage({ alpha: { carId: 42 } })
+		const { j } = await fits(["UNSURE-1"])
+		expect(j.providers.alpha).toMatchObject({ fits: true })
+		expect(j.providers.alpha!.reason).toContain("через кросс")
 	})
 
 	test("гараж пуст — внятный отказ, а не пустая выдача", async () => {

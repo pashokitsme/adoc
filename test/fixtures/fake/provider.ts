@@ -5,6 +5,14 @@
 //   FAIL=<код>     любая контрактная команда падает этим кодом
 //   FAIL_OFFERS=<код>  падает только offers, а brands отвечает как обычно
 //   EMPTY_OFFERS=1 offers отвечает пустым списком, а brands — как обычно
+//   KIT_OFFER=1    к предложениям добавляется тот же артикул и бренд, но
+//                  комплектом и дешевле: `orders --prices` обязан заметить, что
+//                  цена не про ту же деталь
+//   SECOND_SELLER=1  то же предложение у второго продавца и дешевле: цена
+//                  берётся у него, и он же назван в колонке «ОТКУДА»
+//   ALIEN_OFFERS=1 в выдаче есть чужой артикул и чужой бренд дешевле своего:
+//                  так ведёт себя сайт, подмешивающий «похожее», — сравнивать
+//                  с уплаченным его нельзя
 //   EMPTY_SEARCH=1 search отвечает пустым списком, не ошибкой
 //   EMPTY_ANALOGS=1 analogs отвечает пустым списком: заменителей у сайта нет
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
@@ -84,6 +92,12 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		{ article: data.article, brand: data.brand, name: "Болт", price: data.price },
 		{ article: "MULTI-1", brand: data.brand, name: "Колодки", price: data.price + 100 },
 		{ article: "MULTI 1", brand: "OTHER", name: "Колодки OTHER", price: data.price + 200 },
+		// Сам не подходит машине, но его кросс CROSS-1 подходит: на нём
+		// проверяется кросс-проверка применимости в обёртке.
+		{ article: "NOFIT-1", brand: data.brand, name: "Пыльник", price: data.price + 300 },
+		// Сайт про эту деталь применимости не знает вовсе.
+		{ article: "UNSURE-1", brand: data.brand, name: "Отбойник", price: data.price + 400 },
+		{ article: "CROSS-1", brand: "OEM", name: "Пыльник OEM", price: data.price + 350 },
 	]
 	const find = (article: string): Row[] => rows.filter(r => articleKey(r.article) === articleKey(article))
 	const toOffer = (r: Row, n: number): Offer => ({
@@ -147,6 +161,18 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			if (knob(id, "EMPTY_OFFERS")) return { items: [] }
 			const hit = find(article).filter(r => brandKey(r.brand) === brandKey(brand))
 			const items = hit.map((r, i) => toOffer(r, i + 1))
+			// Тот же номер, но продаётся комплектом: цена ниже, а товар другой.
+			if (knob(id, "KIT_OFFER") && hit.length) {
+				items.push({ ...toOffer(hit[0]!, 7), name: `${hit[0]!.name} компл. 10 шт`, price: data.price - 100, seller: "склад комплектов", ref: { line: `${id}-kit` } })
+			}
+			// Та же строка у другого продавца и дешевле.
+			if (knob(id, "SECOND_SELLER") && hit.length) {
+				items.push({ ...toOffer(hit[0]!, 8), price: data.price - 7, seller: "второй продавец", ref: { line: `${id}-2` } })
+			}
+			// Чужой товар в своей же выдаче: спрашивали не о нём.
+			if (knob(id, "ALIEN_OFFERS") && hit.length) {
+				items.push({ ...toOffer(hit[0]!, 6), article: "AN-1", brand: "ANALOG", price: data.price - 200, seller: "чужой склад", url: page("AN-1") })
+			}
 			// Аналог — другой артикул: обёртка обязана унести его в отдельную таблицу.
 			if (analogs && hit.length) items.push({ ...toOffer(hit[0]!, 9), article: "AN-1", brand: "ANALOG", price: data.price + 50, analog: true, url: page("AN-1") })
 			return { items }
@@ -188,7 +214,11 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			const target = car.carId ?? car.linkingTargetId ?? car.modificationId
 			if (!target) return { fits: null, reason: `${id}: в ref машины нет идентификатора` }
 			if (knob(id, "UNKNOWNFIT")) return { fits: null, reason: `${id}: нет данных о машине ${String(target)}`, url: page(article) }
-			const ok = !article.toUpperCase().startsWith("NOFIT")
+			const key = article.toUpperCase()
+			// «Не знаю» — такой же полноценный ответ, как да и нет: у сайта
+			// бывает подбор-заглушка, в котором искать нечего.
+			if (key.startsWith("UNSURE")) return { fits: null, reason: `${id}: подбор под машину ${String(target)} неполный`, url: page(article) }
+			const ok = !key.startsWith("NOFIT")
 			return { fits: ok, reason: `${id}: ${brand} ${ok ? "есть" : "нет"} в подборе машины ${String(target)}`, url: page(article) }
 		},
 

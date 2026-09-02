@@ -87,12 +87,18 @@ export function toCrosses(r: Originals, article: string, brand: string): CrossIt
 		for (const g of group.goods ?? []) {
 			if (articleKey(g.article) === wantArticle && brandKey(g.manufacturer.name) === wantBrand) continue
 			out.push({
-				article: g.displayArticle || g.article,
+				// Канонический номер, а не displayArticle: по нему потом зовут
+				// `part` и `fits`, а «5Q0 413 175 C» с пробелами сайт своей же
+				// карточкой не находит. Красивое написание уезжает в extra.
+				article: g.article,
 				brand: g.manufacturer.name,
 				kind: g.isOriginal ? "oe" : CROSS_KIND[group.id] ?? group.title,
 				...(g.name ? { name: g.name } : {}),
 				url: cardUrl(g.manufacturer.id, g.article),
-				extra: { manufacturerId: g.manufacturer.id, group: group.title },
+				extra: {
+					manufacturerId: g.manufacturer.id, group: group.title,
+					...(g.displayArticle && g.displayArticle !== g.article ? { display: g.displayArticle } : {}),
+				},
 			})
 		}
 	}

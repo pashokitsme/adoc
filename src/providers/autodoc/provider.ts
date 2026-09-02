@@ -1,7 +1,7 @@
 // provider.ts — autodoc.ru как провайдер контракта. Вся сайтоспецифика — в
 // api.ts/auth.ts/map.ts; здесь только склейка вызовов и свои команды.
 
-import { ProviderError, articleKey, brandKey, defineProvider, positiveInt, type Display, type Offer } from "../../sdk/index.ts"
+import { ProviderError, articleKey, brandKey, defineProvider, fitsVerdict, positiveInt, type Display, type Offer } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import { ApiError } from "./api.ts"
 import * as auth from "./auth.ts"
@@ -63,6 +63,10 @@ async function offerRows(article: string, b: Brand, name: string, withAnalogs: b
 	if (an) items.push(...toOffers(an, article, name, true))
 	return items
 }
+
+/** Страница подбора и потолок страниц: 10 × 200 — это 2000 позиций категории. */
+const FIT_PAGE_SIZE = 200
+const FIT_PAGES = 10
 
 export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"]>({
 	id: "autodoc", name: "Autodoc", site: SITE,
@@ -180,29 +184,45 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		// Категория у карточки есть не всегда; тогда ищем её тем же путём, что
 		// и поиск, — подсказкой по названию детали.
 		let category = info?.categoryId
+		let where = info?.name ?? "категория"
 		if (!category && info?.name) {
 			const s = await api.suggest(info.name).catch(() => null)
 			const cats = categoryIds(s?.items ?? [])
 			// bestCategory на пустом списке вернуть нечего — спрашиваем только
 			// когда подсказка и правда назвала хоть одну категорию.
-			if (cats.length) category = bestCategory(cats, info.name).id
+			if (cats.length) {
+				const best = bestCategory(cats, info.name)
+				category = best.id
+				where = best.title
+			}
 		}
 		if (!category) return { fits: null, reason: "категория детали не нашлась — подбор по машине не проверить", url }
-		// Одной страницы хватает почти всегда: категория под конкретную
-		// модификацию — это десятки строк, а не тысячи.
-		const r = await api.categoryGoods(category, { ...q, MaxResultCount: 200 })
-		const items = r.items ?? []
+
+		// Смотрим подбор целиком, а не первую страницу: «нет среди первых
+		// двадцати» — это не ответ. Страница у сайта своя, поэтому берём её
+		// побольше, а потолок оставляем на случай категории-гиганта.
 		const want = articleKey(article)
 		const wantBrand = brandKey(b.name || brandName)
-		const where = r.categoryName ?? "категория"
-		if (items.some(g => articleKey(g.article) === want && brandKey(g.manufacturer?.name ?? "") === wantBrand)) {
-			return { fits: true, reason: `есть в «${where}» под эту машину`, url }
+		let brandSeen = false
+		let scanned = 0
+		let total = 0
+		let complete = false
+		for (let page = 0; page < FIT_PAGES; page++) {
+			const r = await api.categoryGoods(category, { ...q, PageNumber: page, MaxResultCount: FIT_PAGE_SIZE })
+			const items = r.items ?? []
+			total = r.totalCount ?? items.length
+			if (r.categoryName) where = r.categoryName
+			scanned += items.length
+			for (const g of items) {
+				const brandHere = brandKey(g.manufacturer?.name ?? "") === wantBrand
+				if (brandHere) brandSeen = true
+				if (brandHere && articleKey(g.article) === want) {
+					return { fits: true, reason: `есть в «${where}» под эту машину`, url }
+				}
+			}
+			if (!items.length || scanned >= total) { complete = true; break }
 		}
-		// Не нашли, но и увидели не всё — это «не знаю», а не «не подходит».
-		if ((r.totalCount ?? 0) > items.length) {
-			return { fits: null, reason: `в «${where}» под эту машину ${r.totalCount} позиций, просмотрены первые ${items.length}`, url }
-		}
-		return { fits: false, reason: `нет в «${where}» под эту машину (${r.totalCount ?? items.length} позиций)`, url }
+		return { ...fitsVerdict({ found: false, brandSeen, total, scanned, complete, where, brand: b.name || brandName }), url }
 	},
 
 	/**
