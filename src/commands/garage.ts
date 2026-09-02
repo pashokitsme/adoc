@@ -7,7 +7,7 @@ import { one } from "../core/args.ts"
 import { addCar, checkVin, findByVin, loadGarage, mergeImported, removeCar, saveGarage, setMain } from "../core/garage.ts"
 import { invoke, passNoise } from "../core/invoke.ts"
 import { failureText } from "../core/partial.ts"
-import { garageCols, hint } from "../core/render.ts"
+import { garageCols, tips } from "../core/render.ts"
 import { parseCars } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -32,7 +32,10 @@ async function showGarage(): Promise<Output> {
 	const g = await loadGarage()
 	return {
 		json: g,
-		render: () => [renderCars(g.cars, garageCols(g)), hint(`${TOOL} garage add --brand <марка> --model <модель> · ${TOOL} garage import <provider>`)].join("\n"),
+		render: () => [
+			renderCars(g.cars, garageCols(g)),
+			...tips([`${TOOL} garage add --brand <марка> --model <модель> · ${TOOL} garage import <provider>`]),
+		].join("\n"),
 	}
 }
 

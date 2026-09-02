@@ -57,7 +57,10 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 		render: () => [
 			`${cyan(article)} · ${bold(brand.brand)} · ${dim(brand.providers.join(", "))} · ${dim("аналоги")}`,
 			"",
-			renderOffers(rows, [providerCol]),
+			// Пометку «аналог» рендер SDK ставит каждой такой строке, а здесь
+			// такие все: колонка повторяла бы заголовок таблицы сверху вниз.
+			// В --json пометка остаётся — там она несёт смысл.
+			renderOffers(rows.map(o => ({ ...o, analog: false })), [providerCol]),
 			...cut(rows.length, split.analogs.length),
 			...(rows.length ? ["", hint(`${TOOL} basket add <#> [--qty <n>] — положить строку в корзину её сайта`)] : []),
 		].join("\n"),
