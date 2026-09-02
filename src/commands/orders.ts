@@ -3,7 +3,7 @@
 // оттуда. Общего итога тут нет нарочно: складывать заказы разных сайтов в
 // одно число бессмысленно — у каждого свои сроки и своя история.
 
-import { articleKey, brandKey, dim, renderOrders, type OrderWithNow } from "../sdk/index.ts"
+import { articleKey, brandKey, dim, renderOrders, type Offer, type OrderItemNow, type OrderWithNow } from "../sdk/index.ts"
 import { limitOf } from "../core/args.ts"
 import { invoke } from "../core/invoke.ts"
 import { allFailed, fanout, report } from "../core/partial.ts"
@@ -13,22 +13,60 @@ import type { Ctx, Output } from "../core/ctx.ts"
 import type { Provider } from "../core/registry.ts"
 
 /**
+ * Выбранное предложение: то, что уедет в позицию заказа и в `--json`. Цена без
+ * продавца ничего не стоит — по полю «ОТКУДА» и видно, что 856 ₽ против
+ * уплаченных 2489 ₽ — это цена другой строки, а не подешевевшая деталь.
+ */
+type Chosen = { price: number; seller?: string; name?: string; ref?: Record<string, unknown> }
+
+/**
+ * Предложение, с которым и правда можно сравнивать уплаченное.
+ *
+ * Артикул и бренд сверяются заново, хотя сайт спрашивали именно о них: в выдачу
+ * приезжают и аналоги (`analog`), и соседние бренды того же номера, а их цена с
+ * уплаченной несравнима вовсе.
+ *
+ * Продавца позиции заказа предпочли бы всем прочим — та же строка у того же
+ * продавца и есть «сегодня то же самое». Но продавца в позиции нет: `OrderItem`
+ * контракта — это article, brand, name, qty, price, sum, url, и сайты его в
+ * истории заказа не отдают. Поэтому берётся самое дешёвое: это же число сайт
+ * показывает как «от» в своей выдаче.
+ */
+function chooseOffer(offers: Offer[], article: string, brand: string): Chosen | undefined {
+	const a = articleKey(article), b = brandKey(brand)
+	let best: Offer | undefined
+	for (const o of offers) {
+		if (articleKey(o.article) !== a || brandKey(o.brand) !== b) continue
+		if (!best || o.price < best.price) best = o
+	}
+	return best && { price: best.price, seller: best.seller, name: best.name, ref: best.ref }
+}
+
+/** Выбранное предложение в позицию — и на экран, и в `--json` одним и тем же. */
+function applyChosen(it: OrderItemNow, c: Chosen): void {
+	it.now = c.price
+	if (c.seller !== undefined) it.nowSeller = c.seller
+	if (c.name !== undefined) it.nowName = c.name
+	if (c.ref !== undefined) it.nowRef = c.ref
+}
+
+/**
  * Сегодняшняя цена позиций заказа. Запрос на позицию, поэтому строго по
  * очереди и с памятью: один и тот же артикул в разных заказах спрашивается
  * один раз. Сайт ограничил темп — останавливаемся совсем: остальные позиции
  * получили бы не цену, а капчу, и стоили бы того же ожидания.
  *
- * Цена берётся из первой строки `offers` — она же самая дешёвая: рендер и
- * склейка сортируют предложения по цене.
+ * Что именно выбрано из выдачи — дело `chooseOffer`; сюда возвращается уже одна
+ * строка, и она же целиком (цена, продавец, название, ref) уходит в позицию.
  */
 async function priceNow(ctx: Ctx, p: Provider, orders: OrderWithNow[]): Promise<void> {
-	const seen = new Map<string, number | undefined>()
+	const seen = new Map<string, Chosen | undefined>()
 	for (const o of orders) {
 		for (const it of o.items ?? []) {
 			const key = `${articleKey(it.article)}|${brandKey(it.brand)}`
 			if (seen.has(key)) {
 				const known = seen.get(key)
-				if (known !== undefined) it.now = known
+				if (known) applyChosen(it, known)
 				continue
 			}
 			const r = await invoke(p.bin, ["offers", it.article, "--brand", it.brand], { id: p.id })
@@ -38,9 +76,9 @@ async function priceNow(ctx: Ctx, p: Provider, orders: OrderWithNow[]): Promise<
 				ctx.warn(dim(`${p.id}: цены «сейчас» дальше не спрашиваем — ${r.error.message}`))
 				return
 			}
-			const first = parseOffers(r.json, p.id).items[0]
-			seen.set(key, first?.price)
-			if (first) it.now = first.price
+			const chosen = chooseOffer(parseOffers(r.json, p.id).items, it.article, it.brand)
+			seen.set(key, chosen)
+			if (chosen) applyChosen(it, chosen)
 		}
 	}
 }
@@ -72,7 +110,9 @@ export async function cmdOrders(ctx: Ctx): Promise<Output> {
 	}
 
 	return {
-		// В --json уходит то же, что на экран: `now` проставлен в тех же объектах.
+		// В --json уходит то же, что на экран: `now`, `nowSeller` и `nowRef`
+		// проставлены в тех же объектах — по ref видно, какую строку выдачи сайт
+		// имел в виду, и её же можно положить в корзину.
 		json: { providers: Object.fromEntries(f.got.map(g => [g.provider, g.value])), errors: f.failures },
 		code,
 		render: () => shown.length

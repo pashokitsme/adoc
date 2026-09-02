@@ -365,13 +365,22 @@ export function renderInfo(i: Info, offers: Offer[] = []): string {
  */
 /**
  * Позиция заказа с сегодняшней ценой. `now` считает обёртка (`orders --prices`),
- * сайт её не присылает: заказ — это история, а цена — сейчас.
+ * сайт её не присылает: заказ — это история, а цена — сейчас. Рядом с ценой
+ * едет и само предложение, из которого она взята: `nowSeller` — продавец
+ * (колонка «ОТКУДА»), `nowName` — его название (по нему видно, что под тем же
+ * номером продаётся комплект, а не деталь), `nowRef` — то, чем сайт эту строку
+ * называет, чтобы её можно было положить в корзину.
  */
-export type OrderItemNow = OrderItem & { now?: number }
+export type OrderItemNow = OrderItem & {
+	now?: number
+	nowSeller?: string
+	nowName?: string
+	nowRef?: Record<string, unknown>
+}
 export type OrderWithNow = Omit<Order, "items"> & { items?: OrderItemNow[] }
 
 const ORDER_HEAD = ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "КОЛ", "ЦЕНА", "СУММА"]
-const ORDER_HEAD_NOW = [...ORDER_HEAD, "СЕЙЧАС", "Δ"]
+const ORDER_HEAD_NOW = [...ORDER_HEAD, "СЕЙЧАС", "Δ", "ОТКУДА"]
 
 /** Разница с уплаченным: дешевле — зелёное, дороже — красное. */
 const delta = (paid: number, now: number): string => {
@@ -379,6 +388,55 @@ const delta = (paid: number, now: number): string => {
 	if (!d) return dim("—")
 	const text = `${d > 0 ? "+" : "−"}${money(Math.abs(d))}`
 	return d > 0 ? red(text) : green(text)
+}
+
+/**
+ * Слова названия, по которым его вообще можно сравнивать. Короткие отброшены
+ * нарочно: «для», «шт», «мм» стоят в половине названий, и совпадение по ним не
+ * значит ничего — а вот «болт», «колодки», «фильтр» товар называют.
+ */
+const nameWords = (s: string): string[] =>
+	s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 4)
+
+/**
+ * Признак другой фасовки прямо в названии: комплект, набор, «4 шт», «pcs».
+ * Сайт продаёт под тем же номером и одну деталь, и коробку из четырёх, и цена
+ * коробки с уплаченной за штуку несравнима.
+ */
+const KIT_RE = /компл|к[-\s]?кт|набор|pcs|\d+\s*шт/iu
+
+/**
+ * Похоже ли выбранное предложение на другой товар. Названия сайты пишут вольно
+ * («Болт» против «Болт М8 компл. 10 шт»), поэтому сравниваются не строки
+ * целиком, а слова: совпало хоть одно значимое — считаем, что это та же деталь.
+ * Ради этого не нужна ни зависимость, ни расстояние Левенштейна: комплект
+ * выдаёт себя словом, а чужой товар — тем, что общих слов нет вовсе.
+ *
+ * Тот же маркер в самой позиции заказа проверку обезвреживает: если человек и
+ * покупал комплект, то комплект в предложении — это то же самое.
+ */
+function otherKind(positionName: string, offerName: string | undefined): boolean {
+	if (!offerName) return false
+	if (KIT_RE.test(offerName) && !KIT_RE.test(positionName)) return true
+	const mine = new Set(nameWords(positionName))
+	const theirs = nameWords(offerName)
+	// Сравнивать нечем — молчим: «?» на пустом названии сказал бы о сайте, а не
+	// о товаре.
+	if (!mine.size || !theirs.length) return false
+	return !theirs.some(w => mine.has(w))
+}
+
+/**
+ * Три колонки цены «сейчас»: сама цена, разница с уплаченной и продавец, у
+ * которого эта цена взята. Продавец режется так же, как в таблице предложений.
+ */
+function nowCells(it: OrderItemNow): string[] {
+	if (it.now === undefined) return [dim("—"), dim("—"), dim("—")]
+	const where = (it.nowSeller ?? "").slice(0, 26) || dim("—")
+	// Другой товар под тем же номером: цена приглушена, а вместо Δ — «?».
+	// Вычесть её из уплаченной значит показать разницу между разными вещами.
+	if (otherKind(it.name, it.nowName)) return [dim(money(it.now)), dim("?"), where]
+	return [money(it.now), delta(it.price, it.now), where]
 }
 
 /** Вид кросс-ссылки словом: коды контракта человеку ничего не говорят. */
@@ -421,14 +479,14 @@ export function renderOrders(items: OrderWithNow[]): string {
 	// Позиции всех заказов считаются на ширины разом: у каждого заказа своя
 	// таблица, но колонки в них общие — иначе соседние блоки стоят уступом и
 	// глазу не за что зацепиться, сравнивая цену в разных заказах.
-	// Колонки «сейчас» и «Δ» появляются только тогда, когда цену и правда
-	// спрашивали: пустые колонки в каждом заказе — шум, а не сведения.
+	// Колонки «сейчас», «Δ» и «откуда» появляются только тогда, когда цену и
+	// правда спрашивали: пустые колонки в каждом заказе — шум, а не сведения.
 	const withNow = items.some(o => (o.items ?? []).some(it => it.now !== undefined))
 	const rowsOf = (o: OrderWithNow): string[][] => (o.items ?? []).map((it, i) => [
 		`  ${cellLink(it.url, String(i + 1))}`, cellLink(it.url, cyan(it.article)), bold(it.brand),
 		cellLink(it.url, it.name.slice(0, 40)),
 		`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
-		...(withNow ? [it.now === undefined ? dim("—") : money(it.now), it.now === undefined ? dim("—") : delta(it.price, it.now)] : []),
+		...(withNow ? nowCells(it) : []),
 	])
 	const perOrder = items.map(rowsOf)
 	const headCells = withNow ? ORDER_HEAD_NOW : ORDER_HEAD
