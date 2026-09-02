@@ -4,6 +4,7 @@
 // корзина, избранное, заказы и профиль отдают 401 с пустым телом, поэтому
 // ошибку приходится опознавать по статусу, а не по JSON.
 
+import { browserHeaders } from "../../sdk/index.ts"
 import { currentToken } from "./auth.ts"
 // только типы: цикл api ↔ map существует лишь на уровне типов и стирается при сборке
 import type { Originals, RawBasket } from "./map.ts"
@@ -24,6 +25,9 @@ function localBase(v: string | undefined): string | undefined {
 	}
 }
 export const BASE = localBase(process.env.ADOC_AUTODOC_BASE) ?? "https://web.autodoc.ru"
+
+/** Страница сайта: API живёт на соседнем поддомене, отсюда и Referer. */
+export const SITE = "https://www.autodoc.ru"
 
 /**
  * Потолок ожидания сети. Без него зависший ответ держал бы процесс до
@@ -67,7 +71,8 @@ async function call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, 
 		if (v !== undefined && v !== "") url.searchParams.set(k, String(v))
 	}
 
-	const headers: Record<string, string> = { accept: "application/json" }
+	// Заголовки браузера — первыми: свои значения ниже их перебивают.
+	const headers: Record<string, string> = { ...browserHeaders(SITE, "same-site"), accept: "application/json" }
 	if (opts.body !== undefined) headers["content-type"] = "application/json"
 	if (opts.auth) {
 		const token = await currentToken()

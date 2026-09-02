@@ -69,6 +69,13 @@ describe("заголовки исходящего запроса", () => {
 		expect(h.Accept).toBe("application/json")
 	})
 
+	test("к ним добавлены заголовки браузера: без них сайт отдаёт капчу", () => {
+		const h = api.requestHeaders()
+		expect(h["User-Agent"]).toContain("Chrome/")
+		expect(h.Referer).toBe(`${api.SITE}/`)
+		expect(h["Sec-Fetch-Mode"]).toBe("cors")
+	})
+
 	test("Content-Type появляется только вместе с телом", () => {
 		expect(api.requestHeaders()["Content-Type"]).toBeUndefined()
 		expect(api.requestHeaders({ body: {} })["Content-Type"]).toBe("application/json")

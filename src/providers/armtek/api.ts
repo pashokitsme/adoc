@@ -5,9 +5,11 @@
 // конвертом {data, arr_messages, execution_time}: текст ошибки для человека
 // лежит в arr_messages[] с type === "E", а код — в HTTP-статусе.
 
-import { HttpError, ProviderError, fetchJson } from "../../sdk/index.ts"
+import { HttpError, ProviderError, browserHeaders, fetchJson } from "../../sdk/index.ts"
 
 export const BASE = "https://armtek.ru/rest/ru/"
+/** Страница, с которой запрос как бы уходит: тот же хост, что и у REST. */
+export const SITE = "https://armtek.ru"
 
 /** Сбытовая организация: 4000 — Россия, 2000 — Беларусь, 8000 — Казахстан. */
 export const DEFAULT_VKORG = "4000"
@@ -60,6 +62,7 @@ export function setTransport(t: Transport | null): void {
 /** Заголовки исходящего запроса — отдельно от call(), чтобы их можно было проверить. */
 export function requestHeaders(opts: CallOpts = {}): Record<string, string> {
 	return {
+		...browserHeaders(SITE),
 		...FRONT_HEADERS,
 		Accept: "application/json",
 		"X-CA-VKORG": opts.vkorg ?? DEFAULT_VKORG,

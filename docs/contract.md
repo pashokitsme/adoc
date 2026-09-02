@@ -633,6 +633,9 @@ SDK). Публичная поверхность SDK — `src/sdk/index.ts`:
   корзины, своя команда и её ответ (`{json, render?}`);
 - `ProviderError`, `ErrorMapper` — ошибки контракта;
 - `HttpError`, `fetchJson` — fetch с таймаутом (пользоваться необязательно);
+- `browserHeaders(origin[, fetchSite])` — заголовки «как из вкладки браузера»
+  (`User-Agent`, `Accept-Language`, `Origin`, `Referer`, `Sec-Fetch-*`): сайт за
+  защитой отвечает голому запросу капчей охотнее, чем такому же из браузера;
 - `articleKey`, `brandKey` — нормализация для склейки;
 - `accountStore`, `configDir`, `CONFIG_DIR_ENV`, `TOOL` — файл аккаунта;
 - `render` — таблицы и цвета для вывода человеку (`renderProducts`,

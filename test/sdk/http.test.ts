@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { HttpError, fetchJson } from "../../src/sdk/http.ts"
+import { HttpError, browserHeaders, fetchJson } from "../../src/sdk/http.ts"
 import { ProviderError } from "../../src/sdk/errors.ts"
 
 let server: ReturnType<typeof Bun.serve>
@@ -54,5 +54,20 @@ describe("fetchJson", () => {
 		caller.abort()
 		const e = await fetchJson(`${base}/slow`, { signal: caller.signal }).catch(x => x)
 		expect(e).toBeInstanceOf(Error)
+	})
+})
+
+describe("browserHeaders", () => {
+	test("запрос выглядит как из вкладки: UA, язык, Origin и Referer", () => {
+		const h = browserHeaders("https://armtek.ru")
+		expect(h["User-Agent"]).toContain("Chrome/")
+		expect(h["Accept-Language"]).toContain("ru-RU")
+		expect(h.Origin).toBe("https://armtek.ru")
+		expect(h.Referer).toBe("https://armtek.ru/")
+		expect(h["Sec-Fetch-Site"]).toBe("same-origin")
+	})
+
+	test("API на соседнем поддомене — same-site", () => {
+		expect(browserHeaders("https://www.autodoc.ru", "same-site")["Sec-Fetch-Site"]).toBe("same-site")
 	})
 })
