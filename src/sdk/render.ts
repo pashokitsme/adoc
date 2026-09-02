@@ -1,7 +1,7 @@
 // render.ts — вывод в терминал. Цвета гаснут вне TTY и при NO_COLOR,
 // чтобы `adoc ... | grep` не ловил escape-последовательности.
 
-import type { Basket, BrandHit, Car, Display, Offer, Product, Reviews } from "./contract.ts"
+import type { Basket, BasketItem, BrandHit, Car, Display, Offer, Product, Reviews } from "./contract.ts"
 
 // Решение принимается на каждый вызов, а не один раз при импорте: модуль
 // грузится раньше, чем становится известно, куда пойдёт вывод, и запомненное
@@ -86,32 +86,43 @@ export function fields(rows: [string, string][], indent = "  "): string {
 
 export const isoDate = (s: string | undefined): string | undefined => s?.slice(0, 10)
 
-const ratingCell = (r: { average: number; count: number } | undefined) =>
+/**
+ * Дополнительная колонка вызывающего: встаёт слева от таблицы. Так агрегатор
+ * добавляет «ПРОВАЙДЕР», «ГДЕ» и «ID» к тем же самым таблицам, вместо того
+ * чтобы писать пятую почти дословную копию рендера.
+ */
+export type Col<T> = { head: string; cell: (item: T) => string }
+
+const heads = <T>(cols: Col<T>[], own: string[]): string[] => [...cols.map(c => c.head), ...own]
+const cells = <T>(cols: Col<T>[], item: T, own: string[]): string[] => [...cols.map(c => c.cell(item)), ...own]
+
+export const ratingCell = (r: { average: number; count: number } | undefined) =>
 	r && r.count ? `${r.average.toFixed(1)}★ (${r.count})` : dim("—")
 
-const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim("нет"))
+export const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim("нет"))
 
-export function renderProducts(items: Product[]): string {
+export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "ничего не найдено"
-	return table(items.map(p => [
+	return table(items.map(p => cells(cols, p, [
 		cyan(p.article), bold(p.brand), p.name.slice(0, 50),
 		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
-	]), ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"])
+	])), heads(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
 }
 
-export function renderBrands(items: BrandHit[]): string {
+export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "не найдено"
-	return table(items.map(b => [bold(b.brand), cyan(b.article), b.name ?? "", ratingCell(b.rating)]),
-		["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"])
+	return table(items.map(b => cells(cols, b, [bold(b.brand), cyan(b.article), b.name ?? "", ratingCell(b.rating)])),
+		heads(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
 }
 
-export function renderOffers(items: Offer[]): string {
+/** `from` — номер первой строки: у блока аналогов нумерация продолжает основную. */
+export function renderOffers<T extends Offer>(items: T[], cols: Col<T>[] = [], from = 1): string {
 	if (!items.length) return "предложений нет"
-	return table(items.map((o, i) => [
-		String(i + 1), bold(o.brand), (o.name ?? "").slice(0, 40), money(o.price), qtyCell(o.quantity),
+	return table(items.map((o, i) => cells(cols, o, [
+		String(from + i), bold(o.brand), (o.name ?? "").slice(0, 40), money(o.price), qtyCell(o.quantity),
 		o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
 		o.seller ?? dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "",
-	]), ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""])
+	])), heads(cols, ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
 }
 
 export function renderReviews(r: Reviews): string {
@@ -133,26 +144,45 @@ export function renderReviews(r: Reviews): string {
 	return out.join("\n")
 }
 
-export function renderBasket(b: Basket): string {
+/** Сумма как её считает сайт; если он её не считает — складываем сами. */
+export const basketTotal = (b: Basket): number =>
+	b.total ?? b.items.reduce((s, it) => s + (it.sum ?? it.price * it.quantity), 0)
+
+export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
 	if (!b.items.length) return "корзина пуста"
-	const rows = b.items.map((it, i) => [
+	const rows = b.items.map((it, i) => cells(cols, it, [
 		`${i + 1}`, dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 36),
 		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
 		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
-	])
-	const total = b.total ?? b.items.reduce((s, it) => s + (it.sum ?? it.price * it.quantity), 0)
-	return table(rows, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"]) +
-		`\n${dim("итого")}  ${bold(money(total))}`
+	]))
+	return table(rows, heads(cols, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"])) +
+		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}`
 }
 
-export function renderCars(cars: Car[]): string {
+/**
+ * Машина настолько, насколько её рисует таблица: `Car` из контракта и
+ * `GarageCar` из локального гаража отличаются идентификаторами, а не тем,
+ * что видит человек.
+ */
+export type CarLike = {
+	brand: string
+	model: string
+	modification?: string
+	year?: number
+	engine?: string
+	vin?: string
+	odometer?: number
+}
+
+export function renderCars<T extends CarLike>(cars: T[], cols: Col<T>[] = []): string {
 	if (!cars.length) return "гараж пуст"
-	return table(cars.map(c => [
+	return table(cars.map(c => cells(cols, c, [
 		bold([c.brand, c.model].filter(Boolean).join(" ")), c.modification ?? c.engine ?? dim("—"),
 		c.year ? String(c.year) : dim("—"), c.vin ?? dim("—"),
 		c.odometer ? `${c.odometer.toLocaleString("ru-RU")} км` : dim("—"),
-	]), ["АВТОМОБИЛЬ", "МОДИФИКАЦИЯ", "ГОД", "VIN", "ПРОБЕГ"])
+	])), heads(cols, ["АВТОМОБИЛЬ", "МОДИФИКАЦИЯ", "ГОД", "VIN", "ПРОБЕГ"]))
 }
+
 
 export function renderDisplay(d: Display | null | undefined): string {
 	if (!d) return dim("не авторизован")

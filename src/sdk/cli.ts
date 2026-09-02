@@ -145,3 +145,36 @@ export async function readSecret(prompt: string): Promise<string> {
 		process.stdin.on("data", onData)
 	})
 }
+
+/** Обязательный позиционный аргумент. */
+export function need(v: string | undefined, what: string): string {
+	if (!v) throw new ProviderError("bad_args", `нужен ${what}`)
+	return v
+}
+
+/**
+ * `--ref <json>` — непрозрачный объект сайта: пришёл в `offers`, уходит обратно
+ * в `basket add`. Ни SDK, ни обёртка внутрь не смотрят.
+ */
+export function parseRef(v: string | true | undefined): Record<string, unknown> {
+	if (typeof v !== "string" || !v) throw new ProviderError("bad_args", "нужен --ref <json> из выдачи offers")
+	try {
+		const o = JSON.parse(v) as unknown
+		if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error()
+		return o as Record<string, unknown>
+	} catch {
+		throw new ProviderError("bad_args", "--ref должен быть JSON-объектом")
+	}
+}
+
+/**
+ * Целое ≥ 0: `--qty`, `--year`, `--odometer`. `undefined` — флага нет; ноль
+ * законен (пробег), поэтому не `positiveInt`.
+ */
+export function intFlag(name: string, v: string | true | undefined): number | undefined {
+	if (v === undefined) return undefined
+	if (v === true || v === "") throw new ProviderError("bad_args", `--${name}: нужно значение`)
+	const n = Number(v)
+	if (!Number.isInteger(n) || n < 0) throw new ProviderError("bad_args", `--${name}: нужно целое число не меньше нуля, а не «${v}»`)
+	return n
+}

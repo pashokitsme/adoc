@@ -68,3 +68,26 @@ describe("renderReviews", () => {
 		expect(out).toContain("хороший товар")
 	})
 })
+
+describe("дополнительные колонки", () => {
+	test("встают слева и в шапке, и в строке", () => {
+		const out = renderOffers(
+			[{ article: "N1", brand: "VAG", price: 407, currency: "RUB" as const, provider: "beta" }],
+			[{ head: "ПРОВАЙДЕР", cell: o => o.provider }],
+		)
+		const lines = out.split("\n")
+		expect(lines[0]!.startsWith("ПРОВАЙДЕР")).toBe(true)
+		expect(lines[1]!.startsWith("beta")).toBe(true)
+		expect(lines[1]).toContain("407 ₽")
+	})
+
+	test("from сдвигает нумерацию строк", () => {
+		const out = renderOffers([{ article: "N1", brand: "VAG", price: 1, currency: "RUB" as const }], [], 5)
+		expect(out.split("\n")[1]!.startsWith("5")).toBe(true)
+	})
+
+	test("без колонок вывод прежний", () => {
+		const one = { article: "N1", brand: "VAG", price: 1, currency: "RUB" as const }
+		expect(renderOffers([one])).toBe(renderOffers([one], []))
+	})
+})
