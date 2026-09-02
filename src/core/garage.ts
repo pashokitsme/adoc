@@ -25,14 +25,22 @@ export type GarageCar = {
 	refs?: Record<string, Record<string, unknown>>
 }
 
-export type Garage = { mainId?: number; cars: GarageCar[] }
+export type Garage = {
+	mainId?: number
+	/** Следующий свободный id. В старых файлах его нет — см. nextId(). */
+	nextId?: number
+	cars: GarageCar[]
+}
 
 export const loadGarage = async (): Promise<Garage> => (await readJson<Garage>(GARAGE_FILE)) ?? { cars: [] }
 export const saveGarage = (g: Garage): Promise<void> => writeJson(GARAGE_FILE, g, GARAGE_MODE)
 
-// Максимум, а не длина списка: после удаления машины длина повторилась бы, и
-// два разных автомобиля получили бы один id.
-const nextId = (g: Garage): number => g.cars.reduce((m, c) => Math.max(m, c.id), 0) + 1
+// Счётчик в файле, а не максимум по списку: после удаления двух последних
+// машин максимум откатился бы назад, и новая машина получила бы номер уже
+// удалённой — а он остался и в истории команд, и в заметках владельца. В
+// файле, где счётчика ещё нет, он один раз считается по максимуму и дальше
+// живёт вместе с гаражом.
+const nextId = (g: Garage): number => g.nextId ?? g.cars.reduce((m, c) => Math.max(m, c.id), 0) + 1
 
 /** Чужой id — не «нет такой машины», а «вот какие есть»: список короткий. */
 function noSuchCar(g: Garage, id: number): ProviderError {
@@ -44,14 +52,16 @@ export function addCar(g: Garage, car: Omit<GarageCar, "id">): { garage: Garage;
 	const added: GarageCar = { id: nextId(g), ...car }
 	// Первая машина сама становится основной: гараж из одной машины без
 	// основной — лишний вопрос к пользователю.
-	return { garage: { mainId: g.mainId ?? added.id, cars: [...g.cars, added] }, car: added }
+	return { garage: { mainId: g.mainId ?? added.id, nextId: added.id + 1, cars: [...g.cars, added] }, car: added }
 }
 
 export function removeCar(g: Garage, id: number): Garage {
 	if (!g.cars.some(c => c.id === id)) throw noSuchCar(g, id)
 	const cars = g.cars.filter(c => c.id !== id)
 	const mainId = g.mainId === id ? cars[0]?.id : g.mainId
-	return { ...(mainId === undefined ? {} : { mainId }), cars }
+	// Счётчик переживает удаление — в нём весь смысл: номер удалённой машины
+	// больше никому не достанется.
+	return { ...(mainId === undefined ? {} : { mainId }), nextId: nextId(g), cars }
 }
 
 export function setMain(g: Garage, id: number): Garage {
@@ -83,9 +93,11 @@ const roughKey = (c: { brand: string; model: string; year?: number }): string =>
 
 /**
  * Слияние импорта. VIN — единственный настоящий идентификатор автомобиля,
- * поэтому сначала он; марка, модель и год берутся только когда VIN не знает
- * ни та, ни другая сторона. Свои поля не затираются: пользователь мог
- * поправить их руками, а сайт мог их и не знать.
+ * поэтому сначала он. Не нашёлся — смотрим на свою машину без VIN с той же
+ * маркой, моделью и годом: это она и есть, просто VIN в неё не вписали, и
+ * импорт его дополняет. Второй строкой тот же автомобиль не заводится.
+ * Свои поля при этом не затираются: пользователь мог поправить их руками, а
+ * сайт мог их и не знать.
  */
 export function mergeImported(g: Garage, provider: string, cars: Car[]): { garage: Garage; added: number; updated: number } {
 	let out = g
@@ -93,7 +105,11 @@ export function mergeImported(g: Garage, provider: string, cars: Car[]): { garag
 	let updated = 0
 	for (const car of cars) {
 		const vin = vinKey(car.vin)
-		const hit = out.cars.find(c => (vin ? vinKey(c.vin) === vin : !vinKey(c.vin) && roughKey(c) === roughKey(car)))
+		// Своих безвинных с тем же ключом может оказаться две — тогда VIN
+		// достаётся первой: марка, модель и год их не различают, и угадывать
+		// за владельца, какая из них какая, обёртке нечем.
+		const rough = out.cars.find(c => !vinKey(c.vin) && roughKey(c) === roughKey(car))
+		const hit = vin ? out.cars.find(c => vinKey(c.vin) === vin) ?? rough : rough
 		if (!hit) {
 			out = addCar(out, {
 				brand: car.brand, model: car.model, modification: car.modification, year: car.year,

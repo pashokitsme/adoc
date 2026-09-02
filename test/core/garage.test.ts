@@ -11,9 +11,19 @@ describe("гараж", () => {
 		expect(garage.mainId).toBe(1)
 	})
 
-	test("id выдаётся за максимальным, а не по длине списка", () => {
+	test("id не переиспользуется: счётчик переживает удаление", () => {
+		let g: Garage = { cars: [] }
+		for (const c of [octavia, { brand: "VW", model: "GOLF" }, { brand: "AUDI", model: "A4" }]) g = addCar(g, c).garage
+		g = removeCar(g, 2)
+		g = removeCar(g, 3)
+		expect(addCar(g, { brand: "BMW", model: "X3" }).car.id).toBe(4)
+	})
+
+	test("в старом файле без счётчика он один раз считается по максимуму", () => {
 		const g: Garage = { mainId: 5, cars: [{ id: 5, brand: "A", model: "B" }] }
-		expect(addCar(g, octavia).car.id).toBe(6)
+		const { garage, car } = addCar(g, octavia)
+		expect(car.id).toBe(6)
+		expect(garage.nextId).toBe(7)
 	})
 
 	test("удаление основной передаёт звезду первой оставшейся", () => {
@@ -24,9 +34,9 @@ describe("гараж", () => {
 		expect(after.mainId).toBe(2)
 	})
 
-	test("удаление последней оставляет пустой гараж без основной", () => {
+	test("удаление последней оставляет пустой гараж без основной, но со счётчиком", () => {
 		const g = addCar({ cars: [] }, octavia).garage
-		expect(removeCar(g, 1)).toEqual({ cars: [] })
+		expect(removeCar(g, 1)).toEqual({ nextId: 2, cars: [] })
 	})
 
 	test("main и rm по несуществующему id — bad_args", () => {
@@ -105,6 +115,29 @@ describe("mergeImported", () => {
 		const r = mergeImported(g, "alpha", [{ brand: "SKODA", model: "OCTAVIA III", year: 2017, ref }])
 		expect(r.added).toBe(1)
 		expect(r.garage.cars.map(c => c.id)).toEqual([1, 2])
+	})
+
+	test("своя машина без VIN получает VIN с сайта, а не двойника", () => {
+		const g = addCar({ cars: [] }, { brand: "SKODA", model: "OCTAVIA III", year: 2017, odometer: 120000 }).garage
+		const r = mergeImported(g, "alpha", [{ ...octavia, ref }])
+		expect(r.added).toBe(0)
+		expect(r.updated).toBe(1)
+		expect(r.garage.cars).toHaveLength(1)
+		const c = r.garage.cars[0]!
+		expect(c.vin).toBe("TMBAG7NE0H0000001")
+		expect(c.odometer).toBe(120000)
+	})
+
+	test("две свои безвинные машины одной марки: VIN получает первая", () => {
+		let g = addCar({ cars: [] }, { brand: "SKODA", model: "OCTAVIA III", year: 2017 }).garage
+		g = addCar(g, { brand: "SKODA", model: "OCTAVIA III", year: 2017 }).garage
+		const r = mergeImported(g, "alpha", [{ ...octavia, ref }])
+		// Марка, модель и год не различают эти две строки, и угадывать нечего:
+		// VIN достаётся первой, вторая остаётся как была — руками её поправит
+		// владелец, он один знает, какая из них какая.
+		expect(r.garage.cars.map(c => c.vin)).toEqual(["TMBAG7NE0H0000001", undefined])
+		expect(r.added).toBe(0)
+		expect(r.updated).toBe(1)
 	})
 
 	test("ссылки разных сайтов лежат рядом", () => {
