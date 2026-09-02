@@ -5,6 +5,7 @@
 //   FAIL=<код>     любая контрактная команда падает этим кодом
 //   FAIL_OFFERS=<код>  падает только offers, а brands отвечает как обычно
 //   EMPTY_OFFERS=1 offers отвечает пустым списком, а brands — как обычно
+//   EMPTY_SEARCH=1 search отвечает пустым списком, не ошибкой
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
 //   FAIL_INFO / FAIL_ANALOGS / FAIL_ORDERS=<код>  падает только эта команда
 //   NOREVIEWS=1    в describe нет capability reviews (метод при этом есть)
@@ -102,7 +103,7 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			// говорит об этом вслух и ищет без машины.
 			if (car && knob(id, "NOCAR")) ctx.warn(`${id}: поиск по машине не поддерживается`)
 			const carId = car && !knob(id, "NOCAR") ? String(car.carId ?? car.linkingTargetId ?? "?") : undefined
-			if (text !== "болт") return { items: [] }
+			if (text !== "болт" || knob(id, "EMPTY_SEARCH")) return { items: [] }
 			return {
 				items: [
 					{ article: data.article, brand: data.brand, name: "Болт", price: data.price, quantity: 3, rating: { average: 4.5, count: 10 }, url: page(data.article) },

@@ -40,6 +40,7 @@ afterEach(async () => {
 	delete process.env.FAKE_ALPHA_FAIL
 	delete process.env.FAKE_BETA_FAIL
 	delete process.env.FAKE_ALPHA_NOCAR
+	delete process.env.FAKE_BETA_EMPTY_SEARCH
 	if (color === undefined) delete process.env.NO_COLOR
 	else process.env.NO_COLOR = color
 	await rm(dir, { recursive: true, force: true })
@@ -133,6 +134,19 @@ describe("adoc search", () => {
 		const r = await run(["search", "болт"])
 		expect(r.stderr).toContain("без машины ищут: beta")
 		expect(r.stdout).toContain("машина: SKODA OCTAVIA III 2017")
+	})
+
+	test("сайт ответил пустым списком — назван в stderr, но не в errors", async () => {
+		process.env.FAKE_BETA_EMPTY_SEARCH = "1"
+		const r = await run(["search", "болт"])
+		expect(r.stderr).toContain("ничего не нашли: beta")
+		expect((JSON.parse((await run(["search", "болт", "--json"])).stdout) as SearchJson).errors).toEqual([])
+	})
+
+	test("не нашлось ни у кого — про пустые сайты молчим", async () => {
+		const r = await run(["search", "такого нет"])
+		expect(r.stderr).not.toContain("ничего не нашли")
+		expect(r.stdout).toContain("ничего не найдено")
 	})
 
 	test("--no-car выключает подбор", async () => {

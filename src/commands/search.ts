@@ -88,6 +88,12 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 	// Сначала то, что есть у большего числа сайтов: такой товар легче купить.
 	const merged = mergeProducts(f.got.map(g => ({ provider: g.provider, items: g.value })))
 	const items = merged.slice(0, limit)
+	// Сайт ответил, но ничего не нашёл — это не отказ и в errors ему не место.
+	// Промолчать всё же нельзя: в колонке ГДЕ его просто нет, и человек решает,
+	// что сайт не спрашивали. Под пустой выдачей строка не нужна — там и так
+	// написано, что не нашлось ничего.
+	const silent = f.got.filter(g => !g.value.length).map(g => g.provider)
+	if (silent.length && merged.length) ctx.warn(dim(`ничего не нашли: ${silent.join(", ")}`))
 	const code = report(f, [], ctx.warn)
 
 	return {
