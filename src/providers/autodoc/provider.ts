@@ -15,7 +15,9 @@ function display(t: Tokens): Display {
 	const c = auth.decodeClaims(t.access_token)
 	return {
 		name: c?.unique_name || c?.login || c?.preferred_username || "аккаунт без имени",
-		email: c?.displayEmail || c?.email,
+		// Сайт маскирует displayEmail и phone_number сам; сырой email лежит в claim `email`.
+		// Телефон без звёздочек autodoc не отдаёт ни в токене, ни в профиле — показываем как есть.
+		email: c?.email || c?.displayEmail,
 		phone: c?.phone_number,
 	}
 }
