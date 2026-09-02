@@ -6,6 +6,14 @@ import { articleKey, brandKey } from "../sdk/index.ts"
 import type { BrandHit, Offer, Product, Rating } from "../sdk/index.ts"
 
 export type Per<T> = { provider: string; items: T[] }
+
+/**
+ * Сколько строк у самих сайтов. Считается, только когда итог назвали все, кто
+ * ответил: сумма «43 у одного и молчание второго» — это не итог, а половина
+ * его, и подписать её числом было бы враньём.
+ */
+export const siteTotal = (parts: { total?: number }[]): number | undefined =>
+	(parts.length && parts.every(p => p.total !== undefined) ? parts.reduce((s, p) => s + p.total!, 0) : undefined)
 export type OfferRow = Offer & { provider: string }
 
 export type MergedBrand = {

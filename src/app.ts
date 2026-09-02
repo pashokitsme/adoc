@@ -22,7 +22,7 @@ import { VALUE_FLAGS, helpText } from "./core/help.ts"
 import type { MergedBrand } from "./core/merge.ts"
 import { blame, failureLine } from "./core/partial.ts"
 import { discover, load, select, type Loaded } from "./core/registry.ts"
-import { extraLinks, hint, numCol, whereCol } from "./core/render.ts"
+import { extraLinks, hint, whereCol } from "./core/render.ts"
 
 type Handler = (ctx: Ctx) => Promise<Output>
 
@@ -124,7 +124,7 @@ export async function run(argv: string[]): Promise<RunResult> {
 		// колонкой «где», а не одна строка красным.
 		const table = e instanceof Ambiguous
 			? `${[
-				renderBrands(e.brands, [numCol(e.brands), whereCol<MergedBrand>()]),
+				renderBrands(e.brands, [whereCol<MergedBrand>()]),
 				...extraLinks(e.brands),
 				"",
 				hint(`повтори с брендом: ${TOOL} ${ran} <артикул> <бренд> или --brand <бренд>`),

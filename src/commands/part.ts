@@ -8,7 +8,7 @@ import { limitOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
-import { splitOffers } from "../core/merge.ts"
+import { siteTotal, splitOffers } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
 import { cut, hint, providerCol } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
@@ -52,11 +52,15 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 		ctx.warn,
 	)
 
-	const split = splitOffers(article, f.got.map(g => ({ provider: g.provider, items: g.value })))
+	const split = splitOffers(article, f.got.map(g => ({ provider: g.provider, items: g.value.items })))
 	const limit = limitOf(ctx.flags)
 	const exact = split.offers.slice(0, limit)
 	const extra = analogs ? split.analogs.slice(0, limit) : []
 
+	// Итог сайта считает весь его ответ разом. Без --analogs это ровно точные
+	// строки — тогда он и подписывается; с --analogs в том же числе сидят и
+	// аналоги, и приписать его одной из двух таблиц значило бы соврать обеим.
+	const site = analogs ? undefined : siteTotal(f.got.map(g => g.value))
 	const rows = [...exact, ...extra]
 	const code = report(f, failures, ctx.warn)
 	// Номера строк в таблице и в кэше — одни и те же, иначе `basket add 3`
@@ -79,7 +83,7 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 				"",
 				renderOffers(exact, [providerCol]),
 			]
-			out.push(...cut(exact.length, split.offers.length))
+			out.push(...cut(exact.length, split.offers.length, site))
 			if (analogs) {
 				out.push(heading("Аналоги"), extra.length ? renderOffers(extra, [providerCol], exact.length + 1) : dim("аналогов нет"))
 				out.push(...cut(extra.length, split.analogs.length))

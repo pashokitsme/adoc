@@ -131,7 +131,7 @@ for (const c of cases) {
 			expect(r.ok).toBe(true)
 			if (!r.ok) return
 			expect(r.warnings).toEqual([])
-			const items = parseOffers(r.json, c.id)
+			const { items } = parseOffers(r.json, c.id)
 			expect(items.length).toBeGreaterThan(0)
 			for (const o of items) {
 				expect(o.price).toBeGreaterThan(0)

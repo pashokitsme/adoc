@@ -51,11 +51,19 @@ export const whereCol = <T extends { providers: string[] }>(): Col<T> =>
 	({ head: "ГДЕ", cell: x => dim(x.providers.join(", ")) })
 
 /**
- * «показано X из Y» под таблицей: строка появляется, только когда --limit
- * что-то отрезал. Возвращается списком, чтобы вызывающий не проверял пустоту.
+ * «показано X из Y» под таблицей. Y — то, что обёртка склеила из ответов;
+ * `site` — сколько их у сайтов всего, если они это сказали. Числа разные:
+ * armtek отдаёт страницу из 43 аналогов, а всего их 575, и молчать про
+ * остальные значит соврать про размер выдачи. Строки нет, когда обрезать было
+ * нечего. Список, а не строка, — чтобы вызывающий не проверял пустоту.
  */
-export const cut = (shown: number, total: number): string[] =>
-	(total > shown ? [hint(`показано ${shown} из ${total} — --limit <n>`)] : [])
+export function cut(shown: number, total: number, site?: number): string[] {
+	const more = total > shown
+	const siteMore = site !== undefined && site > total
+	if (!more && !siteMore) return []
+	const head = `показано ${shown} из ${total}`
+	return [hint(siteMore ? `${head}, а всего у сайтов ${site} — --limit <n> и --page <n>` : `${head} — --limit <n>`)]
+}
 
 /** ★ — основная машина; «СВЯЗИ» — сайты, откуда машина импортирована. */
 export const garageCols = (g: Garage): Col<GarageCar>[] => [
@@ -71,33 +79,23 @@ export const garageCols = (g: Garage): Col<GarageCar>[] => [
 export type Linked = { url?: string; urls?: Record<string, string> }
 
 /**
- * Адреса, которых нет в таблице: колонка ССЫЛКА показывает один, а строка
- * `search` или «уточни бренд» может лежать на двух сайтах сразу. Номер слева —
- * тот же номер, что в колонке «#». Строк нет — блока нет.
+ * Адреса, которых нет в списке под таблицей. Рендер SDK печатает по одному
+ * адресу на строку — тот, что лежит в `url`, — а склеенная строка живёт сразу
+ * на нескольких сайтах. Здесь идут остальные, с именем сайта: без него
+ * непонятно, куда ведёт вторая ссылка. Номера и отступы — те же, что у
+ * urlList из SDK: два блока подряд не должны выглядеть по-разному.
  */
 export function extraLinks(items: Linked[], from = 1): string[] {
-	const rows: [n: string, who: string, url: string][] = []
+	const rows: string[][] = []
 	items.forEach((it, i) => {
 		for (const [who, url] of Object.entries(it.urls ?? {})) {
-			if (url && url !== it.url) rows.push([String(from + i), who, url])
+			if (url && url !== it.url) rows.push([String(from + i), dim(who), dim(url)])
 		}
 	})
-	if (!rows.length) return []
-	// Колонки выравниваются так же, как в самой таблице: разъехавшийся столбик
-	// адресов читается хуже, чем один лишний пробел.
-	const nw = Math.max(...rows.map(r => r[0].length))
-	const ww = Math.max(...rows.map(r => r[1].length))
-	return ["", dim("ещё ссылки"), ...rows.map(([n, who, url]) => `  ${dim(n.padStart(nw))}  ${dim(who.padEnd(ww))}  ${dim(url)}`)]
+	// Подпись обязательна: без неё второй список номеров под первым читается
+	// как продолжение той же нумерации, а это другие адреса других сайтов.
+	return rows.length ? ["", dim("ещё ссылки"), table(rows)] : []
 }
-
-/**
- * Колонка «#» там, где рендер SDK её не рисует (поиск, список брендов):
- * без номера строке нечего сопоставить в блоке «ещё ссылки». Номер берётся
- * позицией в самом списке, а не счётчиком вызовов: счётчик соврал бы,
- * посчитай таблица ячейку дважды.
- */
-export const numCol = <T>(items: T[], from = 1): Col<T> =>
-	({ head: "#", cell: x => String(items.indexOf(x) + from) })
 
 /**
  * Заголовок блока сайта: имя и о чём блок. Цвет внутри жирного не ставится —

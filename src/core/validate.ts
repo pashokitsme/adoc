@@ -91,8 +91,14 @@ const parseBrandHit = (v: unknown, who: string): BrandHit => {
 export const parseBrands = (v: unknown, who: string): BrandHit[] =>
 	arr(obj(v, who, "ответ brands").items, who, "items").map(x => parseBrandHit(x, who))
 
-export function parseOffers(v: unknown, who: string): Offer[] {
-	return arr(obj(v, who, "ответ offers").items, who, "items").map(x => {
+/**
+ * Предложения вместе с итогом сайта: `total` — сколько их у него всего, а не
+ * сколько приехало страницей. Сайт его не назвал — обёртка считает по своей
+ * склейке, врать про «из 43», когда их 575, нельзя.
+ */
+export function parseOffers(v: unknown, who: string): { items: Offer[]; total?: number } {
+	const body = obj(v, who, "ответ offers")
+	const items: Offer[] = arr(body.items, who, "items").map(x => {
 		const o = obj(x, who, "предложение")
 		return {
 			article: str(o, "article", who), brand: str(o, "brand", who), price: num(o, "price", who),
@@ -109,10 +115,13 @@ export function parseOffers(v: unknown, who: string): Offer[] {
 			...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
 		}
 	})
+	return { items, ...(optNum(body, "total") !== undefined ? { total: optNum(body, "total") } : {}) }
 }
 
-export function parseProducts(v: unknown, who: string): Product[] {
-	return arr(obj(v, who, "ответ search").items, who, "items").map(x => {
+/** То же и для поиска: `total` — сколько сайт нашёл всего, а не сколько отдал. */
+export function parseProducts(v: unknown, who: string): { items: Product[]; total?: number } {
+	const body = obj(v, who, "ответ search")
+	const items = arr(body.items, who, "items").map(x => {
 		const o = obj(x, who, "товар")
 		return {
 			article: str(o, "article", who), brand: str(o, "brand", who), name: optStr(o, "name") ?? "",
@@ -124,6 +133,7 @@ export function parseProducts(v: unknown, who: string): Product[] {
 			...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
 		}
 	})
+	return { items, ...(optNum(body, "total") !== undefined ? { total: optNum(body, "total") } : {}) }
 }
 
 export function parseReviews(v: unknown, who: string): Reviews {
@@ -211,6 +221,7 @@ export function parseInfo(v: unknown, who: string): Info {
 			code,
 			...(optStr(s, "name") ? { name: optStr(s, "name") } : {}),
 			...(optNum(s, "quantity") !== undefined ? { quantity: optNum(s, "quantity") } : {}),
+			...(optNum(s, "deliveryDays") !== undefined ? { deliveryDays: optNum(s, "deliveryDays") } : {}),
 		}]
 	})
 	return {

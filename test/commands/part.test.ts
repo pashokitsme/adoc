@@ -260,22 +260,21 @@ describe("adoc part", () => {
 		expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
 	})
 
-	test("адрес карточки — колонкой ССЫЛКА, у каждой строки свой", async () => {
+	test("адреса карточек — списком под таблицей, номера те же", async () => {
 		const r = await run(["part", "n90954802"])
-		expect(r.stdout).toContain("ССЫЛКА")
-		expect(r.stdout).toContain("https://beta.example/p/N%20909%20548%2002")
-		expect(r.stdout).toContain("https://alpha.example/p/N90954802")
+		expect(r.stdout).toContain("1  https://beta.example/p/N%20909%20548%2002")
+		expect(r.stdout).toContain("2  https://alpha.example/p/N90954802")
 	})
 
-	test("у аналогов колонка ссылок своя", async () => {
+	test("у аналогов свой список, нумерация продолжает основную", async () => {
 		const r = await run(["part", "n90954802", "--analogs"])
-		expect(r.stdout).toContain("https://beta.example/p/AN-1")
+		expect(r.stdout).toContain("3  https://beta.example/p/AN-1")
 	})
 
-	test("в «уточни бренд» вторая ссылка строки уезжает в блок «ещё ссылки»", async () => {
+	test("в «уточни бренд» второй сайт строки уезжает в блок «ещё ссылки»", async () => {
 		const r = await run(["part", "MULTI-1"])
 		expect(r.code).toBe(2)
-		// В колонку помещается один адрес — второй сайт называет блок под таблицей.
+		// В списке SDK один адрес на строку — второй сайт называет блок под ним.
 		expect(r.stderr).toContain("https://alpha.example/p/MULTI-1")
 		expect(r.stderr).toContain("ещё ссылки")
 		expect(r.stderr).toContain("beta  https://beta.example/p/MULTI-1")

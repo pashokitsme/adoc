@@ -99,12 +99,18 @@ describe("adoc search", () => {
 		expect((await run(["search", "болт", "--json"])).code).toBe(1)
 	})
 
-	test("первый адрес — колонкой, второй сайт той же строки — блоком «ещё ссылки»", async () => {
+	test("первый адрес — в списке SDK, второй сайт строки — в «ещё ссылки»", async () => {
 		const r = await run(["search", "болт"])
-		expect(r.stdout).toContain("ССЫЛКА")
-		expect(r.stdout).toContain("https://alpha.example/p/N90954802")
+		expect(r.stdout).toContain("1  https://alpha.example/p/N90954802")
 		expect(r.stdout).toContain("ещё ссылки")
-		expect(r.stdout).toContain("beta  https://beta.example/p/N%20909%20548%2002")
+		expect(r.stdout).toContain("1  beta  https://beta.example/p/N%20909%20548%2002")
+	})
+
+	test("итог сайтов попадает в строку под таблицей, когда он больше склейки", async () => {
+		// Оба фейка говорят «нашлось 2», склейка сводит одинаковый товар в одну
+		// строку — значит, у сайтов строк больше, и об этом надо сказать.
+		const r = await run(["search", "болт"])
+		expect(r.stdout).toContain("а всего у сайтов 4")
 	})
 
 	test("адреса обоих сайтов лежат в JSON одной строкой выдачи", async () => {

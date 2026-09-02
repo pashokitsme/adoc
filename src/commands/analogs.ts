@@ -8,7 +8,7 @@ import { limitOf } from "../core/args.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
-import { splitOffers } from "../core/merge.ts"
+import { siteTotal, splitOffers } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
 import { cut, hint, providerCol } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
@@ -43,9 +43,12 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 	// Команда обещает только заменители, но сайт мог положить в ответ и точное
 	// совпадение: splitOffers отделяет их тем же правилом, что у `part`, и
 	// точные строки сюда не попадают.
-	const split = splitOffers(article, f.got.map(g => ({ provider: g.provider, items: g.value })))
+	const split = splitOffers(article, f.got.map(g => ({ provider: g.provider, items: g.value.items })))
 	const limit = limitOf(ctx.flags)
 	const rows = split.analogs.slice(0, limit)
+	// Итог сайтов относится ко всему их ответу, а он здесь весь из аналогов:
+	// armtek отдаёт страницу из 43, а всего их у него 575.
+	const site = siteTotal(f.got.map(g => g.value))
 	const code = report(f, failures, ctx.warn)
 	// Строки те же, что у `part`, и номера в них те же: `basket add <#>`
 	// работает и по этой таблице. Кэш пишет только удавшийся запуск.
@@ -61,7 +64,7 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 			// такие все: колонка повторяла бы заголовок таблицы сверху вниз.
 			// В --json пометка остаётся — там она несёт смысл.
 			renderOffers(rows.map(o => ({ ...o, analog: false })), [providerCol]),
-			...cut(rows.length, split.analogs.length),
+			...cut(rows.length, split.analogs.length, site),
 			...(rows.length ? ["", hint(`${TOOL} basket add <#> [--qty <n>] — положить строку в корзину её сайта`)] : []),
 		].join("\n"),
 	}

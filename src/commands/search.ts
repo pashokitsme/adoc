@@ -11,9 +11,9 @@ import { TOOL, dim, need, positiveInt, renderProducts } from "../sdk/index.ts"
 import { limitOf, pageOf } from "../core/args.ts"
 import { carById, carLabel, loadGarage, mainCar, type GarageCar } from "../core/garage.ts"
 import { invoke } from "../core/invoke.ts"
-import { mergeProducts, type MergedProduct } from "../core/merge.ts"
+import { mergeProducts, siteTotal, type MergedProduct } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { cut, extraLinks, numCol, tips, whereCol } from "../core/render.ts"
+import { cut, extraLinks, tips, whereCol } from "../core/render.ts"
 import { parseProducts } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -86,13 +86,15 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 		ctx.warn,
 	)
 	// Сначала то, что есть у большего числа сайтов: такой товар легче купить.
-	const merged = mergeProducts(f.got.map(g => ({ provider: g.provider, items: g.value })))
+	const merged = mergeProducts(f.got.map(g => ({ provider: g.provider, items: g.value.items })))
 	const items = merged.slice(0, limit)
+	// Сколько нашлось на самих сайтах — если это сказали все, кто ответил.
+	const site = siteTotal(f.got.map(g => g.value))
 	// Сайт ответил, но ничего не нашёл — это не отказ и в errors ему не место.
 	// Промолчать всё же нельзя: в колонке ГДЕ его просто нет, и человек решает,
 	// что сайт не спрашивали. Под пустой выдачей строка не нужна — там и так
 	// написано, что не нашлось ничего.
-	const silent = f.got.filter(g => !g.value.length).map(g => g.provider)
+	const silent = f.got.filter(g => !g.value.items.length).map(g => g.provider)
 	if (silent.length && merged.length) ctx.warn(dim(`ничего не нашли: ${silent.join(", ")}`))
 	const code = report(f, [], ctx.warn)
 
@@ -111,8 +113,11 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 			...(car && used.length
 				? [`${dim("машина:")} ${carLabel(car)} ${dim(`· ${used.map(id => (borrowed.includes(id) ? `${id} (через ${shared!.from})` : id)).join(", ")} · искать без машины: --no-car`)}`, ""]
 				: []),
-			renderProducts(items, [numCol(items), whereCol<MergedProduct>()]),
-			...cut(items.length, merged.length),
+			renderProducts(items, [whereCol<MergedProduct>()]),
+			// «Показано X из Y» — подпись к таблице и её списку адресов, поэтому
+			// стоит вплотную к ним; блок с адресами вторых сайтов идёт после,
+			// отделённый пустой строкой.
+			...cut(items.length, merged.length, site),
 			...extraLinks(items),
 			// Подсказки идут одним блоком: пустая строка между ними разносит
 			// короткий совет на пол-экрана. Подсказка про `part` под пустой
