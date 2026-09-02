@@ -111,7 +111,9 @@ export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = [
 
 export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "не найдено"
-	return table(items.map(b => cells(cols, b, [bold(b.brand), cyan(b.article), b.name ?? "", ratingCell(b.rating), link(b.url)])),
+	// имя режется, как и в остальных таблицах: у armtek в него уезжает
+	// применимость целиком, и колонка ссылок оказалась бы за краем экрана
+	return table(items.map(b => cells(cols, b, [bold(b.brand), cyan(b.article), (b.name ?? "").slice(0, 44), ratingCell(b.rating), link(b.url)])),
 		heads(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ", "ССЫЛКА"]))
 }
 
