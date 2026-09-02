@@ -121,8 +121,13 @@ export function parseOffers(v: unknown, who: string): { items: Offer[]; total?: 
 	return { items, ...(optNum(body, "total") !== undefined ? { total: optNum(body, "total") } : {}) }
 }
 
-/** То же и для поиска: `total` — сколько сайт нашёл всего, а не сколько отдал. */
-export function parseProducts(v: unknown, who: string): { items: Product[]; total?: number } {
+/**
+ * То же и для поиска: `total` — сколько сайт нашёл всего, а не сколько отдал.
+ * `extra` — непрозрачная добавка сайта; обёртка её не читает, но и не теряет:
+ * у autodoc там лежат id категорий, без которых `adoc autodoc goods <id>` не
+ * позвать, и выкинуть их значило бы оборвать дорогу к остальной выдаче.
+ */
+export function parseProducts(v: unknown, who: string): { items: Product[]; total?: number; extra?: Record<string, unknown> } {
 	const body = obj(v, who, "ответ search")
 	const items = arr(body.items, who, "items").map(x => {
 		const o = obj(x, who, "товар")
@@ -136,7 +141,11 @@ export function parseProducts(v: unknown, who: string): { items: Product[]; tota
 			...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
 		}
 	})
-	return { items, ...(optNum(body, "total") !== undefined ? { total: optNum(body, "total") } : {}) }
+	return {
+		items,
+		...(optNum(body, "total") !== undefined ? { total: optNum(body, "total") } : {}),
+		...(optObj(body, "extra") ? { extra: optObj(body, "extra") } : {}),
+	}
 }
 
 export function parseReviews(v: unknown, who: string): Reviews {

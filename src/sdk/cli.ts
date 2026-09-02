@@ -19,6 +19,7 @@ export function parseArgv(argv: string[], valueFlags: string[]): { args: string[
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i]!
 		if (a === "-h") { flags.help = true; continue }
+		if (a === "-q") { flags.quiet = true; continue }
 		if (!a.startsWith("--")) { args.push(a); continue }
 
 		const eq = a.indexOf("=")

@@ -50,6 +50,12 @@ describe("adoc analogs", () => {
 		expect(r.stdout).toContain("1  https://beta.example/p/AN-1")
 	})
 
+	test("под коротким списком сказано, что это замены по номеру", async () => {
+		const r = await run(["analogs", "n90954802"])
+		expect(r.stdout).toContain("это замены по номеру")
+		expect(r.stdout).toContain("adoc search")
+	})
+
 	test("--limit режет таблицу и говорит, сколько всего", async () => {
 		const r = await run(["analogs", "n90954802", "--limit", "1"])
 		expect(r.stdout).toContain("показано 1 из 2")

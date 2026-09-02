@@ -188,6 +188,17 @@ describe("adoc part", () => {
 		expect((await run(["part", "n90954802"])).stderr).toContain("adoc login alpha")
 	})
 
+	test("--quiet и -q гасят stderr так же, как переменная", async () => {
+		process.env.FAKE_ALPHA_FAIL = "auth"
+		for (const flag of ["--quiet", "-q"]) {
+			const r = await run(["part", "n90954802", flag])
+			expect(r.stderr).toBe("")
+			expect(r.code).toBe(0)
+			expect(r.stdout).toContain("beta")
+			delete process.env[NO_WARN_ENV]
+		}
+	})
+
 	test("одна и та же заметка сайта печатается раз за запуск, а не на каждый шаг", async () => {
 		process.env.FAKE_ALPHA_SAME_WARN = "1"
 		// `part` спрашивает alpha дважды — бренды и предложения, — и заметка

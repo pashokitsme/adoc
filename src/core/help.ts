@@ -51,6 +51,7 @@ type Flag = { name: string; alias?: string; value?: string; about?: string }
 
 const FLAGS: Flag[] = [
 	{ name: "json", about: "один JSON-объект в stdout вместо таблиц" },
+	{ name: "quiet", about: "без предупреждений в stderr; то же, что ADOC_NO_WARN=1 (кратко -q)" },
 	{ name: "only", alias: "providers", value: "a,b", about: "спрашивать только эти сайты" },
 	{ name: "skip", value: "a,b", about: "пропустить эти" },
 	{ name: "limit", value: "<n>", about: "сколько строк показывать, по умолчанию 30" },

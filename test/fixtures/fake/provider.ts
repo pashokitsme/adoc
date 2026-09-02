@@ -127,6 +127,8 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 					...(carId ? [{ article: `${id.toUpperCase()}-CAR`, brand: "OEM", name: `под машину ${carId}`, price: 50, url: page("car") }] : []),
 				],
 				total: more || (carId ? 3 : 2),
+				// непрозрачная добавка сайта: обёртка обязана донести её до --json
+				extra: { note: `${id} искал «${text}»`, ...(carId ? { car: carId } : {}) },
 			}
 		},
 

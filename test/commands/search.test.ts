@@ -115,6 +115,13 @@ describe("adoc search", () => {
 		expect(r.stdout.replace(/\x1b\]8;;[^\x07\x1b]*(\x1b\\|\x07)/g, "")).not.toContain("https://")
 	})
 
+	test("добавка сайта доезжает до --json под именем сайта", async () => {
+		const r = await run(["search", "болт", "--json"])
+		const j = JSON.parse(r.stdout) as { extra: Record<string, { note?: string }> }
+		// фейк кладёт в extra свою заметку — у autodoc там id категорий
+		expect(j.extra.alpha).toBeDefined()
+	})
+
 	test("всё показанное — без строки об остатке: остатка нет", async () => {
 		// Оба фейка отдали всё, что у них есть, склейка свела одинаковый товар
 		// в одну строку — прятать нечего, и подпись была бы шумом.

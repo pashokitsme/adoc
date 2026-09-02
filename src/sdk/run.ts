@@ -9,7 +9,7 @@ import { ProviderError, errorBody, exitCode, type ErrorMapper } from "./errors.t
 import { HttpError } from "./http.ts"
 import { emit, warnSink } from "./out.ts"
 import { bold, dim, fields, linksHint, red, renderBasket, renderBrands, renderCars, renderDisplay, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews } from "./render.ts"
-import { TOOL } from "./config.ts"
+import { NO_WARN_ENV, TOOL } from "./config.ts"
 
 const CONTRACT_VALUE_FLAGS = ["brand", "page", "limit", "qty", "ref", "car"]
 
@@ -70,6 +70,7 @@ function usage<A>(spec: ProviderSpec<A>): string {
 		...cmds.map(c => `  ${c.usage.padEnd(w)}  ${c.about}${c.auth ? dim("  (нужен вход)") : ""}`),
 		"",
 		dim("  --json — один JSON-объект в stdout вместо таблиц"),
+		dim("  --quiet, -q — без предупреждений в stderr; то же, что ADOC_NO_WARN=1"),
 	].join("\n")
 }
 
@@ -177,6 +178,8 @@ export async function runProvider<A>(spec: ProviderSpec<A>, argv: string[] = pro
 
 	try {
 		const { args, flags } = parseArgv(argv, [...CONTRACT_VALUE_FLAGS, ...(spec.valueFlags ?? [])])
+		// --quiet — тот же ADOC_NO_WARN на один вызов; ctx.warn читает её сам.
+		if (flags.quiet === true) process.env[NO_WARN_ENV] = "1"
 
 		if (!args.length || flags.help) {
 			// Машинному вызову таблица бесполезна: он ждёт JSON и получил бы

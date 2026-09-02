@@ -14,6 +14,9 @@ import { cut, hint, providerCol } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
+/** Короткий список — повод объяснить, что именно ищет команда. */
+const FEW = 5
+
 export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 	const article = need(ctx.args[0], "артикул")
 	// Бренд пишут и вторым словом, и флагом — как у part и reviews.
@@ -67,6 +70,11 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 			// здесь не про то — предложения-то есть, их показывает `part`.
 			rows.length ? renderOffers(rows.map(o => ({ ...o, analog: false })), [providerCol]) : "заменителей нет",
 			...cut(rows.length, split.analogs.length, site),
+			// Что это за список, видно не сразу: сайты зовут аналогами замены по
+			// номеру — тот же узел под другим номером. Деталь той же функции
+			// другого производителя ищется не по номеру, а по названию под
+			// машину, и под коротким списком об этом надо сказать вслух.
+			...(rows.length < FEW ? ["", hint(`это замены по номеру; аналоги по функции — ${TOOL} search "<название детали>" под машиной гаража`)] : []),
 			...(rows.length ? ["", hint(`${TOOL} basket add <#> [--qty <n>] — положить строку в корзину её сайта`)] : []),
 		].join("\n"),
 	}

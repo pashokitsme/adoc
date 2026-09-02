@@ -118,7 +118,11 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 			car: car && used.length
 				? { id: car.id, name: carLabel(car), providers: used, ...(borrowed.length && shared ? { borrowed, from: shared.from } : {}) }
 				: null,
-			items, total: merged.length, errors: f.failures,
+			items, total: merged.length,
+			// Добавка каждого сайта как есть: у autodoc в ней id категорий, по
+			// которым потом ходят `adoc autodoc goods <id>`.
+			extra: Object.fromEntries(f.got.filter(g => g.value.extra).map(g => [g.provider, g.value.extra])),
+			errors: f.failures,
 		},
 		code,
 		render: () => [

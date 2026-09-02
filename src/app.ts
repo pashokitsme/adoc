@@ -4,7 +4,7 @@
 // Единственное исключение — интерактивный `login`: его диалог идёт прямо в
 // терминал, иначе подсказка «Пароль >» появилась бы после ввода пароля.
 
-import { ProviderError, TOOL, errorBody, exitCode, linksHint, parseArgv, red, renderBrands, warnSink, yellow } from "./sdk/index.ts"
+import { NO_WARN_ENV, ProviderError, TOOL, errorBody, exitCode, linksHint, parseArgv, red, renderBrands, warnSink, yellow } from "./sdk/index.ts"
 import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
 import { cmdAnalogs } from "./commands/analogs.ts"
@@ -70,6 +70,9 @@ export async function run(argv: string[]): Promise<RunResult> {
 
 	try {
 		const { args, flags } = parseArgv(argv, VALUE_FLAGS)
+		// --quiet — тот же ADOC_NO_WARN, только на один вызов. Через окружение,
+		// а не через ctx: так он сам достаётся провайдерам, которых мы запустим.
+		if (flags.quiet === true) process.env[NO_WARN_ENV] = "1"
 		const [name, ...rest] = args
 		if (name && BRAND_COMMANDS.has(name)) ran = name
 		const ctx = makeCtx(rest, flags, json, warn)
