@@ -4,6 +4,7 @@
 
 import { TOOL, bold, dim, green, red, table, yellow } from "../sdk/index.ts"
 import type { Col, Display } from "../sdk/index.ts"
+import type { Garage, GarageCar } from "./garage.ts"
 import type { OfferRow } from "./merge.ts"
 import type { BadProvider, Provider } from "./registry.ts"
 
@@ -52,3 +53,9 @@ export const whereCol = <T extends { providers: string[] }>(): Col<T> =>
  */
 export const cut = (shown: number, total: number): string[] =>
 	(total > shown ? [hint(`показано ${shown} из ${total} — --limit <n>`)] : [])
+
+/** ★ — основная машина; «СВЯЗИ» — сайты, откуда машина импортирована. */
+export const garageCols = (g: Garage): Col<GarageCar>[] => [
+	{ head: "ID", cell: c => `${g.mainId === c.id ? yellow("★") : " "}${c.id}` },
+	{ head: "СВЯЗИ", cell: c => dim(Object.keys(c.refs ?? {}).join(", ")) },
+]

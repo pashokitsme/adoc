@@ -4,7 +4,7 @@
 // Файлы аккаунтов пишет провайдер — обёртке позволено только перечислить и
 // удалить, поэтому здесь нет ни одной записи в accounts/.
 
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { ProviderError, configDir } from "../sdk/index.ts"
 
@@ -23,12 +23,18 @@ export async function readJson<T>(name: string): Promise<T | null> {
 	}
 }
 
-export async function writeJson(name: string, data: unknown): Promise<void> {
+/**
+ * `mode` задаётся там, где в файле лежат личные данные (гараж хранит VIN):
+ * права ставятся до rename, чтобы файл ни мгновения не полежал читаемым для
+ * всех. chmod отдельной строкой, потому что режим у writeFile режется umask.
+ */
+export async function writeJson(name: string, data: unknown, mode?: number): Promise<void> {
 	const path = filePath(name)
 	await mkdir(dirname(path), { recursive: true })
 	const tmp = `${path}.${process.pid}.tmp`
 	try {
-		await writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`)
+		await writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, mode === undefined ? undefined : { mode })
+		if (mode !== undefined) await chmod(tmp, mode)
 		await rename(tmp, path)
 	} catch (e) {
 		await unlink(tmp).catch(() => {})

@@ -8,6 +8,7 @@ import { ProviderError, TOOL, errorBody, exitCode, parseArgv, red, renderBrands,
 import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
 import { cmdBasket } from "./commands/basket.ts"
+import { cmdGarage } from "./commands/garage.ts"
 import { cmdPart } from "./commands/part.ts"
 import { cmdProviders } from "./commands/providers.ts"
 import { cmdReviews } from "./commands/reviews.ts"
@@ -35,6 +36,7 @@ const COMMANDS: Record<string, Handler> = {
 	basket: cmdBasket,
 	search: cmdSearch,
 	reviews: cmdReviews,
+	garage: cmdGarage,
 	providers: cmdProviders,
 	accounts: cmdAccounts,
 	whoami: cmdAccounts,
