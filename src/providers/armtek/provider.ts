@@ -165,7 +165,7 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 	garageExport: async ctx => {
 		const token = await accessToken(ctx)
 		const clientId = ctx.account?.clientId ?? decodeClaims(token)?.data?.clientId
-		if (!clientId) throw new ProviderError("auth", "в токене нет clientId — войди заново")
+		if (!clientId) throw new ProviderError("auth", "в токене нет clientId — нужен повторный вход: adoc login armtek")
 		const g = await api.garageList(token, clientId, place(ctx).vkorg)
 		return { cars: toCars(g.transportList) }
 	},

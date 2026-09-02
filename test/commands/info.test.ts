@@ -68,7 +68,7 @@ describe("adoc info", () => {
 		expect(a.providers.alpha!.article).toBe(b.providers.alpha!.article)
 	})
 
-	test("брендов несколько — «уточни бренд» с кодом 2 и подсказкой про info", async () => {
+	test("брендов несколько — «нужен бренд» с кодом 2 и подсказкой про info", async () => {
 		const r = await run(["info", "MULTI-1"])
 		expect(r.code).toBe(2)
 		expect(r.stderr).toContain("adoc info <артикул> <бренд>")

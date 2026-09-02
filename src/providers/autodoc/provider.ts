@@ -76,7 +76,7 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 
 	login: async ctx => {
 		if (ctx.flags.paste === true) {
-			ctx.warn("Вход по сохранённой сессии браузера:\n  1. Войди на https://www.autodoc.ru\n  2. DevTools → Console → copy(JSON.stringify(sessionStorage))\n  3. Вставь буфер сюда")
+			ctx.warn("Вход по сохранённой сессии браузера:\n  1. Войти на https://www.autodoc.ru\n  2. DevTools → Console → copy(JSON.stringify(sessionStorage))\n  3. Вставить буфер сюда")
 			for (let attempt = 1; attempt <= 3; attempt++) {
 				// дамп sessionStorage — это токены целиком, эхо в терминал им не нужно
 				const parsed = auth.parsePasted(await ctx.secret("  > "))

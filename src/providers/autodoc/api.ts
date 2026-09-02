@@ -39,7 +39,7 @@ export const isTimeout = (e: unknown): boolean =>
 export class ApiError extends Error {
 	constructor(readonly status: number, readonly path: string, readonly body: string) {
 		super(status === 401
-			? `${path}: нужен вход — запусти \`adoc login\``
+			? `${path}: нужен вход — \`adoc login autodoc\``
 			: `${path}: HTTP ${status}${body ? ` — ${body.slice(0, 200)}` : ""}`)
 	}
 }

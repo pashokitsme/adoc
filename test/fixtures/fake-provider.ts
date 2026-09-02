@@ -24,7 +24,7 @@ export const fake = defineProvider<Account, ["reviews", "garage", "basket"]>({
 	whoami: async ctx => (ctx.account ? { name: ctx.account.user } : null),
 	search: async (_ctx, text) => ({ items: text === "болт" ? [{ article: "N1", brand: "VAG", name: "Болт", price: 407 }] : [], total: 1 }),
 	brands: async (_ctx, article) => {
-		if (article === "AMB") throw new ProviderError("ambiguous", "уточни бренд", [{ brand: "A", article }, { brand: "B", article }])
+		if (article === "AMB") throw new ProviderError("ambiguous", "нужен бренд", [{ brand: "A", article }, { brand: "B", article }])
 		return { items: article === "N1" ? [{ brand: "VAG", article, name: "Болт" }] : [] }
 	},
 	offers: async (ctx, article, brand, { analogs }) => {

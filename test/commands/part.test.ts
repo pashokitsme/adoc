@@ -66,7 +66,7 @@ describe("adoc part", () => {
 	test("бренд неоднозначен — exit 2 и таблица вариантов с колонкой «где»", async () => {
 		const r = await run(["part", "multi1"])
 		expect(r.code).toBe(2)
-		expect(r.stderr).toContain("уточни бренд")
+		expect(r.stderr).toContain("нужен бренд")
 		expect(r.stderr).toContain("ГДЕ")
 		expect(r.stderr).toContain("OTHER")
 	})
@@ -286,7 +286,7 @@ describe("adoc part", () => {
 		expect(r.stdout).toContain("3  https://beta.example/p/AN-1")
 	})
 
-	test("в «уточни бренд» второй сайт строки уезжает в блок «ещё ссылки»", async () => {
+	test("в «нужен бренд» второй сайт строки уезжает в блок «ещё ссылки»", async () => {
 		const r = await run(["part", "MULTI-1"])
 		expect(r.code).toBe(2)
 		// В списке SDK один адрес на строку — второй сайт называет блок под ним.

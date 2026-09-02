@@ -83,7 +83,7 @@ describe("adoc analogs", () => {
 		delete process.env.FAKE_BETA_EMPTY_ANALOGS
 	})
 
-	test("брендов несколько — «уточни бренд» с кодом 2", async () => {
+	test("брендов несколько — «нужен бренд» с кодом 2", async () => {
 		const r = await run(["analogs", "MULTI-1"])
 		expect(r.code).toBe(2)
 		expect(r.stderr).toContain("adoc analogs <артикул> <бренд>")

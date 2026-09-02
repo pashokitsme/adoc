@@ -42,7 +42,7 @@ export async function lineOf(n: number, now: number = Date.now()): Promise<LastP
 	// этому артикулу и предложений не было, и звать его снова незачем.
 	if (!lp || !Array.isArray(lp.lines)) throw new ProviderError("bad_args", `нет сохранённой выдачи — сначала ${TOOL} part <артикул>`)
 	const age = now - Date.parse(lp.at)
-	if (!Number.isFinite(age) || age > MAX_AGE_MS) throw new ProviderError("bad_args", `выдача старше суток — повтори ${TOOL} part ${lp.article} ${lp.brand}`)
+	if (!Number.isFinite(age) || age > MAX_AGE_MS) throw new ProviderError("bad_args", `выдача старше суток — повторить ${TOOL} part ${lp.article} ${lp.brand}`)
 	const line = lp.lines[n - 1]
 	if (!line) throw new ProviderError("bad_args", `в последней выдаче ${lp.lines.length} строк(и), а спросили ${n}`)
 	// Без ref сайт не примет позицию в корзину: честный отказ лучше, чем

@@ -22,7 +22,7 @@ export class Ambiguous extends ProviderError {
 			wanted ? "notfound" : "ambiguous",
 			wanted
 				? `бренд «${wanted}» не найден среди: ${listing(brands)}`
-				: "уточни бренд: артикул выпускает несколько производителей — выбери --brand",
+				: "нужен бренд: артикул выпускает несколько производителей — вторым словом или --brand <имя>",
 			brands.map(b => ({
 				brand: b.brand, article: b.article,
 				...(b.name ? { name: b.name } : {}), ...(b.rating ? { rating: b.rating } : {}),

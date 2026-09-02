@@ -57,6 +57,6 @@ export async function resolve(article: string, brand: string, token: string, pla
 	if (!rows.length) throw new ProviderError("notfound", `armtek: артикул ${article} не найден`)
 	const want = brandKey(brand)
 	const row = rows.find(a => brandKey(a.BRAND) === want)
-	if (!row) throw new ProviderError("ambiguous", `armtek: бренд «${brand}» не выпускает ${article}; выбери из списка`, toBrandHits(rows))
+	if (!row) throw new ProviderError("ambiguous", `armtek: бренд «${brand}» не выпускает ${article}; выбрать из списка`, toBrandHits(rows))
 	return { row, rows }
 }

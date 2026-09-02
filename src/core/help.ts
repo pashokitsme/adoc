@@ -119,7 +119,7 @@ export function helpText(loaded: Loaded | null): string {
 		// молча выкинуть его из справки значит спрятать причину, по которой он
 		// не отвечает.
 		for (const b of loaded.bad) out.push(`  ${b.id.padEnd(12)}${dim(`не отвечает по контракту: ${b.message}`)}`)
-		if (!loaded.ok.length && !loaded.bad.length) out.push(dim(`  ни одного не нашлось — положи исполняемый ${TOOL}-<id> в PATH`))
+		if (!loaded.ok.length && !loaded.bad.length) out.push(dim(`  ни одного не нашлось — положить исполняемый ${TOOL}-<id> в PATH`))
 		out.push("", dim(`  ${TOOL} <сайт> --help — команды самого сайта`))
 	}
 	return out.join("\n")

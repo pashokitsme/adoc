@@ -45,7 +45,7 @@ const nextId = (g: Garage): number => g.nextId ?? g.cars.reduce((m, c) => Math.m
 /** Чужой id — не «нет такой машины», а «вот какие есть»: список короткий. */
 function noSuchCar(g: Garage, id: number): ProviderError {
 	const have = g.cars.length ? `в гараже ${g.cars.map(c => c.id).join(", ")}` : "гараж пуст"
-	return new ProviderError("bad_args", `нет машины ${id} — ${have}, смотри adoc garage`)
+	return new ProviderError("bad_args", `нет машины ${id} — ${have}, список: adoc garage`)
 }
 
 /** Машина по локальному номеру: чужой номер — тот же список, что у rm и main. */

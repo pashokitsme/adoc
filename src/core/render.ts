@@ -34,7 +34,7 @@ function shortPath(path: string): string {
 const runsBy = (bin: string[]): string => bin.map(shortPath).join(" ")
 
 export function providersTable(ok: Provider[], bad: BadProvider[], accounts: Set<string>): string {
-	if (!ok.length && !bad.length) return `провайдеров не нашлось: положи исполняемый ${TOOL}-<id> в PATH`
+	if (!ok.length && !bad.length) return `провайдеров не нашлось: положить исполняемый ${TOOL}-<id> в PATH`
 	const rows = ok.map(p => [
 		bold(p.id), p.describe.name, String(p.describe.contract),
 		p.describe.capabilities.join(", ") || dim("—"),

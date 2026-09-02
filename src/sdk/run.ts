@@ -24,7 +24,7 @@ const withHttp = (own?: ErrorMapper): ErrorMapper => e =>
 // проверка сидит на ctx.prompt/ctx.secret — спросить без терминала нельзя,
 // а войти молча можно.
 const needTTY = (read: (q: string) => Promise<string>) => async (q: string): Promise<string> => {
-	if (!hasTTY()) throw new ProviderError("tty", "login нужен терминал: запусти без пайпа")
+	if (!hasTTY()) throw new ProviderError("tty", "login нужен терминал: запускать без пайпа")
 	return await read(q)
 }
 
@@ -182,7 +182,7 @@ export async function runProvider<A>(spec: ProviderSpec<A>, argv: string[] = pro
 			// Машинному вызову таблица бесполезна: он ждёт JSON и получил бы
 			// исключение разбора вместо внятной ошибки.
 			if (json) {
-				const why = flags.help ? "--help не отдаётся в JSON: список команд — describe --json" : "нужна команда: смотри --help или describe"
+				const why = flags.help ? "--help не отдаётся в JSON: список команд — describe --json" : "нужна команда: --help или describe"
 				return await emit(process.stdout, JSON.stringify(errorBody(new ProviderError("bad_args", why))) + "\n", 1)
 			}
 			return await emit(process.stdout, usage(spec) + "\n", 0)

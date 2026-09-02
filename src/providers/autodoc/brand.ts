@@ -20,7 +20,7 @@ export function pickBrand(hits: SearchHit[], given?: string): Brand {
 	}
 	if (hits.length === 1 && !given) return pick(hits[0]!)
 	throw new ProviderError("ambiguous",
-		given ? `бренда «${given}» у артикула нет — выбери из списка` : "артикул есть у нескольких производителей — уточни бренд",
+		given ? `бренда «${given}» у артикула нет — выбрать из списка` : "артикул есть у нескольких производителей — нужен бренд",
 		hits.map(h => ({ brand: h.manufacturer.name, article: h.article, name: h.goodsName, extra: { manufacturerId: h.manufacturer.id } })))
 }
 

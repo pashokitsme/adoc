@@ -50,7 +50,7 @@ const COMMANDS: Record<string, Handler> = {
  */
 export const COMMAND_NAMES = [...Object.keys(COMMANDS), "help"]
 
-/** Команды, которые начинаются с шага «артикул → бренд» и умеют спросить «уточни». */
+/** Команды, которые начинаются с шага «артикул → бренд» и умеют спросить бренд. */
 const BRAND_COMMANDS = new Set(["part", "reviews", "info", "analogs"])
 
 export type RunResult = { stdout: string; stderr: string; code: number }
@@ -60,7 +60,7 @@ export async function run(argv: string[]): Promise<RunResult> {
 	// сыром argv, иначе ошибка разбора уехала бы машинному вызову текстом.
 	const json = argv.some(a => a === "--json" || a === "--json=true")
 	let stderr = ""
-	// Имя команды нужно и обработчику ошибки: подсказка «повтори с брендом»
+	// Имя команды нужно и обработчику ошибки: подсказка «повторить с брендом»
 	// обязана звать ту команду, которую человек и набрал, а не всегда `part`.
 	// До разбора argv его ещё нет — тогда и подсказка достанется `part`.
 	let ran = "part"
@@ -82,7 +82,7 @@ export async function run(argv: string[]): Promise<RunResult> {
 			if (json) {
 				const why = wantsHelp
 					? `--help не отдаётся в JSON: список команд и сайтов — ${TOOL} providers --json`
-					: `нужна команда: смотри ${TOOL} --help или ${TOOL} providers --json`
+					: `нужна команда: ${TOOL} --help или ${TOOL} providers --json`
 				throw new ProviderError("bad_args", why)
 			}
 			// Реестр может упасть на битом PATH или на провайдере, который не

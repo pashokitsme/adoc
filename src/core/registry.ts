@@ -108,8 +108,8 @@ export function select(ok: Provider[], flags: Flags, cap?: Capability, opts: Sel
 	if (cap) out = out.filter(p => p.describe.capabilities.includes(cap))
 	if (!out.length && !opts.allowEmpty) {
 		throw new ProviderError("bad_args", cap
-			? `ни один выбранный провайдер не умеет ${cap} — смотри ${TOOL} providers`
-			: `не осталось ни одного провайдера — смотри ${TOOL} providers`)
+			? `ни один выбранный провайдер не умеет ${cap} — список: ${TOOL} providers`
+			: `не осталось ни одного провайдера — список: ${TOOL} providers`)
 	}
 	return out
 }

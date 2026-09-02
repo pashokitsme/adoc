@@ -472,7 +472,7 @@ export type OrdersResult = { items: Order[] }
 Успех — exit `0`. **Пустой результат — не ошибка**: `{"items":[]}` и exit `0`.
 Ошибка — только когда ответить нельзя.
 
-`ambiguous` — единственный код с exit `2`: это «уточни», а не «сломалось».
+`ambiguous` — единственный код с exit `2`: это «нужен бренд», а не «сломалось».
 Провайдер кладёт в `items` варианты брендов (у autodoc — с
 `extra.manufacturerId`), агрегатор показывает их человеку.
 
@@ -563,7 +563,7 @@ $ adoc-autodoc search "фильтр масляный" --car '{"carId":19119290,"
 
 ```console
 $ adoc-autodoc offers n90954802 --brand VAG --json
-{"error":{"code":"auth","message":"/api/price-service/price-list/originals: нужен вход — запусти `adoc login`"}}
+{"error":{"code":"auth","message":"/api/price-service/price-list/originals: нужен вход — `adoc login autodoc`"}}
 $ echo $?
 1
 ```
@@ -572,7 +572,7 @@ $ echo $?
 
 ```console
 $ adoc-autodoc offers 0986452041 --brand NOSUCH --json
-{"error":{"code":"ambiguous","message":"бренда «NOSUCH» у артикула нет — выбери из списка","items":[{"brand":"BOSCH","article":"0986452041","name":"Фильтр масляный","extra":{"manufacturerId":30}},{"brand":"TOYOTA","article":"0986452041","name":"","extra":{"manufacturerId":579}}]}}
+{"error":{"code":"ambiguous","message":"бренда «NOSUCH» у артикула нет — выбрать из списка","items":[{"brand":"BOSCH","article":"0986452041","name":"Фильтр масляный","extra":{"manufacturerId":30}},{"brand":"TOYOTA","article":"0986452041","name":"","extra":{"manufacturerId":579}}]}}
 $ echo $?
 2
 ```

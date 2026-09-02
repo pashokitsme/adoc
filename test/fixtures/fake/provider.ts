@@ -117,7 +117,7 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 
 		brands: async (_ctx, article) => {
 			await gate()
-			if (knob(id, "AMBIGUOUS")) throw new ProviderError("ambiguous", "уточни бренд", [{ brand: "AAA", article }, { brand: "BBB", article }])
+			if (knob(id, "AMBIGUOUS")) throw new ProviderError("ambiguous", "нужен бренд", [{ brand: "AAA", article }, { brand: "BBB", article }])
 			return { items: find(article).map(r => ({ brand: r.brand, article: r.article, name: r.name, rating: { average: 4.5, count: 10 }, url: page(r.article) })) }
 		},
 
