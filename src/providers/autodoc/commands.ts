@@ -10,7 +10,7 @@ import type { Tokens } from "./auth.ts"
 import { resolveBrand } from "./brand.ts"
 import { cardUrl, toOffers } from "./map.ts"
 
-const { bold, cyan, days, dim, fields, green, money, money: rub, renderOffers, table, urlList, yellow } = render
+const { bold, cyan, days, dim, fields, green, linkCell, linkHead, money, money: rub, renderOffers, table, yellow } = render
 
 type Cmd = ProviderCommand<Tokens>
 
@@ -52,8 +52,8 @@ const goods: Cmd = {
 			return head + "\n" + table(rows.map((g, i) => [
 				String(i + 1), cyan(g.article), bold(g.name.slice(0, 46)), dim(g.manufacturer?.name ?? ""), money(g.price),
 				g.quantity ? green(`${g.quantity} шт`) : dim("нет"), g.rating?.quantity ? `${g.rating.average.toFixed(1)}★` : dim("—"),
-			]), ["#", "АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ЦЕНА", "НАЛИЧИЕ", "РЕЙТИНГ"]) +
-				urlList(rows.map(g => ({ url: g.manufacturer ? cardUrl(g.manufacturer.id, g.article) : undefined }))) +
+				...linkCell({ url: g.manufacturer ? cardUrl(g.manufacturer.id, g.article) : undefined }),
+			]), ["#", "АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ЦЕНА", "НАЛИЧИЕ", "РЕЙТИНГ", ...linkHead()]) +
 				(r.sorting?.length ? dim(`\n--sort: ${r.sorting.map(s => `${s.id}=${s.name}`).join(", ")}`) : "")
 		} }
 	},
@@ -92,8 +92,8 @@ const favorites: Cmd = {
 			if (!items.length) return dim("в списке пусто")
 			return table(items.map((g, i) => [
 				String(i + 1), cyan(g.article ?? ""), bold(g.manufacturerName ?? ""), (g.goodsName ?? "").slice(0, 44), money(g.price),
-			]), ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА"]) +
-				urlList(items.map(g => ({ url: g.manufacturerId !== undefined && g.article ? cardUrl(g.manufacturerId, g.article) : undefined })))
+				...linkCell({ url: g.manufacturerId !== undefined && g.article ? cardUrl(g.manufacturerId, g.article) : undefined }),
+			]), ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", ...linkHead()])
 		} }
 	},
 }
@@ -130,9 +130,9 @@ const garage: Cmd = {
 					return [
 						String(i + 1), cyan(g.article), bold(g.name.slice(0, 40)), dim(g.manufacturer?.name ?? ""),
 						money(best?.price), days(best?.deliveryDays), dim(g.groupName ?? ""),
+						...linkCell({ url: g.manufacturer ? cardUrl(g.manufacturer.id, g.article) : undefined }),
 					]
-				}), ["#", "АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ОТ", "СРОК", "ГРУППА"]) +
-					urlList(goodsList.map(g => ({ url: g.manufacturer ? cardUrl(g.manufacturer.id, g.article) : undefined })))
+				}), ["#", "АРТИКУЛ", "НАЗВАНИЕ", "ПРОИЗВОДИТЕЛЬ", "ОТ", "СРОК", "ГРУППА", ...linkHead()])
 			} }
 		}
 		if (sub) throw new ProviderError("bad_args", `неизвестная подкоманда гаража: ${sub}`)

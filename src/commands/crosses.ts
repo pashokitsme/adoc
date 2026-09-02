@@ -9,7 +9,7 @@ import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { mergeCrosses, type MergedCross } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { cut, extraLinks, tips, whereCol } from "../core/render.ts"
+import { cut, tips, whereCol } from "../core/render.ts"
 import { parseCrosses } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -49,7 +49,6 @@ export async function cmdCrosses(ctx: Ctx): Promise<Output> {
 			"",
 			renderCrosses(items, [whereCol<MergedCross>()]),
 			...cut(items.length, merged.length),
-			...extraLinks(items),
 			...tips(items.length
 				? [`${TOOL} part <артикул> <бренд> — цены и сроки по найденному номеру`]
 				: []),

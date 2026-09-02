@@ -27,7 +27,10 @@ export const cyan = wrap("36")
 export type LinksMode = "osc8" | "list" | "off"
 
 /** Терминалы, про которые известно, что OSC 8 они понимают. */
-const OSC8_PROGRAMS = new Set(["iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper", "alacritty"])
+const OSC8_PROGRAMS = new Set([
+	"iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper", "alacritty",
+	"WarpTerminal", "Tabby", "rio",
+])
 
 /**
  * Терминал, чья поддержка OSC 8 известна наверняка. Общего признака у неё нет:
@@ -205,18 +208,17 @@ export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = [
 	if (!items.length) return "ничего не найдено"
 	return table(items.map((p, i) => cellsNum(cols, p, i + 1, [
 		cellLink(p.url, cyan(p.article)), bold(p.brand), cellLink(p.url, p.name.slice(0, 50)),
-		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
-	], p.url)), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
-		+ urlList(items)
+		money(p.price), qtyCell(p.quantity), ratingCell(p.rating), ...linkCell(p),
+	], p.url)), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ", ...linkHead()]))
 }
 
 export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "не найдено"
 	// имя режется: у armtek в него уезжает применимость целиком
 	return table(items.map((b, i) => cellsNum(cols, b, i + 1, [
-		cellLink(b.url, bold(b.brand)), cellLink(b.url, cyan(b.article)), (b.name ?? "").slice(0, 50), ratingCell(b.rating),
-	], b.url)), headsNum(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
-		+ urlList(items)
+		cellLink(b.url, bold(b.brand)), cellLink(b.url, cyan(b.article)), (b.name ?? "").slice(0, 50),
+		ratingCell(b.rating), ...linkCell(b),
+	], b.url)), headsNum(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ", ...linkHead()]))
 }
 
 /**
@@ -232,28 +234,29 @@ export const link = (url: string | undefined, text?: string): string => {
 }
 
 /**
- * Ссылки строк — списком под таблицей, а не колонкой в ней. Адреса у обоих
- * сайтов доходят до сотни символов, и колонка с ними растягивала строку до
- * двухсот: таблица переставала читаться совсем. Номер здесь тот же, что в
- * колонке «#», так что строку и её адрес видно рядом.
- *
- * Повторный адрес печатается один раз: у десятка предложений одной детали
- * карточка одна.
- *
- * Список — запасной путь: в режиме osc8 адрес уже вшит в номер и название той
- * же строки, и повторять его под таблицей значило бы напечатать всё дважды.
+ * Адреса строки. Склеенная строка живёт сразу на нескольких сайтах, и её
+ * адреса лежат в `urls`; у обычной он один, в `url`. Порядок сохраняем: первым
+ * идёт тот, что в `url`, — это сайт, который строку и показал.
  */
-export function urlList(items: { url?: string }[], from = 1): string {
-	if (linksMode() !== "list") return ""
-	const seen = new Set<string>()
-	const rows: string[][] = []
-	for (const [i, it] of items.entries()) {
-		if (!it.url || seen.has(it.url)) continue
-		seen.add(it.url)
-		rows.push([String(from + i), dim(it.url)])
-	}
-	return rows.length ? "\n" + table(rows) : ""
+const urlsOf = (x: { url?: string; urls?: Record<string, string> }): string[] => {
+	const all = [...(x.url ? [x.url] : []), ...Object.values(x.urls ?? {})]
+	return [...new Set(all)]
 }
+
+/**
+ * Шапка хвостовой колонки с адресом — только там, где адрес и правда печатают.
+ * В режиме osc8 он вшит в текст строки, и колонка была бы пустой; в off его нет.
+ */
+export const linkHead = (): string[] => (linksMode() === "list" ? ["ССЫЛКА"] : [])
+
+/**
+ * Сама колонка. Раньше адреса шли нумерованным списком под таблицей, и глазу
+ * приходилось сводить номер строки с номером в списке; в колонке адрес стоит
+ * рядом со своей строкой. Адрес не режется: обрезанный адрес не открыть, а
+ * колонка последняя — терминал перенесёт её сам.
+ */
+export const linkCell = (x: { url?: string; urls?: Record<string, string> }): string[] =>
+	(linksMode() === "list" ? [dim(urlsOf(x).join(" "))] : [])
 
 /**
  * `from` — номер первой строки: у блока аналогов нумерация продолжает основную.
@@ -269,8 +272,8 @@ export function renderOffers<T extends Offer>(items: T[], cols: Col<T>[] = [], f
 		bold(o.brand), cellLink(o.url, (o.name ?? "").slice(0, 32)), money(o.price), qtyCell(o.quantity),
 		o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
 		(o.seller ?? "").slice(0, 26) || dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "",
-	], o.url)), headsNum(cols, ["БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
-		+ urlList(items, from)
+		...linkCell(o),
+	], o.url)), headsNum(cols, ["БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", "", ...linkHead()]))
 }
 
 export function renderReviews(r: Reviews): string {
@@ -303,11 +306,10 @@ export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
 	const rows = b.items.map((it, i) => cellsNum(cols, it, i + 1, [
 		dim(it.id), cellLink(it.url, cyan(it.article)), bold(it.brand), cellLink(it.url, (it.name ?? "").slice(0, 36)),
 		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
-		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
+		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")), ...linkCell(it),
 	], it.url))
 	const page = link(b.url, "корзина")
-	return table(rows, headsNum(cols, ["ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"])) +
-		urlList(b.items) +
+	return table(rows, headsNum(cols, ["ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК", ...linkHead()])) +
 		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}${page ? `  ${page}` : ""}`
 }
 
@@ -454,9 +456,8 @@ export function renderCrosses<T extends CrossItem>(items: T[], cols: Col<T>[] = 
 	if (!items.length) return "кросс-ссылок нет"
 	return table(items.map((c, i) => cellsNum(cols, c, i + 1, [
 		cellLink(c.url, cyan(c.article)), bold(c.brand), dim(KIND_WORD[c.kind] ?? c.kind),
-		cellLink(c.url, (c.name ?? "").slice(0, 40)),
-	], c.url)), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "ЧТО ЭТО", "НАЗВАНИЕ"]))
-		+ urlList(items)
+		cellLink(c.url, (c.name ?? "").slice(0, 40)), ...linkCell(c),
+	], c.url)), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "ЧТО ЭТО", "НАЗВАНИЕ", ...linkHead()]))
 }
 
 /**
@@ -486,10 +487,10 @@ export function renderOrders(items: OrderWithNow[]): string {
 		`  ${cellLink(it.url, String(i + 1))}`, cellLink(it.url, cyan(it.article)), bold(it.brand),
 		cellLink(it.url, it.name.slice(0, 40)),
 		`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
-		...(withNow ? nowCells(it) : []),
+		...(withNow ? nowCells(it) : []), ...linkCell(it),
 	])
 	const perOrder = items.map(rowsOf)
-	const headCells = withNow ? ORDER_HEAD_NOW : ORDER_HEAD
+	const headCells = [...(withNow ? ORDER_HEAD_NOW : ORDER_HEAD), ...linkHead()]
 	const headRow = ["  " + (headCells[0] ?? ""), ...headCells.slice(1)]
 	const width = tableWidths([headRow, ...perOrder.flat()])
 	const head = dim(tableRow(headRow, width))
@@ -503,12 +504,7 @@ export function renderOrders(items: OrderWithNow[]): string {
 		const own = common ? "" : link(o.url, "заказ")
 		const lines = [cellLink(o.url ?? common, title) + (linksMode() === "list" && own ? `  ${own}` : "")]
 		const rows = perOrder[i] ?? []
-		if (rows.length) {
-			lines.push(head, ...rows.map(r => tableRow(r, width)))
-			// отступ тот же, что у номеров позиций: номер и адрес читаются парой
-			const list = urlList(o.items ?? []).replace(/^\n/, "")
-			if (list) lines.push(...list.split("\n").map(l => `  ${l}`))
-		}
+		if (rows.length) lines.push(head, ...rows.map(r => tableRow(r, width)))
 		return lines.join("\n")
 	})
 	// Пустая строка — только между заказами: внутри заказа шапка и его позиции

@@ -14,7 +14,7 @@ import { carLabel } from "../core/garage.ts"
 import { invoke } from "../core/invoke.ts"
 import { mergeProducts, siteTotal, type MergedProduct } from "../core/merge.ts"
 import { fanout, report } from "../core/partial.ts"
-import { cut, extraLinks, tips, whereCol } from "../core/render.ts"
+import { cut, tips, whereCol } from "../core/render.ts"
 import { parseProducts } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
@@ -114,7 +114,6 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 			// отделённый пустой строкой. Под пустой страницей она бы повторяла
 			// уже сказанное.
 			...(emptyPage ? [] : cut(items.length, merged.length, site)),
-			...extraLinks(items),
 			// Подсказки идут одним блоком: пустая строка между ними разносит
 			// короткий совет на пол-экрана. Подсказка про `part` под пустой
 			// выдачей — совет в никуда: там нет строки, по которой спрашивать.

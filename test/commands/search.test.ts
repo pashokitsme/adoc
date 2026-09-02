@@ -97,11 +97,11 @@ describe("adoc search", () => {
 		expect((await run(["search", "болт", "--json"])).code).toBe(1)
 	})
 
-	test("первый адрес — в списке SDK, второй сайт строки — в «ещё ссылки»", async () => {
+	test("оба адреса склеенной строки — в её же колонке, через пробел", async () => {
 		const r = await run(["search", "болт"])
-		expect(r.stdout).toContain("1  https://alpha.example/p/N90954802")
-		expect(r.stdout).toContain("ещё ссылки")
-		expect(r.stdout).toContain("1  beta  https://beta.example/p/N%20909%20548%2002")
+		const row = r.stdout.split("\n").find(l => l.includes("alpha, beta"))!
+		expect(row).toContain("https://alpha.example/p/N90954802 https://beta.example/p/N%20909%20548%2002")
+		expect(r.stdout).not.toContain("ещё ссылки")
 	})
 
 	test("в osc8 адреса сайтов вшиты в колонку ГДЕ, а «ещё ссылок» нет", async () => {

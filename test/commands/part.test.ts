@@ -393,10 +393,12 @@ describe("adoc part", () => {
 		expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
 	})
 
-	test("адреса карточек — списком под таблицей, номера те же", async () => {
+	test("адрес карточки — колонкой в самой строке", async () => {
 		const r = await run(["part", "n90954802"])
-		expect(r.stdout).toContain("1  https://beta.example/p/N%20909%20548%2002")
-		expect(r.stdout).toContain("2  https://alpha.example/p/N90954802")
+		const rows = r.stdout.split("\n")
+		expect(rows.find(l => l.startsWith("1  beta"))).toContain("https://beta.example/p/N%20909%20548%2002")
+		expect(rows.find(l => l.startsWith("2  alpha"))).toContain("https://alpha.example/p/N90954802")
+		expect(r.stdout).toContain("ССЫЛКА")
 	})
 
 	test("в osc8 адрес вшит в номер, название и имя сайта, списка нет", async () => {
@@ -417,17 +419,17 @@ describe("adoc part", () => {
 		expect((await run(["part", "n90954802"])).stdout).not.toContain(LINKS_HINT)
 	})
 
-	test("у аналогов свой список, нумерация продолжает основную", async () => {
+	test("у аналогов адрес в своей же строке", async () => {
 		const r = await run(["part", "n90954802", "--analogs"])
-		expect(r.stdout).toContain("3  https://beta.example/p/AN-1")
+		expect(r.stdout.split("\n").find(l => l.includes("AN-1"))).toContain("https://beta.example/p/AN-1")
 	})
 
-	test("в «нужен бренд» второй сайт строки уезжает в блок «ещё ссылки»", async () => {
+	test("в «нужен бренд» адреса обоих сайтов стоят в своей строке", async () => {
 		const r = await run(["part", "MULTI-1"])
 		expect(r.code).toBe(2)
-		// В списке SDK один адрес на строку — второй сайт называет блок под ним.
-		expect(r.stderr).toContain("https://alpha.example/p/MULTI-1")
-		expect(r.stderr).toContain("ещё ссылки")
-		expect(r.stderr).toContain("beta  https://beta.example/p/MULTI-1")
+		// Строка живёт на двух сайтах — оба адреса в её же колонке, через пробел.
+		const row = r.stderr.split("\n").find(l => l.includes("VAG"))!
+		expect(row).toContain("https://alpha.example/p/MULTI-1")
+		expect(row).toContain("https://beta.example/p/MULTI-1")
 	})
 })

@@ -679,9 +679,10 @@ SDK). Публичная поверхность SDK — `src/sdk/index.ts`:
 - `accountStore`, `configDir`, `CONFIG_DIR_ENV`, `TOOL` — файл аккаунта;
 - `render` — таблицы и цвета для вывода человеку (`renderProducts`,
   `renderOffers`, `renderInfo`, `renderReviews`, `renderBasket`, `renderCars`,
-  `renderOrders`, а из мелочей — `table`, `fields`, `link`, `urlList`, `money`,
+  `renderOrders`, а из мелочей — `table`, `fields`, `link`, `linkHead`/`linkCell`
+  (хвостовая колонка «ССЫЛКА» для своих таблиц провайдера), `money`,
   `days`); `linksMode` и `hyperlink` — режим ссылок (`ADOC_LINKS`:
-  `osc8` — адрес терминальной ссылкой в тексте, `list` — списком под таблицей,
+  `osc8` — адрес терминальной ссылкой в тексте, `list` — колонкой «ССЫЛКА»,
   `off` — без адресов) и сама терминальная ссылка OSC 8, если провайдер рисует
   свою таблицу сам; `linksHint(текст)` — строка «ссылки — Cmd+клик …» под
   готовый вывод, пустая, когда вшитых ссылок в нём нет (её печатает `runProvider`

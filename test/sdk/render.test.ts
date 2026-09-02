@@ -104,52 +104,45 @@ describe("дополнительные колонки", () => {
 	})
 })
 
-describe("ссылки под таблицей", () => {
-	test("адреса не уезжают в строку таблицы, а идут списком с её номерами", () => {
+describe("ссылка колонкой", () => {
+	test("адрес строки стоит в её же строке, последней колонкой", () => {
 		const out = renderProducts([
 			{ article: "N1", brand: "VAG", name: "Болт", url: "https://x/1" },
 			{ article: "N2", brand: "VAG", name: "Гайка" },
 			{ article: "N3", brand: "VAG", name: "Шайба", url: "https://x/3" },
 		])
 		const lines = out.split("\n")
-		// шапка и три строки таблицы адресов не содержат
-		for (const l of lines.slice(0, 4)) expect(l).not.toContain("https://")
-		expect(lines).toContain("1  https://x/1")
-		expect(lines).toContain("3  https://x/3")
-		// у строки без адреса номера в списке нет
-		expect(out).not.toContain("2  https://")
+		expect(lines[0]).toContain("ССЫЛКА")
+		expect(lines[1]).toContain("https://x/1")
+		// строке без адреса приписывать нечего
+		expect(lines[2]).not.toContain("https://")
+		expect(lines[3]).toContain("https://x/3")
+		// списка под таблицей больше нет: строк ровно шапка и три товара
+		expect(lines).toHaveLength(4)
 	})
 
-	test("строка таблицы остаётся короткой", () => {
+	test("адрес не режется: обрезанный не открыть", () => {
 		const long = "https://armtek.ru/product/filtr-maslyanyy-bosch-0-986-452-041-mazda-626-mitsubishi-galant-18-25i-91-55469"
-		const out = renderProducts([{ article: "0 986 452 041", brand: "BOSCH", name: "Фильтр масляный BOSCH 0 986 452 041 Mazda 626, Mitsubishi Galant 1.8-2.5i 91>", price: 592, url: long }])
-		const rows = out.split("\n").filter(l => !l.includes("https://"))
-		for (const l of rows) expect(l.length).toBeLessThanOrEqual(120)
+		const out = renderProducts([{ article: "0 986 452 041", brand: "BOSCH", name: "Фильтр масляный", price: 592, url: long }])
+		expect(out).toContain(long)
 	})
 
-	test("бренды нумеруются и отдают адреса списком", () => {
-		const out = renderBrands([{ brand: "VAG", article: "N1", url: "https://x/1" }])
-		expect(out.split("\n")[0]!.startsWith("#")).toBe(true)
-		expect(out).toContain("1  https://x/1")
+	test("склеенная строка отдаёт все свои адреса через пробел", () => {
+		const out = renderProducts([
+			{ article: "N1", brand: "VAG", name: "Болт", url: "https://a/1", urls: { alpha: "https://a/1", beta: "https://b/1" } },
+		])
+		expect(out).toContain("https://a/1 https://b/1")
+		// свой адрес не повторяется дважды
+		expect(out.split("https://a/1").length - 1).toBe(1)
 	})
 
-	test("повторный адрес у предложений печатается один раз", () => {
-		const o = (price: number, url: string) => ({ article: "N1", brand: "VAG", price, currency: "RUB" as const, url })
-		const out = renderOffers([o(1, "https://x/1"), o(2, "https://x/1"), o(3, "https://x/2")])
-		expect(out.split("https://x/1").length - 1).toBe(1)
-		expect(out).toContain("1  https://x/1")
-		expect(out).toContain("3  https://x/2")
-	})
-
-	test("нумерация списка следует за from", () => {
-		const out = renderOffers([{ article: "N1", brand: "VAG", price: 1, currency: "RUB" as const, url: "https://x/1" }], [], 5)
-		expect(out).toContain("5  https://x/1")
-	})
-
-	test("корзина: адреса позиций списком, адрес корзины у итога", () => {
-		const out = renderBasket({ items: [{ id: "1", article: "N1", brand: "VAG", price: 1, quantity: 1, url: "https://x/1" }], currency: "RUB", url: "https://x/cart" })
-		expect(out).toContain("1  https://x/1")
-		expect(out.split("\n").at(-1)).toContain("https://x/cart")
+	test("бренды, предложения и корзина — та же колонка", () => {
+		expect(renderBrands([{ brand: "VAG", article: "N1", url: "https://x/1" }])).toContain("https://x/1")
+		expect(renderOffers([{ article: "N1", brand: "VAG", price: 1, currency: "RUB", url: "https://x/o" }])).toContain("https://x/o")
+		const cart = renderBasket({ items: [{ id: "1", article: "N1", brand: "VAG", price: 1, quantity: 1, url: "https://x/1" }], currency: "RUB", url: "https://x/cart" })
+		expect(cart.split("\n")[1]).toContain("https://x/1")
+		// адрес самой корзины остаётся у итога
+		expect(cart.split("\n").at(-1)).toContain("https://x/cart")
 	})
 
 	test("страница отзывов — в первой строке", () => {
@@ -197,7 +190,7 @@ describe("renderInfo", () => {
 })
 
 describe("renderOrders", () => {
-	test("общий адрес — заголовком, позиции таблицей, их адреса списком", () => {
+	test("общий адрес — заголовком, позиции таблицей со своей колонкой адреса", () => {
 		const order = (id: string) => ({
 			id, date: "2026-09-01T11:18:18.31", status: "Закуплено", total: 912, currency: "RUB",
 			url: "https://x/orders",
@@ -212,10 +205,10 @@ describe("renderOrders", () => {
 		// шапка колонок — у каждого заказа своя, но ширины общие на весь список
 		expect(lines[2]).toContain("АРТИКУЛ")
 		expect(lines[3]).toContain("Болт")
-		expect(lines[4]).toBe("  1  https://x/1")
+		expect(lines[3]).toContain("https://x/1")
 		// между заказами ровно одна пустая строка, внутри заказа — ни одной
-		expect(lines[5]).toBe("")
-		expect(lines[6]).toContain("№ 2")
+		expect(lines[4]).toBe("")
+		expect(lines[5]).toContain("№ 2")
 		expect(lines.filter(l => l === "").length).toBe(1)
 	})
 
@@ -285,7 +278,7 @@ describe("linksMode", () => {
 	})
 
 	test("знакомый терминал в TTY — osc8", () => {
-		for (const p of ["iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper", "alacritty"]) {
+		for (const p of ["iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper", "alacritty", "WarpTerminal", "Tabby", "rio"]) {
 			expect(mode({ TERM_PROGRAM: p }, true)).toBe("osc8")
 		}
 		expect(mode({ TERM: "xterm-kitty" }, true)).toBe("osc8")
@@ -330,14 +323,16 @@ describe("ссылки в тексте (osc8)", () => {
 		expect(strip(out)).not.toContain("https://")
 	})
 
-	test("вёрстка та же, что со списком", () => {
+	test("те же строки, что в списке, только без колонки адреса", () => {
 		const items = [
 			{ article: "N1", brand: "VAG", name: "Болт", price: 407, url: "https://x/1" },
 			{ article: "N2", brand: "VAG", name: "Гайка" },
 		]
-		const list = renderProducts(items)
-		// список адресов — последние строки; таблица обязана совпасть посимвольно
-		expect(strip(osc8(() => renderProducts(items)))).toBe(list.split("\n").slice(0, 3).join("\n"))
+		// в osc8 колонки ССЫЛКА нет вовсе: адрес вшит в текст строки
+		const inline = strip(osc8(() => renderProducts(items)))
+		expect(inline).not.toContain("ССЫЛКА")
+		expect(inline.split("\n")).toHaveLength(3)
+		expect(renderProducts(items)).toContain("ССЫЛКА")
 	})
 
 	test("артикул кликается везде, где он есть колонкой", () => {
