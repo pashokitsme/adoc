@@ -345,8 +345,14 @@ export function toBrandHits(rows: RawArticle[]): BrandHit[] {
 export function categoryQueries(name: string): string[] {
 	const head = (name.split("·")[0] ?? name).trim()
 	const words = head.split(/\s+/).filter(Boolean)
-	const tries = [head, words.slice(0, 3).join(" "), words.slice(0, 2).join(" ")]
-	return [...new Set(tries.filter(q => q.length > 2))]
+	// Первое слово бывает служебным («Ремкомплект, опора стойки амортизатора»),
+	// поэтому пробуем и пару слов со второго: категория зовётся по существу.
+	const tries = [
+		head,
+		words.slice(0, 3).join(" "), words.slice(0, 2).join(" "),
+		words.slice(1, 3).join(" "),
+	]
+	return [...new Set(tries.map(q => q.replace(/[,;:]/g, " ").replace(/\s+/g, " ").trim()).filter(q => q.length > 2))]
 }
 /**
  * Предложения. Одна строка выдачи разворачивается в столько Offer, сколько у

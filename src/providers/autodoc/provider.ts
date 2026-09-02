@@ -177,10 +177,20 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		const q = carQuery(car)
 		if (!q) return { fits: null, reason: "в ref машины нет brandName/modelId/modificationId", url }
 		const info = await api.goodsInfo(article, b.id).catch(() => null)
-		if (!info?.categoryId) return { fits: null, reason: "у артикула нет категории — подбор по машине не проверить", url }
+		// Категория у карточки есть не всегда; тогда ищем её тем же путём, что
+		// и поиск, — подсказкой по названию детали.
+		let category = info?.categoryId
+		if (!category && info?.name) {
+			const s = await api.suggest(info.name).catch(() => null)
+			const cats = categoryIds(s?.items ?? [])
+			// bestCategory на пустом списке вернуть нечего — спрашиваем только
+			// когда подсказка и правда назвала хоть одну категорию.
+			if (cats.length) category = bestCategory(cats, info.name).id
+		}
+		if (!category) return { fits: null, reason: "категория детали не нашлась — подбор по машине не проверить", url }
 		// Одной страницы хватает почти всегда: категория под конкретную
 		// модификацию — это десятки строк, а не тысячи.
-		const r = await api.categoryGoods(info.categoryId, { ...q, MaxResultCount: 200 })
+		const r = await api.categoryGoods(category, { ...q, MaxResultCount: 200 })
 		const items = r.items ?? []
 		const want = articleKey(article)
 		const wantBrand = brandKey(b.name || brandName)
