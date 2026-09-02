@@ -49,6 +49,26 @@ describe("adoc-autodoc", () => {
 		expect(items.filter(o => !o.analog)).toHaveLength(2)
 		expect(items.filter(o => o.analog).map(o => o.article)).toContain("WHT 005 437")
 	})
+	// Команда `analogs` жила на price-service/price-list/analogs, а он отдаёт
+	// кросс-таблицу замен без строк прайса — выдача выходила пустой, хотя
+	// `offers --analogs` аналоги находил. Держим их на одном источнике.
+	test("analogs — ровно analog:true из offers --analogs, и не пусто", async () => {
+		await live()
+		const [an, off] = await Promise.all([
+			run(["analogs", "n90954802", "--brand", "VAG"]),
+			run(["offers", "n90954802", "--brand", "VAG", "--analogs"]),
+		])
+		expect(an.code).toBe(0)
+		const items = an.json.items as { article: string; analog?: boolean }[]
+		expect(items.length).toBeGreaterThan(0)
+		expect(items.every(o => o.analog)).toBe(true)
+		expect(an.json.total).toBe(items.length)
+
+		const fromOffers = (off.json.items as { article: string; analog?: boolean }[]).filter(o => o.analog)
+		expect(items.map(o => o.article).sort()).toEqual(fromOffers.map(o => o.article).sort())
+		// аналог из групп originals тоже должен быть здесь, а не только из ручки аналогов
+		expect(items.map(o => o.article)).toContain("2098-001-PCS2")
+	})
 	test("offers с неверным брендом — ambiguous", async () => {
 		await live()
 		expect((await run(["offers", "n90954802", "--brand", "BOSCH"])).code).toBe(2)
