@@ -208,10 +208,27 @@ describe("renderOrders", () => {
 		// адрес списка заказов один на всех — он в заголовке блока и не повторяется
 		expect(lines[0]).toBe("https://x/orders")
 		expect(out.split("https://x/orders").length - 1).toBe(1)
-		expect(lines[1]).toContain("№ 1")
-		expect(lines[1]).toContain("2026-09-01")
-		expect(lines[2]).toContain("Болт")
-		expect(lines[3]).toBe("  1  https://x/1")
+		expect(lines[1]).toContain("№ 1 · 2026-09-01 · Закуплено · 912 ₽")
+		// шапка колонок — у каждого заказа своя, но ширины общие на весь список
+		expect(lines[2]).toContain("АРТИКУЛ")
+		expect(lines[3]).toContain("Болт")
+		expect(lines[4]).toBe("  1  https://x/1")
+		// между заказами ровно одна пустая строка, внутри заказа — ни одной
+		expect(lines[5]).toBe("")
+		expect(lines[6]).toContain("№ 2")
+		expect(lines.filter(l => l === "").length).toBe(1)
+	})
+
+	test("колонки позиций общие на все заказы сайта", () => {
+		const out = renderOrders([
+			{ id: "1", date: "2026-09-01", status: "ок", total: 1, currency: "RUB",
+				items: [{ article: "N1", brand: "VAG", name: "Болт", qty: 1, price: 1 }] },
+			{ id: "2", date: "2026-09-01", status: "ок", total: 1, currency: "RUB",
+				items: [{ article: "N-длинный-артикул", brand: "VAG", name: "Гайка", qty: 1, price: 1 }] },
+		])
+		const rows = out.split("\n").filter(l => l.includes("Болт") || l.includes("Гайка"))
+		// одна и та же колонка «БРЕНД» в обоих заказах начинается на одном месте
+		expect(rows.map(l => l.indexOf("VAG"))).toEqual([rows[1]!.indexOf("VAG"), rows[1]!.indexOf("VAG")])
 	})
 
 	test("у каждого заказа свой адрес — он остаётся в шапке заказа", () => {

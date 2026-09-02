@@ -125,17 +125,29 @@ export function bar(counts: number[] | undefined, width = 18): string[] {
 const OSC8_RE = /\x1b\]8;;[^\x07\x1b]*(\x1b\\|\x07)/g
 const visible = (s: string) => s.replace(OSC8_RE, "").replace(/\x1b\[[0-9;]*m/g, "").length
 
+/**
+ * Ширины колонок по строкам. Вынесены наружу ради таблиц, которые печатаются
+ * не одним куском: позиции разных заказов идут своими блоками, а колонки у них
+ * обязаны быть общими — иначе соседние таблицы стоят уступом.
+ */
+export function tableWidths(rows: string[][]): number[] {
+	const cols = Math.max(0, ...rows.map(r => r.length))
+	const width: number[] = []
+	for (let c = 0; c < cols; c++) width[c] = Math.max(0, ...rows.map(r => visible(r[c] ?? "")))
+	return width
+}
+
+/** Одна строка таблицы по готовым ширинам. */
+export const tableRow = (cells: string[], width: number[]): string =>
+	cells.map((cell, c) => cell + " ".repeat(Math.max(0, (width[c] ?? 0) - visible(cell))))
+		.join("  ").trimEnd()
+
 export function table(rows: string[][], head?: string[]): string {
 	const all = head ? [head, ...rows] : rows
 	if (!all.length) return ""
-	const cols = Math.max(...all.map(r => r.length))
-	const width: number[] = []
-	for (let c = 0; c < cols; c++) width[c] = Math.max(...all.map(r => visible(r[c] ?? "")))
-	const line = (r: string[]) =>
-		r.map((cell, c) => cell + " ".repeat(Math.max(0, (width[c] ?? 0) - visible(cell))))
-			.join("  ").trimEnd()
-	const out = rows.map(line)
-	return head ? [dim(line(head)), ...out].join("\n") : out.join("\n")
+	const width = tableWidths(all)
+	const out = rows.map(r => tableRow(r, width))
+	return head ? [dim(tableRow(head, width)), ...out].join("\n") : out.join("\n")
 }
 
 /** Мягкий перенос по словам — для текста отзывов. */
@@ -342,27 +354,46 @@ export function renderInfo(i: Info): string {
  * под таблицей. Общий адрес (у сайта без страницы отдельного заказа он один на
  * весь список) уходит в заголовок блока и у строк не повторяется.
  */
+const ORDER_HEAD = ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "КОЛ", "ЦЕНА", "СУММА"]
+
 export function renderOrders(items: Order[]): string {
 	if (!items.length) return "заказов нет"
 	const urls = new Set(items.map(o => o.url).filter((v): v is string => !!v))
 	const common = urls.size === 1 && items.every(o => o.url) ? [...urls][0] : undefined
 
-	const out: string[] = []
-	if (common) out.push(link(common, "заказы"))
-	for (const o of items) {
+	// Позиции всех заказов считаются на ширины разом: у каждого заказа своя
+	// таблица, но колонки в них общие — иначе соседние блоки стоят уступом и
+	// глазу не за что зацепиться, сравнивая цену в разных заказах.
+	const rowsOf = (o: Order): string[][] => (o.items ?? []).map((it, i) => [
+		`  ${cellLink(it.url, String(i + 1))}`, cellLink(it.url, cyan(it.article)), bold(it.brand),
+		cellLink(it.url, it.name.slice(0, 40)),
+		`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
+	])
+	const perOrder = items.map(rowsOf)
+	const width = tableWidths([["  " + (ORDER_HEAD[0] ?? ""), ...ORDER_HEAD.slice(1)], ...perOrder.flat()])
+	const head = dim(tableRow(["  " + (ORDER_HEAD[0] ?? ""), ...ORDER_HEAD.slice(1)], width))
+
+	const blocks = items.map((o, i) => {
+		// Шапка заказа целиком — ссылка: у сайта без страницы отдельного заказа
+		// адрес один на весь список, и он же годится любой строке.
+		const title = `${bold(`№ ${o.id}`)} · ${dim(isoDate(o.date) || "—")} · ${green(o.status)} · ${bold(money(o.total))}`
+		// В режиме списка адрес заказа виден строкой у шапки — но только свой:
+		// общий уже напечатан сверху и у каждого заказа повторялся бы зря.
 		const own = common ? "" : link(o.url, "заказ")
-		out.push(`${bold(`№ ${o.id}`)}  ${dim(isoDate(o.date) || "—")}  ${green(o.status)}  ${bold(money(o.total))}${own ? `  ${own}` : ""}`)
-		if (o.items?.length) {
-			out.push(table(o.items.map((it, i) => [
-				`  ${cellLink(it.url, String(i + 1))}`, cellLink(it.url, cyan(it.article)), bold(it.brand), cellLink(it.url, it.name.slice(0, 40)),
-				`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
-			])))
+		const lines = [cellLink(o.url ?? common, title) + (linksMode() === "list" && own ? `  ${own}` : "")]
+		const rows = perOrder[i] ?? []
+		if (rows.length) {
+			lines.push(head, ...rows.map(r => tableRow(r, width)))
 			// отступ тот же, что у номеров позиций: номер и адрес читаются парой
-			const list = urlList(o.items).replace(/^\n/, "")
-			if (list) out.push(list.split("\n").map(l => `  ${l}`).join("\n"))
+			const list = urlList(o.items ?? []).replace(/^\n/, "")
+			if (list) lines.push(...list.split("\n").map(l => `  ${l}`))
 		}
-	}
-	return out.filter(Boolean).join("\n")
+		return lines.join("\n")
+	})
+	// Пустая строка — только между заказами: внутри заказа шапка и его позиции
+	// идут вплотную, иначе блок рассыпается на отдельные строки.
+	const listUrl = common ? link(common, "заказы") : ""
+	return (listUrl ? `${listUrl}\n` : "") + blocks.join("\n\n")
 }
 
 /**
