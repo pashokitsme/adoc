@@ -1,5 +1,5 @@
 // map.ts — сырые ответы web.autodoc.ru → типы контракта. Формы ответов см. в
-// docs/autodoc-api.md и test/fixtures/autodoc/*.json.
+// docs/autodoc-api.md и test/fixtures/autodoc/http/*.json.
 
 import { articleKey, brandKey, render } from "../../sdk/index.ts"
 import type { Basket, BasketItem, BrandHit, Car, Offer, Product, Rating, Review, Reviews } from "../../sdk/index.ts"

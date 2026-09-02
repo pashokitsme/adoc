@@ -1,7 +1,25 @@
 import { describe, expect, test } from "bun:test"
 import { basketAddBody, categoryIds, toBasket, toBrandHits, toCars, toOffers, toProducts, toReviews } from "../../../src/providers/autodoc/map.ts"
 
-const fx = async (n: string) => JSON.parse(await Bun.file(`${import.meta.dir}/../../fixtures/autodoc/${n}.json`).text())
+// Фикстуры лежат одним набором в http/: имя файла — метод и путь вызова,
+// так их читает и фикстурный режим api.ts. Второй копии этих же ответов
+// рядом не держим — она молча разъезжалась бы с первой.
+const FILES: Record<string, string> = {
+	manufacturers: "GET__api_price-service_search_manufacturers",
+	"goods-info": "GET__api_goods-service_goods_info",
+	originals: "GET__api_price-service_price-list_originals",
+	reviews: "GET__api_goods-service_feedback_messages",
+	suggest: "POST__api_catalog-universal-service_catalog-universal-categories_search",
+	"find-goods": "POST__api_catalog-universal-service_catalog-universal-goods_find-goods",
+	"garage-cars": "GET__api_garage-service_garage_cars",
+	"basket-items": "GET__api_basket-service_basket_items",
+}
+
+const fx = async (n: string) => {
+	const file = FILES[n]
+	if (!file) throw new Error(`нет фикстуры ${n}`)
+	return JSON.parse(await Bun.file(`${import.meta.dir}/../../fixtures/autodoc/http/${file}.json`).text())
+}
 
 describe("toBrandHits", () => {
 	test("производитель + рейтинг из info", async () => {

@@ -10,6 +10,7 @@
 import { readFile, unlink } from "node:fs/promises"
 import { join } from "node:path"
 import { accountStore, configDir, decodeClaims as jwtClaims } from "../../sdk/index.ts"
+import { TIMEOUT_MS } from "./api.ts"
 
 export const AUTH = "https://login.autodoc.ru"
 export const CLIENT_ID = "Angular"
@@ -85,6 +86,7 @@ async function tokenRequest(body: Record<string, string>): Promise<Tokens> {
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded" },
 		body: new URLSearchParams(body).toString(),
+		signal: AbortSignal.timeout(TIMEOUT_MS),
 	})
 	const text = await res.text()
 	if (!res.ok) throw new Error(`token endpoint вернул ${res.status}: ${text.slice(0, 300)}`)

@@ -8,7 +8,22 @@ import { currentToken } from "./auth.ts"
 // только типы: цикл api ↔ map существует лишь на уровне типов и стирается при сборке
 import type { Originals, RawBasket } from "./map.ts"
 
-export const BASE = "https://web.autodoc.ru"
+/**
+ * База API. Переопределяется только тестами (`ADOC_AUTODOC_BASE`), чтобы
+ * поднять локальный сервер и проверить поведение на зависшем ответе.
+ */
+export const BASE = process.env.ADOC_AUTODOC_BASE || "https://web.autodoc.ru"
+
+/**
+ * Потолок ожидания сети. Без него зависший ответ держал бы процесс до
+ * умолчаний ОС, а агрегатор не отличил бы «сайт молчит» от «команда думает».
+ * `ADOC_TIMEOUT_MS` — только для тестов.
+ */
+export const TIMEOUT_MS = Number(process.env.ADOC_TIMEOUT_MS) || 20_000
+
+/** Обрыв по таймеру: fetch отдаёт его как TimeoutError, отмену — как AbortError. */
+export const isTimeout = (e: unknown): boolean =>
+	e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
 
 export class ApiError extends Error {
 	constructor(readonly status: number, readonly path: string, readonly body: string) {
@@ -53,6 +68,7 @@ async function call<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, 
 		method,
 		headers,
 		body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+		signal: AbortSignal.timeout(TIMEOUT_MS),
 	})
 	const text = await res.text()
 	if (!res.ok) throw new ApiError(res.status, path, text)

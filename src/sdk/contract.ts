@@ -8,7 +8,7 @@ export type Capability = "reviews" | "garage" | "analogs" | "basket"
 
 export type Rating = { average: number; count: number }
 
-/** Поля как их отдаёт сайт: провайдер их не маскирует, маскирует только рендер. */
+/** Поля как их отдаёт сайт: ни провайдер, ни рендер их не маскируют. */
 export type Display = { name: string; email?: string; phone?: string }
 
 /** Результат поиска по названию. */

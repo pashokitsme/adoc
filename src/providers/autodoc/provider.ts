@@ -27,6 +27,9 @@ const brandLabel = (b: Brand, given: string): string => b.name || given
 // «Аналогов нет» — это 404 и только он. Отозванный токен, 5xx или обрыв сети
 // должны валить команду: молча отдать оригиналы без аналогов значит соврать
 // агрегатору, что аналогов у детали не бывает.
+/** Один текст на все ручки: агрегатору важно, что молчит именно сайт. */
+const timeoutError = () => new ProviderError("timeout", `нет ответа от web.autodoc.ru за ${Math.round(api.TIMEOUT_MS / 1000)} с`)
+
 const noAnalogs = (e: unknown): null => {
 	if (e instanceof ApiError && e.status === 404) return null
 	throw e
@@ -36,14 +39,18 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 	id: "autodoc", name: "Autodoc", site: "https://www.autodoc.ru",
 	capabilities: ["reviews", "garage", "analogs", "basket"],
 	valueFlags: ["sort"],
-	mapError: e => (e instanceof ApiError
-		? new ProviderError(e.status === 401 ? "auth" : e.status === 404 ? "notfound" : "http", e.message) : null),
+	mapError: e => {
+		if (e instanceof ApiError) return new ProviderError(e.status === 401 ? "auth" : e.status === 404 ? "notfound" : "http", e.message)
+		if (api.isTimeout(e)) return timeoutError()
+		return null
+	},
 
 	login: async ctx => {
 		if (ctx.flags.paste === true) {
 			ctx.warn("Вход по сохранённой сессии браузера:\n  1. Войди на https://www.autodoc.ru\n  2. DevTools → Console → copy(JSON.stringify(sessionStorage))\n  3. Вставь буфер сюда")
 			for (let attempt = 1; attempt <= 3; attempt++) {
-				const parsed = auth.parsePasted(await ctx.prompt("  > "))
+				// дамп sessionStorage — это токены целиком, эхо в терминал им не нужно
+				const parsed = auth.parsePasted(await ctx.secret("  > "))
 				if (parsed && "tokens" in parsed) return { account: parsed.tokens, display: display(parsed.tokens) }
 				ctx.warn(parsed ? "  это диагностика ошибки SPA, а не токены" : "  здесь нет access_token — нужен дамп sessionStorage")
 			}
@@ -57,6 +64,9 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		try {
 			tokens = await auth.passwordGrant(username, password)
 		} catch (e) {
+			// Молчание сервера токенов — это таймаут, а не «пароль не подошёл»:
+			// иначе совет пользователю был бы противоположный нужному.
+			if (api.isTimeout(e)) throw timeoutError()
 			const m = e instanceof Error ? e.message : String(e)
 			throw new ProviderError("auth", m.includes("invalid_grant") ? "Логин или пароль не подошли" : m)
 		}
