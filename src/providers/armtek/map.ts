@@ -7,6 +7,13 @@ import type { CartWriteItem, RawArticle, RawCard, RawCartItem, RawReview, RawRev
 
 export const SITE = "https://armtek.ru"
 
+/**
+ * Продавец в выдаче ровно один — сам магазин. Склад различает строки, но его
+ * человекочитаемого названия сайт не отдаёт, поэтому код склада уходит в
+ * `extra.keyzak`, а не притворяется именем продавца.
+ */
+export const SELLER = "armtek"
+
 /** Карточка товара: `https://armtek.ru/product/<ARTICLE_ALIAS>`. Проверено. */
 export const productUrl = (alias: string | undefined): string | undefined =>
 	alias ? `${SITE}/product/${alias}` : undefined
@@ -34,10 +41,22 @@ export function quantity(rvalue: string | undefined): { value?: number; atLeast:
 	return { value: Number(m[2]!.replace(",", ".")), atLeast: !!m[1] }
 }
 
-/** `YYYYMMDDHHmmss` или `YYYYMMDD` → `YYYY-MM-DD`. */
-export function isoDate(dlvdt: string | undefined): string | undefined {
-	if (!dlvdt || !/^\d{8}/.test(dlvdt)) return undefined
-	return `${dlvdt.slice(0, 4)}-${dlvdt.slice(4, 6)}-${dlvdt.slice(6, 8)}`
+/**
+ * SAP-дата `YYYYMMDD[HHmmss]` → `YYYY-MM-DD`. Пустую дату SAP пишет как
+ * «00000000», а мусор бывает и просто мусором: всё, что не настоящая дата,
+ * возвращается как undefined — «срок 0000-00-00» в выдаче хуже, чем его
+ * отсутствие. Имя своё, не isoDate: у SDK isoDate режет ISO-строку, а тут
+ * разбирается формат сайта.
+ */
+export function sapDate(dlvdt: string | undefined): string | undefined {
+	const m = dlvdt ? /^(\d{4})(\d{2})(\d{2})/.exec(dlvdt) : null
+	if (!m) return undefined
+	const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])]
+	// setUTCFullYear, а не Date.UTC: тот молча превращает год 0 в 1900
+	const probe = new Date(0)
+	probe.setUTCFullYear(y, mo - 1, d)
+	if (probe.getUTCFullYear() !== y || probe.getUTCMonth() + 1 !== mo || probe.getUTCDate() !== d) return undefined
+	return `${m[1]}-${m[2]}-${m[3]}`
 }
 
 const dayMs = 86_400_000
@@ -49,7 +68,7 @@ const dayMs = 86_400_000
  * который уже наступил, и «−1 день» в таблице выглядел бы поломкой.
  */
 export function deliveryDays(dlvdt: string | undefined, today = new Date()): number | undefined {
-	const iso = isoDate(dlvdt)
+	const iso = sapDate(dlvdt)
 	if (!iso) return undefined
 	const [y, m, d] = iso.split("-").map(Number) as [number, number, number]
 	const target = Date.UTC(y, m - 1, d)
@@ -188,7 +207,12 @@ export function toProducts(rows: RawArticle[]): Product[] {
 	})
 }
 
-/** Строки формы «card»: предложение уже слито с артикулом. */
+/**
+ * Строки формы «card»: предложение уже слито с артикулом. Контрактные команды
+ * этой формой не пользуются (её берёт своя команда `info`, и та работает с
+ * сырыми строками), так что живой вызывающий здесь только тест — он и держит
+ * покрытие на разборе этой формы ответа.
+ */
 export function cardToProducts(rows: RawCard[]): Product[] {
 	return toProducts(rows.map(c => ({ ...c, NAME: c.CUSTOM_NAME || c.NAME, SUGGESTIONS: c.KEYZAK ? [c as RawSuggestion] : [] })))
 }
@@ -226,8 +250,12 @@ export function toBrandHits(rows: RawArticle[]): BrandHit[] {
  * Предложения. Одна строка выдачи разворачивается в столько Offer, сколько у
  * неё SUGGESTIONS: они отличаются складом, ценой и сроком.
  *
- * `seller` — код склада `KEYZAK`: продавец везде один (armtek), а различает
- * строки именно склад, и без него колонка была бы бессмысленной.
+ * Продавец здесь один — сам armtek, а человекочитаемого названия склада
+ * выдача не отдаёт: `KEYZAK` — это код вроде «MOV0000019», и по контракту
+ * коды живут в `extra`, а не в `seller`.
+ *
+ * Строка без цены — не предложение: в корзину её не положить и сравнивать
+ * не с чем, поэтому она выбрасывается, а не показывается ценой 0.
  */
 export function toOffers(rows: RawArticle[], want: { article: string; brand: string }, vstel: string, today = new Date()): Offer[] {
 	const wantArticle = articleKey(want.article)
@@ -237,19 +265,20 @@ export function toOffers(rows: RawArticle[], want: { article: string; brand: str
 		const analog = articleKey(a.PIN) !== wantArticle || brandKey(a.BRAND) !== wantBrand
 		const r = rating(a.RATING, a.REVIEW_COUNT)
 		for (const s of a.SUGGESTIONS ?? []) {
+			const price = num(s.PRICES1)
+			if (price === undefined) continue
 			const q = quantity(s.RVALUE)
 			const days = deliveryDays(s.DLVDT, today)
 			out.push({
 				article: a.PIN,
 				brand: a.BRAND,
 				name: a.NAME ?? s.NAME ?? a.PIN,
-				price: num(s.PRICES1) ?? 0,
+				price,
 				currency: "RUB",
 				...(q.value !== undefined ? { quantity: q.value } : {}),
 				...(days !== undefined ? { deliveryDays: days } : {}),
-				...(isoDate(s.DLVDT) ? { deliveryDate: isoDate(s.DLVDT)! } : {}),
-				seller: s.KEYZAK,
-				stock: { code: s.KEYZAK },
+				...(sapDate(s.DLVDT) ? { deliveryDate: sapDate(s.DLVDT)! } : {}),
+				seller: SELLER,
 				...(r ? { rating: r } : {}),
 				...(a.PHOTO?.length ? { images: a.PHOTO } : {}),
 				...(productUrl(a.ARTICLE_ALIAS) ? { url: productUrl(a.ARTICLE_ALIAS)! } : {}),
@@ -257,11 +286,12 @@ export function toOffers(rows: RawArticle[], want: { article: string; brand: str
 				...(analog ? { analog: true, analogOf: { article: want.article, brand: want.brand } } : {}),
 				extra: {
 					artId: a.ARTID,
+					keyzak: s.KEYZAK,
 					...(q.atLeast ? { quantityAtLeast: true } : {}),
 					...(s.TYPE ? { type: s.TYPE } : {}),
 					...(num(s.PRICEP) !== undefined ? { priceOld: num(s.PRICEP)! } : {}),
 					...(s.MINBM ? { minQuantity: s.MINBM } : {}),
-					...(isoDate(s.ORDDT) ? { orderBefore: s.ORDDT } : {}),
+					...(sapDate(s.ORDDT) ? { orderBefore: s.ORDDT } : {}),
 				},
 			})
 		}
@@ -319,11 +349,12 @@ export function toBasket(raw: { items?: RawCartItem[] } | null, vstel: string, t
 			price: i.prices,
 			quantity: i.kwmeng,
 			sum: i.prices * i.kwmeng,
-			seller: i.keyzak,
+			seller: SELLER,
 			...(days !== undefined ? { deliveryDays: days } : {}),
-			...(isoDate(i.dateDel) ? { deliveryDate: isoDate(i.dateDel)! } : {}),
+			...(sapDate(i.dateDel) ? { deliveryDate: sapDate(i.dateDel)! } : {}),
 			extra: {
 				artId: i.artid,
+				keyzak: i.keyzak,
 				...(i.articleAlias ? { alias: i.articleAlias } : {}),
 				ref: refOfCartItem(i, vstel),
 			},

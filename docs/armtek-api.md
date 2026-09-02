@@ -519,12 +519,15 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 
 `test/fixtures/armtek/` — реальные ответы от 2026-09-02, вычищенные:
 `search-list.json`, `search-card.json`, `search-brand-group.json`,
+`search-exact-bosch.json`, `search-analogs-paged.json`, `guest-token.json`,
 `reviews-list.json`, `reviews-rating.json`, `cart-list.json`, `cart-add.json`,
-`cart-put.json`, `cart-delete.json`, `cart-count.json`, `vstel-list.json`,
-`garage-empty.json`, `orders-empty.json`, `error-validation.json` и два
-синтетических: `client.json` (настоящая карточка клиента состоит из
-персональных данных целиком) и `garage-cars.json` (гараж тестового аккаунта
-пуст, форма собрана из бандла фронта).
+`cart-put.json`, `cart-delete.json`, `vstel-list.json`, `garage-empty.json`,
+`error-validation.json` и три синтетических (у каждого причина в `_note`
+первой строкой файла): `client.json` (настоящая карточка клиента состоит из
+персональных данных целиком), `garage-cars.json` (гараж тестового аккаунта
+пуст, форма собрана из бандла фронта) и `search-exact-overflow.json` (страниц
+точной выдачи больше потолка `MAX_PAGES`, чтобы проверить предупреждение о
+неполном списке брендов).
 
 ## Что ещё есть в бандле
 

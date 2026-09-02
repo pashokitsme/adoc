@@ -5,8 +5,8 @@ import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import type { RawArticle, RawCard, RawCart, RawGarage, RawReview, RawReviewRating } from "../../src/providers/armtek/api.ts"
 import {
-	author, cardToProducts, deliveryDays, exactRows, isRef, isoDate, num, productUrl, quantity,
-	refOf, refOfCartItem, toBasket, toBrandHits, toCars, toOffers, toProducts, toReviews, writeItem,
+	author, cardToProducts, deliveryDays, exactRows, isRef, num, productUrl, quantity,
+	refOf, refOfCartItem, sapDate, toBasket, toBrandHits, toCars, toOffers, toProducts, toReviews, writeItem,
 } from "../../src/providers/armtek/map.ts"
 
 const DIR = join(import.meta.dir, "..", "fixtures", "armtek")
@@ -35,10 +35,23 @@ describe("числа и даты", () => {
 	})
 
 	test("DLVDT — YYYYMMDDHHmmss", () => {
-		expect(isoDate("20260902040000")).toBe("2026-09-02")
-		expect(isoDate("20260902")).toBe("2026-09-02")
-		expect(isoDate("")).toBeUndefined()
-		expect(isoDate("завтра")).toBeUndefined()
+		expect(sapDate("20260902040000")).toBe("2026-09-02")
+		expect(sapDate("20260902")).toBe("2026-09-02")
+		expect(sapDate("")).toBeUndefined()
+		expect(sapDate("завтра")).toBeUndefined()
+	})
+
+	test("пустая дата SAP и несуществующие числа — не дата", () => {
+		expect(sapDate("00000000")).toBeUndefined()
+		expect(sapDate("20261301")).toBeUndefined() // тринадцатого месяца не бывает
+		expect(sapDate("20260231")).toBeUndefined() // 31 февраля тоже
+		expect(sapDate("20260229")).toBeUndefined() // 2026 не високосный
+		expect(sapDate("20240229")).toBe("2024-02-29")
+	})
+
+	test("«00000000» не превращается в срок доставки", () => {
+		expect(deliveryDays("00000000", TODAY)).toBeUndefined()
+		expect(deliveryDays("20261301", TODAY)).toBeUndefined()
 	})
 
 	test("срок считается по календарным дням, а не по часам", () => {
@@ -126,11 +139,24 @@ describe("offers", () => {
 		const o = items[0]!
 		expect(o.price).toBe(592)
 		expect(o.currency).toBe("RUB")
-		expect(o.seller).toBe("MOV0000019")
-		expect(o.stock).toEqual({ code: "MOV0000019" })
+		// продавец один — сам магазин; код склада живёт в extra, а не в seller
+		expect(o.seller).toBe("armtek")
+		expect(o.stock).toBeUndefined()
+		expect(o.extra!.keyzak).toBe("MOV0000019")
 		expect(o.deliveryDate).toBe("2026-09-02")
 		expect(o.deliveryDays).toBe(0)
 		expect(o.analog).toBeUndefined()
+	})
+
+	test("строка без цены — не предложение и в выдачу не идёт", async () => {
+		const rows = await searchRows()
+		const bosch = rows.find(a => a.BRAND === "BOSCH")!
+		const priceless = { ...bosch.SUGGESTIONS![0]!, PRICES1: "", KEYZAK: "БЕЗ ЦЕНЫ" }
+		const row: RawArticle = { ...bosch, SUGGESTIONS: [priceless, ...bosch.SUGGESTIONS!] }
+		const items = toOffers([row], { article: "0986452041", brand: "BOSCH" }, "ME86", TODAY)
+		expect(items).toHaveLength(bosch.SUGGESTIONS!.length)
+		expect(items.some(o => o.price === 0)).toBe(false)
+		expect(items.some(o => o.extra!.keyzak === "БЕЗ ЦЕНЫ")).toBe(false)
 	})
 
 	test("чужой бренд или чужой артикул помечается аналогом", async () => {

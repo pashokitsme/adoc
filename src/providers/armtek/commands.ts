@@ -94,7 +94,7 @@ const vstel: Cmd = {
  * возни с четырьмя заголовками и токеном.
  */
 const raw: Cmd = {
-	usage: "raw <METHOD> <путь> [k=v ...] [--body <json>]", about: "произвольный вызов rest/ru: идёт с токеном аккаунта и любым методом, то есть умеет и писать", auth: false,
+	usage: "raw <METHOD> <путь> [k=v ...] [--body <json>]", about: "произвольный вызов rest/ru: идёт с токеном аккаунта и любым методом, то есть умеет и писать", auth: true,
 	run: async (ctx, args) => {
 		const method = need(args[0], "метод: GET, POST, PUT или DELETE").toUpperCase()
 		const path = need(args[1], "путь после rest/ru/")
