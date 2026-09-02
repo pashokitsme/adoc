@@ -123,8 +123,15 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 «умеет аналоги»: команда обязательна для всех, и провайдер, который аналогов не
 знает, отвечает пустым списком и пишет об этом в stderr.
 
-**Ссылки — часть ответа, а не украшение.** Провайдер обязан заполнять `url`
-везде, где сайт даёт адрес: `Product.url` и `BrandHit.url` — карточка детали,
+`OffersResult.total` — сколько предложений насчитал **сайт**, если он это
+говорит. Строк в `items` бывает меньше: сайт отдаёт выдачу страницами, а
+`offers`/`analogs` страниц не принимают. Поле необязательное; нет его — считать
+итогом длину `items`.
+
+**Ссылки — часть ответа, а не украшение.** Рендер SDK печатает их списком под
+таблицей (`#  адрес`, номер тот же, что в колонке «#»), а адрес всей страницы —
+в заголовке блока: в строке таблицы адресу на сотню символов места нет.
+Провайдер обязан заполнять `url` везде, где сайт даёт адрес: `Product.url` и `BrandHit.url` — карточка детали,
 `Offer.url` — страница предложения (или та же карточка, если отдельной нет),
 `Reviews.url` — страница отзывов, `BasketItem.url` — карточка позиции корзины,
 `Basket.url` — сама корзина, `Order.url` — заказ или список заказов. Смысл
@@ -283,7 +290,8 @@ export type Info = {
 	price?: number // «от», если сайт её даёт
 	currency?: "RUB"
 	deliveryDays?: number // минимальный срок, если сайт его даёт
-	stock?: { code: string; name?: string; quantity?: number }[]
+	/** Склады: `name` — только если у сайта оно есть, иначе виден код. */
+	stock?: { code: string; name?: string; quantity?: number; deliveryDays?: number }[]
 	description?: string
 	extra?: Record<string, unknown>
 }
@@ -361,7 +369,9 @@ export type WhoamiResult = { ok: boolean; display?: Display }
 /** `extra` — провайдерское расширение (у autodoc — список найденных категорий). */
 export type SearchResult = { items: Product[]; total?: number; extra?: Record<string, unknown> }
 export type BrandsResult = { items: BrandHit[] }
-export type OffersResult = { items: Offer[] }
+/** `total` — сколько предложений насчитал сайт, если он это говорит: строк в
+ *  `items` может быть меньше (страница, лимит). */
+export type OffersResult = { items: Offer[]; total?: number }
 export type CarsResult = { cars: Car[] }
 export type InfoResult = { info: Info }
 export type OrdersResult = { items: Order[] }
