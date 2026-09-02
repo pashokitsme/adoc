@@ -18,6 +18,22 @@ import { parseProducts } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
 
 /**
+ * Идентификатор модификации TecDoc из привязки к другому сайту. autodoc зовёт
+ * его `modificationId`, armtek — `linkingTargetId`, и это одно и то же число:
+ * оба сайта сидят на TecDoc. Поэтому машина, импортированная с одного сайта,
+ * годится и другому — он получит ref из одного этого числа и найдёт под ту же
+ * модификацию. `carId` сюда не годится: у autodoc это номер машины в его
+ * собственном гараже, к TecDoc отношения не имеющий.
+ */
+function tecdoc(refs: Record<string, Record<string, unknown>> | undefined): { id: number; from: string } | undefined {
+	for (const [from, ref] of Object.entries(refs ?? {})) {
+		const v = ref.linkingTargetId ?? ref.modificationId
+		if (typeof v === "number" && v > 0) return { id: v, from }
+	}
+	return undefined
+}
+
+/**
  * Какая машина участвует в поиске: по умолчанию основная из гаража — к ней
  * запчасть и ищут чаще всего. `--car <id>` берёт другую машину гаража,
  * `--no-car` выключает подбор совсем.
@@ -37,8 +53,15 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 	const page = pageOf(ctx.flags)
 
 	const car = await chooseCar(ctx)
-	const refOf = (id: string): Record<string, unknown> | undefined => car?.refs?.[id]
+	// Своей привязки у сайта может не быть, а машина всё равно та же: номер
+	// модификации TecDoc из чужой привязки понимают оба сайта.
+	const shared = car ? tecdoc(car.refs) : undefined
+	const refOf = (id: string): Record<string, unknown> | undefined =>
+		car?.refs?.[id] ?? (shared && shared.from !== id ? { linkingTargetId: shared.id } : undefined)
 	const used = providers.filter(p => refOf(p.id)).map(p => p.id)
+	// Кто ищет по чужой привязке — говорим прямо: выдача у него собрана не по
+	// его собственному идентификатору машины.
+	const borrowed = shared ? providers.filter(p => !car?.refs?.[p.id] && refOf(p.id)).map(p => p.id) : []
 	// Машина в гараже есть, а на этом сайте её нет: он ищет без неё. Молчать
 	// нельзя — иначе непонятно, почему у одного сайта выдача под машину, а у
 	// другого весь каталог.
@@ -70,14 +93,18 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 	return {
 		json: {
 			query,
-			car: car && used.length ? { id: car.id, name: carLabel(car), providers: used } : null,
+			car: car && used.length
+				? { id: car.id, name: carLabel(car), providers: used, ...(borrowed.length && shared ? { borrowed, from: shared.from } : {}) }
+				: null,
 			items, total: merged.length, errors: f.failures,
 		},
 		code,
 		render: () => [
 			// Заголовок только тогда, когда машина и правда доехала до сайтов:
 			// иначе он обещал бы подбор, которого не было.
-			...(car && used.length ? [`${dim("машина:")} ${carLabel(car)} ${dim(`· ${used.join(", ")} · искать без машины: --no-car`)}`, ""] : []),
+			...(car && used.length
+				? [`${dim("машина:")} ${carLabel(car)} ${dim(`· ${used.map(id => (borrowed.includes(id) ? `${id} (через ${shared!.from})` : id)).join(", ")} · искать без машины: --no-car`)}`, ""]
+				: []),
 			renderProducts(items, [numCol(items), whereCol<MergedProduct>()]),
 			...cut(items.length, merged.length),
 			...extraLinks(items),

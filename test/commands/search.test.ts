@@ -10,17 +10,18 @@ import { writeJson } from "../../src/core/store.ts"
 
 type SearchJson = {
 	query: string
-	car: { id: number; name: string; providers: string[] } | null
+	car: { id: number; name: string; providers: string[]; borrowed?: string[]; from?: string } | null
 	items: { article: string; name: string; providers: string[]; price?: number; prices: Record<string, number>; urls: Record<string, string> }[]
 	errors: { provider: string }[]
 }
 
 // Гараж, в котором машина знакома только alpha: на нём проверяется и подбор,
 // и предупреждение про сайт без привязки.
-const oneCarGarage = (): Promise<void> => writeJson(GARAGE_FILE, {
-	mainId: 1, nextId: 2,
-	cars: [{ id: 1, brand: "SKODA", model: "OCTAVIA III", year: 2017, refs: { alpha: { carId: 42 } } }],
-} satisfies Garage)
+const oneCarGarage = (refs: Record<string, Record<string, unknown>> = { alpha: { carId: 42 } }): Promise<void> =>
+	writeJson(GARAGE_FILE, {
+		mainId: 1, nextId: 2,
+		cars: [{ id: 1, brand: "SKODA", model: "OCTAVIA III", year: 2017, refs }],
+	} satisfies Garage)
 
 let dir: string
 let color: string | undefined
@@ -147,6 +148,24 @@ describe("adoc search", () => {
 		const r = await run(["search", "болт", "--car", "9"])
 		expect(r.code).toBe(1)
 		expect(r.stderr).toContain("нет машины 9")
+	})
+
+	test("модификация TecDoc из чужой привязки достаётся сайту без своей", async () => {
+		// autodoc зовёт её modificationId, armtek — linkingTargetId, число одно.
+		await oneCarGarage({ alpha: { carId: 42, modificationId: 58759 } })
+		const j = await search(["болт"])
+		expect(j.car).toEqual({ id: 1, name: "SKODA OCTAVIA III 2017", providers: ["alpha", "beta"], borrowed: ["beta"], from: "alpha" })
+		// alpha ищет по своему carId, beta — по одолженной модификации.
+		expect(j.items.some(i => i.name === "под машину 42")).toBe(true)
+		expect(j.items.some(i => i.name === "под машину 58759")).toBe(true)
+		const r = await run(["search", "болт"])
+		expect(r.stdout).toContain("beta (через alpha)")
+		expect(r.stderr).not.toContain("без машины ищут")
+	})
+
+	test("ref без модификации TecDoc не одалживается", async () => {
+		await oneCarGarage({ alpha: { carId: 42 } })
+		expect((await search(["болт"])).car!.providers).toEqual(["alpha"])
 	})
 
 	test("сайт не умеет искать по машине — его предупреждение доезжает до человека", async () => {
