@@ -19,9 +19,9 @@ export const BASKET_SET = "basket set <provider> <id>|--id <id> --qty <n>"
 export const BASKET_RM = "basket rm <provider> <id>|--id <id>"
 
 const COMMANDS: Row[] = [
-	{ usage: "part <артикул> [бренд]", about: "предложения всех сайтов одной таблицей" },
+	{ usage: "part <артикул>[,…] [бренд]", about: "предложения всех сайтов одной таблицей" },
 	{ usage: "info <артикул> [бренд]", about: "карточка артикула: цена, срок, оценка, склады, ссылка" },
-	{ usage: "analogs <артикул> [бренд]", about: "заменители одной таблицей со всех сайтов" },
+	{ usage: "analogs <артикул>[,…] [бренд]", about: "замены по номеру одной таблицей со всех сайтов" },
 	{ usage: "search <текст>", about: "поиск по названию, по умолчанию — под машину из гаража" },
 	{ usage: "reviews <артикул> [бренд]", about: "оценки и отзывы всех сайтов, где они есть" },
 	{ usage: "basket", about: "корзины всех сайтов, итог по каждому и общий" },
@@ -60,6 +60,7 @@ const FLAGS: Flag[] = [
 	{ name: "car", value: "<id>", about: "машина гаража для search, по умолчанию основная" },
 	{ name: "no-car", about: "искать без машины" },
 	{ name: "brand", value: "<имя>", about: "бренд вместо второго слова: part, info, analogs, reviews" },
+	{ name: "file", value: "<путь>", about: "список артикулов файлом для part и analogs: «артикул [бренд]» построчно" },
 	{ name: "qty", value: "<n>", about: "количество для basket add и basket set" },
 	{ name: "ref", value: "<json>", about: "предложение из part --json для basket add" },
 	{ name: "id", value: "<id>", about: "позиция корзины, когда её ID похож на флаг" },

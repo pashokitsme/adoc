@@ -3,8 +3,9 @@
 // достаётся им: `part` показывает их довеском к точным предложениям, а сюда
 // приходят, когда точное уже не устроило (дорого, нет в наличии, долго).
 
-import { TOOL, bold, cyan, dim, need, renderOffers } from "../sdk/index.ts"
+import { TOOL, bold, cyan, dim, renderOffers } from "../sdk/index.ts"
 import { brandOf, limitOf } from "../core/args.ts"
+import { articlesOf, runBatch, type BatchItem, type Section } from "../core/batch.ts"
 import { emptyResult, resolveBrand } from "../core/brand.ts"
 import { invoke } from "../core/invoke.ts"
 import { saveLastPart } from "../core/lastpart.ts"
@@ -13,17 +14,16 @@ import { fanout, report } from "../core/partial.ts"
 import { cut, hint, providerCol } from "../core/render.ts"
 import { parseOffers } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
+import type { Provider } from "../core/registry.ts"
+import { basketTail } from "./part.ts"
 
 /** Короткий список — повод объяснить, что именно ищет команда. */
 const FEW = 5
 
-export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
-	const article = need(ctx.args[0], "артикул")
-	// Бренд пишут и вторым словом, и флагом — как у part и reviews.
-	const wanted = brandOf(ctx)
-	const providers = await ctx.pick()
-
-	// Бросает Ambiguous — её ловит и рисует app.ts.
+async function oneAnalogs(ctx: Ctx, providers: Provider[], it: BatchItem, batch: boolean): Promise<Section> {
+	const { article } = it
+	const wanted = it.brand
+	// Бросает Ambiguous — её ловит и рисует app.ts, а в списке — драйвер.
 	const resolved = await resolveBrand(providers, article, wanted, ctx.warn)
 	const { brand, failures } = resolved
 	if (!brand) {
@@ -31,7 +31,7 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 		// Номера строк этой таблицы — те же номера для `basket add`, поэтому и
 		// обнуляется кэш здесь по тем же правилам, что у `part`.
 		if (empty.code === 0) await saveLastPart(article, wanted ?? "", [])
-		return empty
+		return { article, json: empty.json as Record<string, unknown>, code: empty.code ?? 0, render: empty.render, rows: [], errors: failures }
 	}
 
 	const holders = providers.filter(p => brand.providers.includes(p.id))
@@ -58,6 +58,9 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 	if (code === 0) await saveLastPart(article, brand.brand, rows)
 
 	return {
+		article,
+		rows,
+		errors: [...failures, ...f.failures],
 		json: { article, brand: brand.brand, analogs: rows, errors: [...failures, ...f.failures] },
 		code,
 		render: () => [
@@ -75,7 +78,14 @@ export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
 			// другого производителя ищется не по номеру, а по названию под
 			// машину, и под коротким списком об этом надо сказать вслух.
 			...(rows.length < FEW ? ["", hint(`это замены по номеру; аналоги по функции — ${TOOL} search "<название детали>" под машиной гаража`)] : []),
-			...(rows.length ? ["", hint(`${TOOL} basket add <#> [--qty <n>] — положить строку в корзину её сайта`)] : []),
+			...(rows.length && !batch ? ["", hint(`${TOOL} basket add <#> [--qty <n>] — положить строку в корзину её сайта`)] : []),
 		].join("\n"),
 	}
+}
+
+export async function cmdAnalogs(ctx: Ctx): Promise<Output> {
+	// Бренд пишут и вторым словом, и флагом — как у part и reviews.
+	const items = await articlesOf(ctx, brandOf(ctx))
+	const providers = await ctx.pick()
+	return await runBatch(ctx, items, (it, batch) => oneAnalogs(ctx, providers, it, batch), basketTail)
 }

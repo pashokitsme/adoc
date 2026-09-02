@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
@@ -47,6 +47,68 @@ const part = async (args: string[]): Promise<{ code: number; j: PartJson; stderr
 	const r = await run(["part", ...args, "--json"])
 	return { code: r.code, j: JSON.parse(r.stdout) as PartJson, stderr: r.stderr }
 }
+
+describe("adoc part списком", () => {
+	type BatchJson = { items: { article: string; brand: string | null; offers: unknown[]; ambiguous?: string[] }[]; errors: unknown[] }
+	const batch = async (args: string[]): Promise<{ code: number; j: BatchJson; stdout: string }> => {
+		const r = await run(["part", ...args, "--json"])
+		return { code: r.code, j: JSON.parse(r.stdout) as BatchJson, stdout: r.stdout }
+	}
+
+	test("артикулы через запятую — раздел на каждый, в том же порядке", async () => {
+		const { code, j } = await batch(["n90954802,AN-1"])
+		expect(code).toBe(0)
+		expect(j.items.map(i => i.article)).toEqual(["n90954802", "AN-1"])
+		expect(j.items[0]!.offers.length).toBeGreaterThan(0)
+	})
+
+	test("неоднозначный артикул не обрывает список, а код остаётся 0", async () => {
+		const { code, j, stdout } = await batch(["n90954802,MULTI-1"])
+		expect(code).toBe(0)
+		expect(j.items[1]!.brand).toBeNull()
+		expect(j.items[1]!.ambiguous).toEqual(expect.arrayContaining(["VAG", "OTHER"]))
+		expect(stdout).toContain("MULTI-1")
+	})
+
+	test("неоднозначны все — тогда и код 2, как у одиночного", async () => {
+		expect((await batch(["MULTI-1,MULTI-1"])).code).toBe(2)
+	})
+
+	test("текстом: раздел на артикул и одна подсказка про корзину внизу", async () => {
+		const r = await run(["part", "n90954802,нетакого"])
+		expect(r.stdout).toContain("n90954802 · VAG")
+		expect(r.stdout).toContain("по нетакого ничего не нашлось")
+		expect(r.stdout.split("basket add").length - 1).toBe(1)
+		expect(r.stdout).toContain("номера таблицы n90954802")
+	})
+
+	test("кэш строк — от последнего удавшегося артикула", async () => {
+		await run(["part", "n90954802,AN-1"])
+		const lp = await readJson<{ article: string }>(LAST_PART_FILE)
+		expect(lp!.article).toBe("AN-1")
+	})
+
+	test("--file: артикул и его бренд построчно, # — комментарий", async () => {
+		const list = join(dir, "list.txt")
+		await writeFile(list, "# что смотрим\nn90954802 VAG\n\nAN-1\n")
+		const { code, j } = await batch(["--file", list])
+		expect(code).toBe(0)
+		expect(j.items.map(i => i.article)).toEqual(["n90954802", "AN-1"])
+		expect(j.items[0]!.brand).toBe("VAG")
+	})
+
+	test("--file вместе с артикулом — bad_args, а не молчаливый выбор", async () => {
+		const r = await run(["part", "n90954802", "--file", "/нет/такого", "--json"])
+		expect(r.code).toBe(1)
+		expect(JSON.parse(r.stdout).error.code).toBe("bad_args")
+	})
+
+	test("--file без файла — внятный отказ", async () => {
+		const r = await run(["part", "--file", join(dir, "нет.txt"), "--json"])
+		expect(r.code).toBe(1)
+		expect(JSON.parse(r.stdout).error.message).toContain("не читается файл списка")
+	})
+})
 
 describe("adoc part", () => {
 	test("предложения обоих сайтов в одной таблице, дешёвое первым", async () => {

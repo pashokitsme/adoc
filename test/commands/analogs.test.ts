@@ -50,6 +50,13 @@ describe("adoc analogs", () => {
 		expect(r.stdout).toContain("1  https://beta.example/p/AN-1")
 	})
 
+	test("артикулы через запятую — раздел на каждый", async () => {
+		const r = await run(["analogs", "n90954802,нетакого", "--json"])
+		const j = JSON.parse(r.stdout) as { items: { article: string }[] }
+		expect(r.code).toBe(0)
+		expect(j.items.map(i => i.article)).toEqual(["n90954802", "нетакого"])
+	})
+
 	test("под коротким списком сказано, что это замены по номеру", async () => {
 		const r = await run(["analogs", "n90954802"])
 		expect(r.stdout).toContain("это замены по номеру")
