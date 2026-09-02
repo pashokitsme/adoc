@@ -23,14 +23,14 @@ describe("adoc --help", () => {
 	test("свои команды и флаги", async () => {
 		const r = await run(["--help"])
 		expect(r.code).toBe(0)
-		for (const s of ["part <артикул>", "search <текст>", "basket add", "garage import", "providers", "--only", "--analogs"]) {
+		for (const s of ["part <артикул>", "info <артикул>", "analogs <артикул>", "search <текст>", "basket add", "orders", "garage import", "providers", "--only", "--analogs"]) {
 			expect(r.stdout).toContain(s)
 		}
 	})
 
 	test("подвал перечисляет все флаги обёртки", async () => {
 		const r = await run(["--help"])
-		for (const f of ["--json", "--only", "--providers", "--skip", "--brand", "--analogs", "--page", "--limit", "--ref", "--qty", "--id"]) {
+		for (const f of ["--json", "--only", "--providers", "--skip", "--brand", "--analogs", "--car", "--no-car", "--page", "--limit", "--ref", "--qty", "--id"]) {
 			expect(r.stdout).toContain(f)
 		}
 	})
@@ -38,7 +38,7 @@ describe("adoc --help", () => {
 	test("таблица флагов справки — та же, по которой разбирается argv", async () => {
 		// Флаги со значением берутся из одной таблицы: подвал справки и парсер
 		// не должны расходиться, как это уже случилось однажды.
-		for (const name of ["only", "providers", "skip", "limit", "page", "brand", "qty", "ref", "id"]) {
+		for (const name of ["only", "providers", "skip", "limit", "page", "brand", "qty", "ref", "id", "car"]) {
 			expect(VALUE_FLAGS).toContain(name)
 			const r = await run(["part", "N1", `--${name}`, "--json"])
 			expect(r.code).toBe(1)

@@ -20,13 +20,16 @@ export const BASKET_RM = "basket rm <provider> <id>|--id <id>"
 
 const COMMANDS: Row[] = [
 	{ usage: "part <артикул> [бренд]", about: "предложения всех сайтов одной таблицей" },
-	{ usage: "search <текст>", about: "поиск по названию детали" },
+	{ usage: "info <артикул> [бренд]", about: "карточка артикула: цена, срок, оценка, склады, ссылка" },
+	{ usage: "analogs <артикул> [бренд]", about: "заменители одной таблицей со всех сайтов" },
+	{ usage: "search <текст>", about: "поиск по названию, по умолчанию — под машину из гаража" },
 	{ usage: "reviews <артикул> [бренд]", about: "оценки и отзывы всех сайтов, где они есть" },
 	{ usage: "basket", about: "корзины всех сайтов, итог по каждому и общий" },
 	{ usage: "basket add <#> [--qty <n>]", about: "положить строку из последнего part" },
 	{ usage: "basket add <provider> --ref <json> [--qty <n>]", about: "то же с явным ref из part --json" },
 	{ usage: BASKET_SET, about: "изменить количество" },
 	{ usage: BASKET_RM, about: "убрать позицию" },
+	{ usage: "orders", about: "заказы всех сайтов, где они есть" },
 	{ usage: "garage", about: "свой гараж, ★ — основная машина" },
 	{ usage: "garage add --brand … --model … [--modification --year --vin --engine --odometer]", about: "завести машину руками" },
 	{ usage: "garage import <provider>", about: "забрать машины с сайта, слияние по VIN" },
@@ -35,6 +38,7 @@ const COMMANDS: Row[] = [
 	{ usage: "accounts | whoami [provider]", about: "кто авторизован, у всех сайтов сразу" },
 	{ usage: "providers", about: "какие сайты подключены и что умеют" },
 	{ usage: "<provider> <команда> …", about: "команда самого сайта как есть" },
+	{ usage: "help | --help", about: "эта справка" },
 ]
 
 /**
@@ -52,7 +56,9 @@ const FLAGS: Flag[] = [
 	{ name: "limit", value: "<n>", about: "сколько строк показывать, по умолчанию 10" },
 	{ name: "page", value: "<n>", about: "страница выдачи у search и reviews" },
 	{ name: "analogs", about: "добавить блок аналогов в part" },
-	{ name: "brand", value: "<имя>", about: "бренд для part и reviews вместо второго слова" },
+	{ name: "car", value: "<id>", about: "машина гаража для search, по умолчанию основная" },
+	{ name: "no-car", about: "искать без машины" },
+	{ name: "brand", value: "<имя>", about: "бренд вместо второго слова: part, info, analogs, reviews" },
 	{ name: "qty", value: "<n>", about: "количество для basket add и basket set" },
 	{ name: "ref", value: "<json>", about: "предложение из part --json для basket add" },
 	{ name: "id", value: "<id>", about: "позиция корзины, когда её ID похож на флаг" },

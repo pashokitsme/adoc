@@ -7,8 +7,11 @@
 import { ProviderError, TOOL, errorBody, exitCode, parseArgv, red, renderBrands, yellow } from "./sdk/index.ts"
 import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
+import { cmdAnalogs } from "./commands/analogs.ts"
 import { cmdBasket } from "./commands/basket.ts"
 import { cmdGarage } from "./commands/garage.ts"
+import { cmdInfo } from "./commands/info.ts"
+import { cmdOrders } from "./commands/orders.ts"
 import { cmdPart } from "./commands/part.ts"
 import { cmdProviders } from "./commands/providers.ts"
 import { cmdReviews } from "./commands/reviews.ts"
@@ -27,9 +30,12 @@ type Handler = (ctx: Ctx) => Promise<Output>
 // самому провайдеру: `adoc armtek hello` разбирает commands/passthrough.ts.
 const COMMANDS: Record<string, Handler> = {
 	part: cmdPart,
-	basket: cmdBasket,
+	info: cmdInfo,
+	analogs: cmdAnalogs,
 	search: cmdSearch,
 	reviews: cmdReviews,
+	basket: cmdBasket,
+	orders: cmdOrders,
 	garage: cmdGarage,
 	providers: cmdProviders,
 	accounts: cmdAccounts,
@@ -45,7 +51,7 @@ const COMMANDS: Record<string, Handler> = {
 export const COMMAND_NAMES = [...Object.keys(COMMANDS), "help"]
 
 /** Команды, которые начинаются с шага «артикул → бренд» и умеют спросить «уточни». */
-const BRAND_COMMANDS = new Set(["part", "reviews"])
+const BRAND_COMMANDS = new Set(["part", "reviews", "info", "analogs"])
 
 export type RunResult = { stdout: string; stderr: string; code: number }
 
