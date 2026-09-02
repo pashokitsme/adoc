@@ -66,23 +66,42 @@ describe("объявление провайдера", () => {
 })
 
 describe("search", () => {
-	test("отдаёт товары, итог и страницу", async () => {
+	// Поиск идёт путём подсказки сайта: категория из autocomplete, потом
+	// search/by-category. Свободный поиск остаётся запасным путём.
+	test("категория из подсказки — поиск по категории", async () => {
+		const auto = await fixture("autocomplete.json")
+		const byCat = await fixture("search-by-category.json")
+		const seen = route([["/guest", guestReply], ["autocomplete/search", () => auto], ["search/by-category", () => byCat]])
+		const r = await armtek.search(makeCtx(null), "фильтр масляный", { car: null })
+
+		expect(seen[0]!.url).toContain("auth-microservice/v1/guest")
+		const call = seen.find(c => c.url.includes("by-category"))!
+		expect(call.body.query).toBe("filtry-maslyanye-8963")
+		expect(call.body.linkingTargetId).toBeUndefined()
+		expect(r.total).toBe(392)
+		expect(r.extra).toMatchObject({ perPage: 36, car: null })
+	})
+
+	test("категории нет — запасной путь через свободный поиск", async () => {
 		const search = await fixture("search-list.json")
-		const seen = route([["/guest", guestReply], ["/search", () => search]])
+		const seen = route([
+			["/guest", guestReply],
+			["autocomplete/search", () => envelope({ category: [] })],
+			["v1/search", () => search],
+		])
 		const r = await armtek.search(makeCtx(null), "фильтр масляный", { car: null })
 
 		expect(r.items.length).toBe(search.data.articlesData.length)
 		expect(r.total).toBe(557)
 		expect(r.extra).toMatchObject({ perPage: 36 })
-		// без входа поиск идёт гостевым токеном
-		expect(seen[0]!.url).toContain("auth-microservice/v1/guest")
-		expect(seen[1]!.body.query).toBe("фильтр масляный")
-		expect(seen[1]!.body.queryType).toBe(1)
+		const call = seen.find(c => c.url.endsWith("v1/search"))!
+		expect(call.body.query).toBe("фильтр масляный")
+		expect(call.body.queryType).toBe(1)
 	})
 
 	test("--limit режет выдачу", async () => {
 		const search = await fixture("search-list.json")
-		route([["/guest", guestReply], ["/search", () => search]])
+		route([["/guest", guestReply], ["autocomplete/search", () => envelope({ category: [] })], ["v1/search", () => search]])
 		const r = await armtek.search(makeCtx(null, { limit: 1 }), "болт", { car: null })
 		expect(r.items).toHaveLength(1)
 	})
@@ -109,18 +128,18 @@ describe("search с машиной", () => {
 		expect(warns).toEqual([])
 	})
 
-	test("ref без идентификатора — предупреждение и обычный поиск", async () => {
-		const search = await fixture("search-list.json")
-		const seen = route([["/guest", guestReply], ["v1/search", () => search]])
+	test("ref без идентификатора — предупреждение, поиск без машины", async () => {
+		const auto = await fixture("autocomplete.json")
+		const byCat = await fixture("search-by-category.json")
+		const seen = route([["/guest", guestReply], ["autocomplete/search", () => auto], ["search/by-category", () => byCat]])
 		const warns: string[] = []
-		const r = await armtek.search(makeCtx(null, { warn: m => warns.push(m) }), "фильтр масляный", { car: { transportId: 7 } })
+		await armtek.search(makeCtx(null, { warn: m => warns.push(m) }), "фильтр масляный", { car: { transportId: 7 } })
 
-		expect(seen.some(c => c.url.includes("by-category"))).toBe(false)
 		expect(warns[0]).toContain("TecDoc")
-		expect(r.items.length).toBeGreaterThan(0)
+		expect(seen.find(c => c.url.includes("by-category"))!.body.linkingTargetId).toBeUndefined()
 	})
 
-	test("категории под запрос нет — предупреждение и обычный поиск", async () => {
+	test("категории под запрос нет — предупреждение и свободный поиск", async () => {
 		const search = await fixture("search-list.json")
 		route([
 			["/guest", guestReply],
@@ -131,6 +150,17 @@ describe("search с машиной", () => {
 		const r = await armtek.search(makeCtx(null, { warn: m => warns.push(m) }), "фильтр масляный", { car: { modificationId: 58759 } })
 		expect(warns[0]).toContain("категории не нашлось")
 		expect(r.items.length).toBeGreaterThan(0)
+	})
+})
+
+describe("total у offers и analogs", () => {
+	test("сайт насчитал больше, чем поместилось на страницу", async () => {
+		const paged = await fixture("search-analogs-paged.json")
+		const exact = await fixture("search-exact-bosch.json")
+		route([["/guest", guestReply], ["v1/search", (c: Call) => (c.body.queryType === 2 ? exact : paged)]])
+		const r = await armtek.offers(makeCtx(null, { warn: () => {} }), "0986452041", "BOSCH", { analogs: true })
+		expect(r.total).toBe(paged.data.pagination.totalCount)
+		expect(r.total).toBeGreaterThan(r.items.length)
 	})
 })
 

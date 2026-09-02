@@ -39,6 +39,13 @@ grep -oh 'setUrl(.\{0,140\}' *.js | sort -u                    # пути + ме
 Сегмент `ru` в пути — язык интерфейса, не страна: страна задаётся полем
 `VKORG` в теле запроса.
 
+## Лимит частоты **[проверено]**
+
+На частые вызовы поиска сайт отвечает `429` с телом
+`{"data":{"captchaHash":"…"},"arr_messages":[]}` — это просьба подождать и
+показать капчу, а не ошибка данных. Провайдер переводит 429 в понятный текст и
+не пытается решать капчу. Отпускает само за несколько минут.
+
 ## Соглашения
 
 - **Конверт.** Любой ответ — `{"data": …, "arr_messages": [], "execution_time":
@@ -323,6 +330,18 @@ POST search-microservice/v1/search/by-category
 
 Ответ той же формы, что у `v1/search` (`articlesData` с `SUGGESTIONS`).
 
+`by-category` — основной путь поиска по названию у провайдера, и с машиной, и
+без; цена — один лишний вызов подсказки на каждый поиск. Категория берётся
+только тогда, когда хоть одно слово её названия нашлось в запросе: на артикул
+подсказка тоже отвечает какой-нибудь категорией, и без этой проверки поиск по
+номеру уходил бы в чужой раздел. Свободный поиск `POST v1/search` — это то, что сайт делает по Enter в
+строке поиска, и его выдача склеивается по бренду: на «фильтр масляный» первые
+восемь строк — грузовые фильтры STELLOX, а девятая и десятая уже
+«Кольцо уплотнительное». Клик по подсказанной категории ведёт на
+`assortment/category/<alias>`, то есть ровно в `by-category`, и там видно то,
+что человек искал. `categoryAlias` у свободного поиска сужает выдачу (1000 →
+854), но порядок строк не меняет.
+
 ### Поиск с учётом машины **[проверено]**
 
 Это **единственная** ручка armtek, которая умеет фильтр по машине.
@@ -343,7 +362,9 @@ POST search-microservice/v1/search/by-category
 пустой список.
 
 **`linkingTargetId` совпадает с `modificationId` из гаража autodoc** — оба
-сайта сидят на TecDoc. Проверено:
+сайта сидят на TecDoc, поэтому провайдер принимает в `--car` ref с любым из
+полей `linkingTargetId`, `modificationId` или `carId`: это одно и то же число.
+Проверено живьём, что оба написания дают одну выдачу (392 позиции). Проверено:
 `substitutes-microservice/v1/substitutes/get-vehicle-ids-and-car-info?manuId=106&modId=11195&linkingTargetType=P`
 содержит `carId: 58759`, а `get-model-series` для SKODA отдаёт `modelId: 11195`
 — те же числа, что у autodoc.
@@ -392,6 +413,17 @@ armtek нет — отзыв это один `text` и `rating` 1–5.
 `resource/get-list`, `POST review-microservice/v2/review`,
 `POST review-microservice/v2/review/set-is-remove/<id>`,
 `POST review-microservice/v2/review/uploader/upload-file`.
+
+### У склада (`KEYZAK`) имени нет **[проверено]**
+
+`KEYZAK` вида `MOV0000019` — внутренний код склада поставки, и человеческого
+названия у него нет нигде: его нет в строке выдачи (`STOCKS` у armtek — это
+акции, а не склады: `STOCK_TYPE_NAME` вроде «Товар со скидкой»), нет в
+`POST search-microservice/v1/search/all-suggestions` (там те же голые коды), и
+он не встречается в списке точек выдачи — `vstel` это другое пространство имён
+(`ME86`, `BR01`; всего 50 записей, поиск по `MOV0000019` даёт ноль). Сам сайт
+код склада человеку не показывает вовсе. Поэтому провайдер оставляет код и
+кладёт рядом срок — то единственное, чем строки складов отличаются.
 
 ## Точки выдачи — `GET delivery-microservice/v1/custom-vstel/list` **[проверено]**
 
@@ -520,9 +552,14 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
   `PUT garage/v2/update-transport`, `DELETE garage/v2/del-transport`,
   `POST garage/v2/upload-transport-file`, `…/upload-transport-image`.
 
-## Заказы — `order-microservice/v1/*`
+## Заказы — `order-microservice/v1/*` **[форма — из бандла]**
 
-`GET order-microservice/v1/order/report` **[проверено]** — список заказов; это
+> **Форма заказа живьём не проверена.** У аккаунта заказов нет: ручка отвечает
+> `ORDER: []`. Проверен только сам вызов и конверт ответа; **все поля строки
+> заказа и позиции ниже сняты из бандла фронта**, а не с настоящего ответа.
+> Не считать их подтверждёнными.
+
+`GET order-microservice/v1/order/report` **[вызов проверен]** — список заказов; это
 его зовёт страница `/profile/orders`. `GET order-microservice/v1/order/get-info`
 — карточка одного заказа.
 
@@ -538,8 +575,8 @@ Query: `vstels[]=<VSTEL>` (обязателен; пустое значение �
 любую их пару отбивает «`dateFrom`: Значение не является правильной датой» —
 поэтому провайдер дат не шлёт вовсе.
 
-У аккаунта заказов нет, поэтому **форма заказа взята из бандла**
-(`chunk-FZVGACXA.js`), а не с ответа: строка `ORDER[]` — `VBELN` (номер),
+**Форма заказа взята из бандла** (`chunk-FZVGACXA.js`) **[из бандла]**, а не с
+ответа: строка `ORDER[]` — `VBELN` (номер),
 `GUID`, `date`/`ORDER_DATE`/`CREDT`, `ORDER_STATUS`, `ORDER_STATUS_ALIAS`,
 `NETWR` (сумма), `PAYMENT_STATUS`, `PAYMENT_TYPE`, `ITEMS[]`; позиция —
 `ARTID`, `PIN`, `BRAND`, `NAME`/`ARTICLE_NAME`, `ARTICLE_ALIAS`, `KWMENG`,
@@ -575,6 +612,7 @@ Capabilities — `reviews`, `garage`, `analogs`, `basket`, `orders`.
 | `Offer.deliveryDays` | `DLVDT` минус сегодня, **по календарным датам** | прошедшая дата даёт 0, не минус |
 | `quantity` | `RVALUE` | строка; `">20"` → 20 плюс `extra.quantityAtLeast: true` |
 | `Offer.seller` | константа `armtek` | продавец везде один, а человекочитаемого названия склада сайт не отдаёт |
+| `Product.name`, `Offer.name`, `BasketItem.name`, `Info.name` | `NAME`/`CUSTOM_NAME`, пропущенные через `cleanName` | в SAP-имени разметка: «фильтр масляный!\ Mazda 626…»; `!\` превращается в « · », пробелы схлопываются |
 | `extra.keyzak` | `KEYZAK` | код склада; `Offer.stock` не заполняется — в контракте это код со своим названием, а названия нет |
 | `Offer.analog` | сравнение `articleKey`/`brandKey` с запрошенной парой | |
 | `Offer.ref` | `ARTID`, `KEYZAK`, `PARNR`, `NUMZAK`, `PRICES1`, `PRICEP`, `WAERS`, `CHARG`, `MINBM`, `VSTEL` | этого хватает, чтобы собрать тело POST корзины без второго запроса |
@@ -585,9 +623,10 @@ Capabilities — `reviews`, `garage`, `analogs`, `basket`, `orders`.
 | `offers --analogs` | `queryType: 1`, **ровно одна страница** из `pagination.pageCount` (на `0986452041` это 36 позиций из 557) | `--page` контракт для `offers` не предусматривает, поэтому о неполноте провайдер говорит в stderr через `ctx.warn`: сколько страниц есть и какая отдана. В stdout при `--json` по-прежнему ровно один объект |
 | `brands`, выбор бренда | страницы `queryType: 2` добираются до потолка в 5 (180 строк) | упёрлись в потолок — то же предупреждение в stderr: список брендов неполный |
 | `Product.url`, `Offer.url`, `BrandHit.url`, `BasketItem.url`, `Reviews.url` | `ARTICLE_ALIAS`, иначе `ARTID` | у уценённой партии — `/product/markdown/<alias>/<charg>`; отдельной страницы отзывов у сайта нет, поэтому `Reviews.url` — та же карточка |
-| `Info.*` | форма `card`: `CUSTOM_NAME`, минимум `PRICES1`, минимум срока по `DLVDT`, `KEYZAK` в `stock[].code` | человеческого названия склада сайт не отдаёт, поэтому `stock[].name` пустое |
-| `search --car` | `search/by-category` с `linkingTargetId` | ref без идентификатора модификации TecDoc — предупреждение в stderr и обычный поиск |
-| `Order.*` | `order/report` | форма из бандла: живых заказов на аккаунте нет |
+| `Info.*` | форма `card`: `CUSTOM_NAME`, минимум `PRICES1`, минимум срока по `DLVDT`, `KEYZAK` в `stock[].code`, срок строки в `stock[].deliveryDays` | имени у склада нет нигде (см. ниже), поэтому `stock[].name` пустое |
+| `OffersResult.total` | `pagination.totalCount` | сколько насчитал сайт: у `offers --analogs` и `analogs` строк в `items` меньше на весь хвост страниц |
+| `search --car` | `search/by-category` с `linkingTargetId` | ref принимает `linkingTargetId`, `modificationId` и `carId` как одно и то же число (модификация TecDoc) и `linkingTargetType` (по умолчанию `"P"`); ref без такого числа — предупреждение в stderr и обычный поиск |
+| `Order.*` | `order/report` | **форма из бандла**: живых заказов на аккаунте нет, маппер написан мягко и живьём не проверен |
 
 Неоднозначности: бренд, которого нет среди точных совпадений, — ошибка
 `ambiguous` со списком брендов (exit 2); артикул, которого нет вовсе, —

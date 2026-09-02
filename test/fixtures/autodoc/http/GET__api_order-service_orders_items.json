@@ -1,33 +1,122 @@
 {
-  "dateFrom": "2026-08-06T17:08:13.75",
-  "dateTo": "2026-09-02T00:00:00+00:00",
-  "items": [
-    {
-      "id": 185465447,
-      "number": 6,
-      "price": 152,
-      "quantity": 6,
-      "total": 912,
-      "description": "",
-      "status": {"id": 3, "groupId": 3, "name": "Закуплено", "text": "Товары зарезервированы"},
-      "goods": {"manufacturerId": 657, "manufacturerName": "VAG", "goodsName": "Болт", "article": "n90954802"},
-      "createDate": "2026-09-01T11:18:18.31",
-      "waitInShopDate": "2026-09-05T00:00:00",
-      "deliveryStatusName": "В магазине",
-      "isCancelable": false
-    },
-    {
-      "id": 23027026,
-      "number": 1,
-      "price": 92,
-      "quantity": 10,
-      "total": 920,
-      "status": {"id": 101, "groupId": 6, "name": "Проведён возврат"},
-      "goods": {"manufacturerId": 657, "manufacturerName": "VAG", "goodsName": "Гайка", "article": "N10332002"},
-      "createDate": "0001-01-01T00:00:00",
-      "waitInShopDate": null,
-      "deliveryStatusName": null,
-      "isCancelable": false
-    }
-  ]
+ "dateFrom": "2026-08-06T17:08:13.75",
+ "dateTo": "2026-09-02T00:00:00+00:00",
+ "items": [
+  {
+   "price": 152,
+   "quantity": 6,
+   "total": 912,
+   "description": "",
+   "number": 6,
+   "status": {
+    "name": "Закуплено",
+    "text": "Товары зарезервированы",
+    "date": "2026-09-02T11:43:52.817",
+    "groupId": 3,
+    "id": 3
+   },
+   "goods": {
+    "manufacturerId": 657,
+    "manufacturerName": "VAG",
+    "goodsName": "Болт",
+    "article": "n10127707"
+   },
+   "createDate": "2026-09-01T11:18:18.31",
+   "waitInShopDate": "2026-09-05T00:00:00",
+   "replaceArticle": null,
+   "orderType": 1,
+   "isCancelable": false,
+   "supplierDirection": "CSM1",
+   "deliveryStatusName": "В магазине",
+   "deliveryStatusDate": "2026-09-05T00:00:00",
+   "id": 185465447
+  },
+  {
+   "price": 407,
+   "quantity": 2,
+   "total": 814,
+   "description": "[заказ проверен] Заказ подтвержден",
+   "number": 4,
+   "status": {
+    "name": "Готово к выдаче",
+    "text": "Срок хранения заказа 14 дней",
+    "date": "2026-09-02T11:32:47.02",
+    "groupId": 6,
+    "id": 101
+   },
+   "goods": {
+    "manufacturerId": 657,
+    "manufacturerName": "VAG",
+    "goodsName": "Болт",
+    "article": "n90954802"
+   },
+   "createDate": "2026-08-30T13:26:43.64",
+   "waitInShopDate": null,
+   "replaceArticle": null,
+   "orderType": 1,
+   "isCancelable": false,
+   "supplierDirection": "Дилер",
+   "deliveryStatusName": null,
+   "deliveryStatusDate": null,
+   "id": 185399896
+  },
+  {
+   "price": 130,
+   "quantity": 2,
+   "total": 260,
+   "description": "[заказ проверен] Заказ подтвержден",
+   "number": 4,
+   "status": {
+    "name": "Готово к выдаче",
+    "text": "Срок хранения заказа 14 дней",
+    "date": "2026-09-02T11:32:42.157",
+    "groupId": 6,
+    "id": 101
+   },
+   "goods": {
+    "manufacturerId": 657,
+    "manufacturerName": "VAG",
+    "goodsName": "Гайка",
+    "article": "n10106402"
+   },
+   "createDate": "2026-08-30T13:26:43.63",
+   "waitInShopDate": null,
+   "replaceArticle": null,
+   "orderType": 1,
+   "isCancelable": false,
+   "supplierDirection": "UNKS",
+   "deliveryStatusName": null,
+   "deliveryStatusDate": null,
+   "id": 185399895
+  },
+  {
+   "price": 92,
+   "quantity": 10,
+   "total": 920,
+   "description": "[заказ проверен] Заказ подтвержден",
+   "number": 4,
+   "status": {
+    "name": "Проведён возврат",
+    "text": "Запрос на возврат подтверждён",
+    "date": "2026-09-01T18:06:13.35",
+    "groupId": 11,
+    "id": 106
+   },
+   "goods": {
+    "manufacturerId": 657,
+    "manufacturerName": "VAG",
+    "goodsName": "Гайка",
+    "article": "N10332002"
+   },
+   "createDate": "0001-01-01T00:00:00",
+   "waitInShopDate": null,
+   "replaceArticle": null,
+   "orderType": 2,
+   "isCancelable": false,
+   "supplierDirection": "CHEB100",
+   "deliveryStatusName": null,
+   "deliveryStatusDate": null,
+   "id": 23027026
+  }
+ ]
 }

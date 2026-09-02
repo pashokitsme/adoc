@@ -40,34 +40,40 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 	login,
 	whoami,
 
-	// Поиск по названию: та же ручка, что и по артикулу, но выдачу берём
-	// формой list — иначе сервер сам решит, отдать список или карточки.
-	//
-	// С машиной путь другой, потому что свободный поиск фильтр по машине
-	// отбивает: подсказка даёт alias категории, а по категории уже можно
-	// искать с `linkingTargetId` (см. notes/providers-v2.md).
+	/**
+	 * Поиск по названию идёт тем же путём, что и подсказка сайта: категория из
+	 * autocomplete, а потом `search/by-category`. Свободный поиск `v1/search`
+	 * — это то, что сайт делает по Enter, и его выдача склеивается по бренду:
+	 * на «фильтр масляный» первые восемь строк — грузовые фильтры STELLOX, а
+	 * девятая и десятая уже уплотнительные кольца. Категория даёт то, что
+	 * человек ожидает увидеть, и заодно единственная умеет фильтр по машине
+	 * (`linkingTargetId`), которую `v1/search` отбивает четырёхсотым.
+	 *
+	 * Категории под запрос нет — падаем в свободный поиск: он находит там, где
+	 * категории не существует (артикул, бренд, редкое слово). Категория
+	 * считается найденной, только если хоть одно слово её названия есть в
+	 * запросе: на артикул подсказка тоже отвечает какой-нибудь категорией.
+	 */
 	search: async (ctx, text, { car }) => {
 		const token = await readToken(ctx)
 		const p = place(ctx)
 		const target = carTarget(car)
 		if (car && !target) ctx.warn("armtek: в ref машины нет идентификатора модификации TecDoc — ищу без машины")
 
-		if (target) {
-			const a = await api.autocomplete(text, token)
-			const cat = bestCategory(a.category ?? [], text)
-			if (!cat) ctx.warn(`armtek: под «${text}» категории не нашлось — ищу без машины`)
-			else {
-				const r = await api.searchByCategory({ categoryAlias: cat.ALIAS, page: ctx.page, ...p, ...target }, token)
-				return {
-					items: toProducts(r.articlesData ?? []).slice(0, ctx.limit),
-					total: r.pagination?.totalCount,
-					extra: {
-						page: r.pagination?.currentPage, perPage: r.pagination?.perPage, pageCount: r.pagination?.pageCount,
-						category: { id: cat.ID, alias: cat.ALIAS, name: cat.NAME }, car: target,
-					},
-				}
+		const suggest = await api.autocomplete(text, token).catch(() => null)
+		const cat = bestCategory(suggest?.category ?? [], text)
+		if (cat) {
+			const r = await api.searchByCategory({ categoryAlias: cat.ALIAS, page: ctx.page, ...p, ...target }, token)
+			return {
+				items: toProducts(r.articlesData ?? []).slice(0, ctx.limit),
+				total: r.pagination?.totalCount,
+				extra: {
+					page: r.pagination?.currentPage, perPage: r.pagination?.perPage, pageCount: r.pagination?.pageCount,
+					category: { id: cat.ID, alias: cat.ALIAS, name: cat.NAME }, car: target ?? null,
+				},
 			}
 		}
+		if (target) ctx.warn(`armtek: под «${text}» категории не нашлось — ищу без машины`)
 
 		const r = await api.search({ query: text, queryType: 1, page: ctx.page, typeView: "list", ...p }, token)
 		return {
@@ -102,7 +108,9 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 			ctx.warn(`armtek: аналогов ${all.pagination?.totalCount ?? "?"} на ${pageCount} страницах, возвращена только страница ${all.pagination?.currentPage ?? ctx.page} из ${pageCount}`)
 		}
 		const hasExact = rows.some(a => articleKey(a.PIN) === articleKey(article) && brandKey(a.BRAND) === brandKey(row.BRAND))
-		return { items: toOffers(hasExact ? rows : [row, ...rows], want, p.vstel) }
+		// сколько предложений насчитал сайт — чтобы агрегатор не выдавал одну
+		// страницу за всю выдачу; строк в items меньше на весь хвост страниц
+		return { items: toOffers(hasExact ? rows : [row, ...rows], want, p.vstel), total: all.pagination?.totalCount }
 	},
 
 	/**
@@ -134,7 +142,7 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 		}
 		const rows = (all.articlesData ?? []).filter(a =>
 			articleKey(a.PIN) !== articleKey(article) || brandKey(a.BRAND) !== brandKey(row.BRAND))
-		return { items: toOffers(rows, { article, brand: row.BRAND }, p.vstel) }
+		return { items: toOffers(rows, { article, brand: row.BRAND }, p.vstel), total: all.pagination?.totalCount }
 	},
 
 	reviews: async (ctx, article, brandName) => {

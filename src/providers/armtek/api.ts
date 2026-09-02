@@ -88,6 +88,9 @@ export function mapHttpError(e: unknown): ProviderError | null {
 	try { text = errorTexts(JSON.parse(e.body)).join("; ") } catch { /* тело не конверт */ }
 	if (e.status === 401) return new ProviderError("auth", text || "armtek: нужен вход")
 	if (e.status === 404) return new ProviderError("notfound", text || `armtek: ${e.url} — не найдено`)
+	// 429 приходит телом с captchaHash: сайт не сломался, а просит подождать.
+	// Без этой ветки человек видел бы простыню с хэшем вместо совета.
+	if (e.status === 429) return new ProviderError("http", "armtek: слишком много запросов подряд — сайт просит подождать и показать капчу; повтори через несколько минут")
 	return new ProviderError("http", text ? `armtek: ${text}` : e.message)
 }
 

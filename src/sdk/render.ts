@@ -103,52 +103,67 @@ export const qtyCell = (q: number | undefined) => (q ? green(`${q} шт`) : dim(
 
 export function renderProducts<T extends Product>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "ничего не найдено"
-	return table(items.map(p => cells(cols, p, [
-		cyan(p.article), bold(p.brand), p.name.slice(0, 44),
-		money(p.price), qtyCell(p.quantity), ratingCell(p.rating), link(p.url),
-	])), heads(cols, ["АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ", "ССЫЛКА"]))
+	return table(items.map((p, i) => cells(cols, p, [
+		String(i + 1), cyan(p.article), bold(p.brand), p.name.slice(0, 50),
+		money(p.price), qtyCell(p.quantity), ratingCell(p.rating),
+	])), heads(cols, ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ОТ", "НАЛИЧИЕ", "РЕЙТИНГ"]))
+		+ urlList(items)
 }
 
 export function renderBrands<T extends BrandHit>(items: T[], cols: Col<T>[] = []): string {
 	if (!items.length) return "не найдено"
-	// имя режется, как и в остальных таблицах: у armtek в него уезжает
-	// применимость целиком, и колонка ссылок оказалась бы за краем экрана
-	return table(items.map(b => cells(cols, b, [bold(b.brand), cyan(b.article), (b.name ?? "").slice(0, 44), ratingCell(b.rating), link(b.url)])),
-		heads(cols, ["БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ", "ССЫЛКА"]))
+	// имя режется: у armtek в него уезжает применимость целиком
+	return table(items.map((b, i) => cells(cols, b, [
+		String(i + 1), bold(b.brand), cyan(b.article), (b.name ?? "").slice(0, 50), ratingCell(b.rating),
+	])), heads(cols, ["#", "БРЕНД", "АРТИКУЛ", "НАЗВАНИЕ", "РЕЙТИНГ"]))
+		+ urlList(items)
 }
 
-/**
- * Ссылка колонкой. Пустая клетка, а не «—»: колонка со ссылками и так самая
- * широкая, лишний мусор в ней только мешает читать.
- */
+/** Адрес в заголовке блока: корзина, страница отзывов, карточка, список заказов. */
 export const link = (url: string | undefined): string => (url ? dim(url) : "")
+
+/**
+ * Ссылки строк — списком под таблицей, а не колонкой в ней. Адреса у обоих
+ * сайтов доходят до сотни символов, и колонка с ними растягивала строку до
+ * двухсот: таблица переставала читаться совсем. Номер здесь тот же, что в
+ * колонке «#», так что строку и её адрес видно рядом.
+ *
+ * Повторный адрес печатается один раз: у десятка предложений одной детали
+ * карточка одна.
+ */
+export function urlList(items: { url?: string }[], from = 1): string {
+	const seen = new Set<string>()
+	const rows: string[][] = []
+	for (const [i, it] of items.entries()) {
+		if (!it.url || seen.has(it.url)) continue
+		seen.add(it.url)
+		rows.push([String(from + i), dim(it.url)])
+	}
+	return rows.length ? "\n" + table(rows) : ""
+}
 
 /**
  * `from` — номер первой строки: у блока аналогов нумерация продолжает основную.
  *
- * Ссылка у предложений одной детали одна и та же на десяток строк, поэтому
- * печатается только первая встреча каждого адреса: колонка остаётся узкой, а
- * каждая карточка всё равно названа ровно один раз.
+ * Адреса идут списком под таблицей: в строке им места нет.
  */
 export function renderOffers<T extends Offer>(items: T[], cols: Col<T>[] = [], from = 1): string {
 	if (!items.length) return "предложений нет"
-	const seen = new Set<string>()
-	return table(items.map((o, i) => {
-		const url = o.url && !seen.has(o.url) ? o.url : undefined
-		if (o.url) seen.add(o.url)
-		return cells(cols, o, [
-			String(from + i), bold(o.brand), (o.name ?? "").slice(0, 36), money(o.price), qtyCell(o.quantity),
-			o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
-			o.seller ?? dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "", link(url),
-		])
-	}), heads(cols, ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", "", "ССЫЛКА"]))
+	return table(items.map((o, i) => cells(cols, o, [
+		// длины подобраны так, чтобы строка укладывалась в ~110 символов: у
+		// autodoc продавец бывает «Магазин CHEB · Наличие в магазине», а имя
+		// детали у armtek тянет за собой всю применимость
+		String(from + i), bold(o.brand), (o.name ?? "").slice(0, 32), money(o.price), qtyCell(o.quantity),
+		o.deliveryDays != null ? days(o.deliveryDays) : (o.deliveryDate ?? dim("—")),
+		(o.seller ?? "").slice(0, 26) || dim("—"), ratingCell(o.rating), o.analog ? yellow("аналог") : "",
+	])), heads(cols, ["#", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "НАЛИЧИЕ", "СРОК", "ПРОДАВЕЦ", "РЕЙТИНГ", ""]))
+		+ urlList(items, from)
 }
 
 export function renderReviews(r: Reviews): string {
-	const out: string[] = [dim(`отзывов: ${r.total}`)]
+	const out: string[] = [`${dim(`отзывов: ${r.total}`)}${r.url ? `  ${link(r.url)}` : ""}`]
 	if (r.rating) out.push(`${stars(r.rating.average)}  ${bold(r.rating.average.toFixed(2))}  ${dim(`${r.rating.count} оценок`)}`)
 	for (const l of bar(r.rating?.histogram)) out.push(l)
-	if (r.url) out.push(dim(r.url))
 	if (r.summary && (r.summary.pros.length || r.summary.cons.length)) {
 		out.push(heading("Выжимка"))
 		for (const p of r.summary.pros) out.push(`  ${green("+")} ${p}`)
@@ -171,13 +186,13 @@ export const basketTotal = (b: Basket): number =>
 export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
 	if (!b.items.length) return "корзина пуста"
 	const rows = b.items.map((it, i) => cells(cols, it, [
-		`${i + 1}`, dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 32),
+		`${i + 1}`, dim(it.id), cyan(it.article), bold(it.brand), (it.name ?? "").slice(0, 36),
 		money(it.price), `${it.quantity}`, money(it.sum ?? it.price * it.quantity),
-		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")), link(it.url),
+		it.deliveryDays != null ? days(it.deliveryDays) : (it.deliveryDate ?? dim("—")),
 	]))
-	return table(rows, heads(cols, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК", "ССЫЛКА"])) +
-		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}` +
-		(b.url ? `\n${dim(b.url)}` : "")
+	return table(rows, heads(cols, ["#", "ID", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "ЦЕНА", "КОЛ", "СУММА", "СРОК"])) +
+		urlList(b.items) +
+		`\n${dim("итого")}  ${bold(money(basketTotal(b)))}${b.url ? `  ${link(b.url)}` : ""}`
 }
 
 /**
@@ -186,7 +201,7 @@ export function renderBasket(b: Basket, cols: Col<BasketItem>[] = []): string {
  * видно, не листая склады.
  */
 export function renderInfo(i: Info): string {
-	const out: string[] = [`${bold(i.name)}  ${cyan(i.article)}  ${i.brand}`]
+	const out: string[] = [`${bold(i.name)}  ${cyan(i.article)}  ${i.brand}${i.url ? `\n${link(i.url)}` : ""}`]
 
 	out.push(heading("Оценки"))
 	out.push(`  ${stars(i.rating?.average)}  ${bold(i.rating ? i.rating.average.toFixed(2) : "—")}  ${dim(`${i.rating?.count ?? 0} оценок`)}`)
@@ -200,11 +215,15 @@ export function renderInfo(i: Info): string {
 		out.push(fields(price))
 	}
 
-	// Код склада человеку не нужен — он есть в --json; в таблице от него только
-	// лишняя колонка, а у сайтов с одним безымянным складом ещё и бессмыслица.
+	// Название склада есть не у всех сайтов (у armtek его нет нигде — проверено),
+	// и тогда виден код. Срок рядом с остатком: у сайта со многими складами он и
+	// отличает строки друг от друга.
 	if (i.stock?.length) {
 		out.push(heading("Наличие"))
-		out.push(table(i.stock.map(s => ["  " + (s.name ?? s.code), qtyCell(s.quantity)])))
+		out.push(table(i.stock.map(s => [
+			"  " + (s.name ?? dim(s.code)), qtyCell(s.quantity),
+			s.deliveryDays != null ? days(s.deliveryDays) : "",
+		])))
 	}
 
 	if (i.description) {
@@ -212,32 +231,35 @@ export function renderInfo(i: Info): string {
 		out.push(fold(i.description))
 	}
 
-	if (i.url) out.push("", dim(i.url))
 	return out.join("\n")
 }
 
 /**
- * Заказы: шапка строкой, позиции — вложенной таблицей под ней. Повторный
- * адрес не печатается: у сайта без страницы отдельного заказа ссылка одна на
- * весь список, и дублировать её у каждой строки незачем.
+ * Заказы: шапка строкой, позиции — таблицей под ней, адреса позиций — списком
+ * под таблицей. Общий адрес (у сайта без страницы отдельного заказа он один на
+ * весь список) уходит в заголовок блока и у строк не повторяется.
  */
 export function renderOrders(items: Order[]): string {
 	if (!items.length) return "заказов нет"
+	const urls = new Set(items.map(o => o.url).filter((v): v is string => !!v))
+	const common = urls.size === 1 && items.every(o => o.url) ? [...urls][0] : undefined
+
 	const out: string[] = []
-	const seen = new Set<string>()
+	if (common) out.push(link(common))
 	for (const o of items) {
-		const url = o.url && !seen.has(o.url) ? o.url : undefined
-		if (o.url) seen.add(o.url)
-		const date = isoDate(o.date)
-		out.push(`${bold(`№ ${o.id}`)}  ${dim(date || "—")}  ${green(o.status)}  ${bold(money(o.total))}${url ? `  ${dim(url)}` : ""}`)
+		const own = common ? undefined : o.url
+		out.push(`${bold(`№ ${o.id}`)}  ${dim(isoDate(o.date) || "—")}  ${green(o.status)}  ${bold(money(o.total))}${own ? `  ${link(own)}` : ""}`)
 		if (o.items?.length) {
-			out.push(table(o.items.map(it => [
-				"  " + cyan(it.article), bold(it.brand), it.name.slice(0, 36),
-				`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty), link(it.url),
+			out.push(table(o.items.map((it, i) => [
+				`  ${i + 1}`, cyan(it.article), bold(it.brand), it.name.slice(0, 40),
+				`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
 			])))
+			// отступ тот же, что у номеров позиций: номер и адрес читаются парой
+			const list = urlList(o.items).replace(/^\n/, "")
+			if (list) out.push(list.split("\n").map(l => `  ${l}`).join("\n"))
 		}
 	}
-	return out.join("\n")
+	return out.filter(Boolean).join("\n")
 }
 
 /**

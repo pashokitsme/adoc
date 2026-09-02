@@ -19,7 +19,7 @@ export * from "./contract.ts"
 export {
 	bar, basketTotal, bold, cyan, days, dim, fields, fold, green, heading, isoDate, link, money,
 	qtyCell, ratingCell, red, renderBasket, renderBrands, renderCars, renderDisplay, renderInfo,
-	renderOffers, renderOrders, renderProducts, renderReviews, stars, table, yellow,
+	renderOffers, renderOrders, renderProducts, renderReviews, stars, table, urlList, yellow,
 } from "./render.ts"
 export type { CarLike, Col } from "./render.ts"
 export * as render from "./render.ts"

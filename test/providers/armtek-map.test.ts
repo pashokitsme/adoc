@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import type { RawArticle, RawCard, RawCart, RawGarage, RawReview, RawReviewRating } from "../../src/providers/armtek/api.ts"
 import {
-	author, bestCategory, cardToProducts, carTarget, deliveryDays, exactRows, isRef, num, orderUrl,
+	author, bestCategory, cardToProducts, carTarget, cleanName, deliveryDays, exactRows, isRef, num, orderUrl,
 	productUrl, quantity, refOf, refOfCartItem, sapDate, toBasket, toBrandHits, toCars, toInfo,
 	toOffers, toOrders, toProducts, toReviews, writeItem,
 } from "../../src/providers/armtek/map.ts"
@@ -326,6 +326,8 @@ describe("машина и категории", () => {
 		// ничья — за первой: порядок сайта остаётся значимым
 		expect(bestCategory([{ NAME: "Свечи зажигания" }, { NAME: "Свечи зажигания" }], "свеча зажигания")!.NAME).toBe("Свечи зажигания")
 		expect(bestCategory([], "что угодно")).toBeUndefined()
+		// на артикул подсказка тоже отвечает категорией — общих слов нет, значит нет и категории
+		expect(bestCategory([{ NAME: "Фильтры масляные" }], "0986452041")).toBeUndefined()
 	})
 })
 
@@ -355,5 +357,38 @@ describe("toOrders", () => {
 
 	test("пустой список — пустой массив", () => {
 		expect(toOrders(undefined)).toEqual([])
+	})
+})
+
+describe("cleanName", () => {
+	test("SAP-разметка в имени становится разделителем", () => {
+		expect(cleanName("фильтр масляный!\\ Mazda 626, Mitsubishi Galant 1.8-2.5i 91>"))
+			.toBe("фильтр масляный · Mazda 626, Mitsubishi Galant 1.8-2.5i 91>")
+		expect(cleanName("прокладка\\\\ VW")).toBe("прокладка · VW")
+		// висячий разделитель в конце не нужен
+		expect(cleanName("имя!\\")).toBe("имя")
+	})
+
+	test("чистое имя не трогается, пустое становится undefined", () => {
+		expect(cleanName("Фильтр масляный BOSCH 0 986 452 041")).toBe("Фильтр масляный BOSCH 0 986 452 041")
+		expect(cleanName("   ")).toBeUndefined()
+		expect(cleanName(undefined)).toBeUndefined()
+	})
+
+	test("имя чистится везде: поиск, предложения, корзина", async () => {
+		const cart: RawCart = (await fixture("cart-list.json")).data
+		expect(toBasket(cart, "ME86", TODAY).items[0]!.name).not.toContain("!\\")
+		const rows: RawCard[] = (await fixture("search-card-bosch.json")).data.articlesData
+		expect(toInfo(rows, undefined, TODAY).name).not.toContain("!\\")
+	})
+})
+
+describe("склады у toInfo", () => {
+	test("код склада и срок: имени у armtek нет нигде", async () => {
+		const rows: RawCard[] = (await fixture("search-card-bosch.json")).data.articlesData
+		const stock = toInfo(rows, undefined, TODAY).stock!
+		expect(stock[0]!.code).toBe("MOV0000019")
+		expect(stock[0]!.name).toBeUndefined()
+		expect(stock[0]!.deliveryDays).toBe(0)
 	})
 })

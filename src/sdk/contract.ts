@@ -87,7 +87,8 @@ export type Info = {
 	price?: number // «от», если сайт её даёт
 	currency?: "RUB"
 	deliveryDays?: number // минимальный срок, если сайт его даёт
-	stock?: { code: string; name?: string; quantity?: number }[]
+	/** Склады: `name` — только если у сайта оно есть, иначе виден код. */
+	stock?: { code: string; name?: string; quantity?: number; deliveryDays?: number }[]
 	description?: string
 	extra?: Record<string, unknown>
 }
@@ -165,7 +166,9 @@ export type WhoamiResult = { ok: boolean; display?: Display }
 /** `extra` — провайдерское расширение (у autodoc — список найденных категорий). */
 export type SearchResult = { items: Product[]; total?: number; extra?: Record<string, unknown> }
 export type BrandsResult = { items: BrandHit[] }
-export type OffersResult = { items: Offer[] }
+/** `total` — сколько предложений насчитал сайт, если он это говорит: строк в
+ *  `items` может быть меньше (страница, лимит). */
+export type OffersResult = { items: Offer[]; total?: number }
 export type CarsResult = { cars: Car[] }
 export type InfoResult = { info: Info }
 export type OrdersResult = { items: Order[] }

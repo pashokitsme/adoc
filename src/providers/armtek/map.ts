@@ -35,6 +35,27 @@ export const orderUrl = (vbeln: string | undefined, guid: string | undefined): s
 	return guid ? `${ORDERS_URL}/card?orderHash=${encodeURIComponent(guid)}` : ORDERS_URL
 }
 
+/**
+ * Название как его показывает сайт. В SAP-выгрузке armtek внутри имени живёт
+ * разметка: «фильтр масляный!\\ Mazda 626, Mitsubishi Galant 1.8-2.5i 91>» —
+ * `!` и обратная косая разделяют имя детали и применимость. Оставлять это в
+ * выдаче нельзя (человек читает «!\\»), выбрасывать применимость — тоже: она
+ * единственное, чем строки отличаются друг от друга. Поэтому разделитель
+ * становится тем, чем он и был по смыслу, а лишние пробелы схлопываются.
+ *
+ * Единственное место на весь провайдер: одно и то же имя приходит и в поиске,
+ * и в предложениях, и в корзине, и в заказе.
+ */
+export function cleanName(v: string | undefined): string | undefined {
+	if (!v) return undefined
+	const out = v
+		.replace(/\s*!?\\+\s*/g, " · ")
+		.replace(/\s+/g, " ")
+		.replace(/\s*·\s*$/, "")
+		.trim()
+	return out || undefined
+}
+
 // --- числа и даты ---------------------------------------------------------
 
 /** Цены приходят строками («592.00»); пустая строка — это не ноль, а «нет». */
@@ -215,6 +236,10 @@ export function carTarget(ref: Record<string, unknown> | null):
  * Какая из подсказанных категорий отвечает на запрос: доля слов её названия,
  * нашедшихся в запросе. Слова сравниваются по общему префиксу, иначе «свеча» и
  * «свечи» разошлись бы. Ничья — за первой, то есть порядок сайта значим.
+ *
+ * Ни одного общего слова — категории нет. Это важно: на артикул подсказка
+ * тоже отвечает какой-нибудь категорией, и без этой проверки поиск по номеру
+ * ушёл бы в чужой раздел вместо свободного поиска.
  */
 const words = (s: string): string[] =>
 	s.toLowerCase().replace(/ё/g, "е").split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1)
@@ -236,7 +261,7 @@ export function bestCategory<T extends { NAME: string }>(cats: T[], query: strin
 		const score = t.filter(w => q.some(x => sameWord(w, x))).length / t.length
 		if (score > bestScore) { bestScore = score; best = c }
 	}
-	return best ?? cats[0]
+	return bestScore > 0 ? best : undefined
 }
 
 // --- поиск ----------------------------------------------------------------
@@ -253,7 +278,7 @@ export function toProducts(rows: RawArticle[]): Product[] {
 		return {
 			article: a.PIN,
 			brand: a.BRAND,
-			name: a.NAME ?? b?.NAME ?? a.PIN,
+			name: cleanName(a.NAME ?? b?.NAME) ?? a.PIN,
 			...(num(b?.PRICES1) !== undefined ? { price: num(b?.PRICES1)!, currency: "RUB" as const } : {}),
 			...(q.value !== undefined ? { quantity: q.value } : {}),
 			...(rating(a.RATING, a.REVIEW_COUNT) ? { rating: rating(a.RATING, a.REVIEW_COUNT)! } : {}),
@@ -295,7 +320,7 @@ export function toBrandHits(rows: RawArticle[]): BrandHit[] {
 		out.push({
 			brand: a.BRAND,
 			article: a.PIN,
-			...(a.NAME ? { name: a.NAME } : {}),
+			...(cleanName(a.NAME) ? { name: cleanName(a.NAME)! } : {}),
 			...(r ? { rating: r } : {}),
 			...(a.PHOTO?.length ? { images: a.PHOTO } : {}),
 			...(productUrl(a.ARTICLE_ALIAS, a.ARTID) ? { url: productUrl(a.ARTICLE_ALIAS, a.ARTID)! } : {}),
@@ -336,7 +361,7 @@ export function toOffers(rows: RawArticle[], want: { article: string; brand: str
 			out.push({
 				article: a.PIN,
 				brand: a.BRAND,
-				name: a.NAME ?? s.NAME ?? a.PIN,
+				name: cleanName(a.NAME ?? s.NAME) ?? a.PIN,
 				price,
 				currency: "RUB",
 				...(q.value !== undefined ? { quantity: q.value } : {}),
@@ -420,7 +445,7 @@ export function toInfo(rows: RawCard[], stats: RawReviewRating | undefined, toda
 		article: head.PIN,
 		brand: head.BRAND,
 		// в форме card NAME — название предложения, человеческое лежит в CUSTOM_NAME
-		name: head.CUSTOM_NAME || head.NAME || head.PIN,
+		name: cleanName(head.CUSTOM_NAME || head.NAME) ?? head.PIN,
 		...(productUrl(head.ARTICLE_ALIAS, head.ARTID) ? { url: productUrl(head.ARTICLE_ALIAS, head.ARTID)! } : {}),
 		...(stats && avg !== undefined ? {
 			rating: {
@@ -432,9 +457,14 @@ export function toInfo(rows: RawCard[], stats: RawReviewRating | undefined, toda
 		...(head.PHOTO?.length ? { images: head.PHOTO } : {}),
 		...(prices.length ? { price: Math.min(...prices), currency: "RUB" as const } : {}),
 		...(daysList.length ? { deliveryDays: Math.min(...daysList) } : {}),
+		// Имени у склада нет нигде: ни в строке выдачи, ни в all-suggestions, ни в
+		// списке точек выдачи (KEYZAK вида MOV0000019 и vstel вида ME86 — разные
+		// пространства имён, проверено). Поэтому виден код, а различает строки
+		// срок — его и кладём рядом.
 		stock: rows.filter(c => c.KEYZAK).map(c => ({
 			code: c.KEYZAK!,
 			...(quantity(c.RVALUE).value !== undefined ? { quantity: quantity(c.RVALUE).value } : {}),
+			...(deliveryDays(c.DLVDT, today) !== undefined ? { deliveryDays: deliveryDays(c.DLVDT, today) } : {}),
 		})),
 		extra: { artId: head.ARTID, ...(head.ARTICLE_ALIAS ? { alias: head.ARTICLE_ALIAS } : {}), offers: rows.length },
 	}
@@ -457,7 +487,7 @@ export function toOrders(list: RawOrder[] | undefined): Order[] {
 			return {
 				article: i.PIN ?? "",
 				brand: i.BRAND ?? "",
-				name: i.ARTICLE_NAME || i.NAME || "",
+				name: cleanName(i.ARTICLE_NAME || i.NAME) ?? "",
 				qty,
 				price,
 				sum: num(i.NETWR) ?? price * qty,
@@ -491,7 +521,7 @@ export function toBasket(raw: { items?: RawCartItem[] } | null, vstel: string, t
 			id: String(i.posnr),
 			article: i.pin ?? "",
 			brand: i.brand ?? "",
-			...(i.name ? { name: i.name } : {}),
+			...(cleanName(i.name) ? { name: cleanName(i.name)! } : {}),
 			price: i.prices,
 			quantity: i.kwmeng,
 			sum: i.prices * i.kwmeng,
