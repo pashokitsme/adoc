@@ -9,6 +9,7 @@ import type { Flags } from "./sdk/index.ts"
 import { cmdAccounts, cmdLogin, cmdLogout } from "./commands/accounts.ts"
 import { cmdAnalogs } from "./commands/analogs.ts"
 import { cmdBasket } from "./commands/basket.ts"
+import { cmdFits } from "./commands/fits.ts"
 import { cmdGarage } from "./commands/garage.ts"
 import { cmdInfo } from "./commands/info.ts"
 import { cmdOrders } from "./commands/orders.ts"
@@ -32,6 +33,7 @@ const COMMANDS: Record<string, Handler> = {
 	part: cmdPart,
 	info: cmdInfo,
 	analogs: cmdAnalogs,
+	fits: cmdFits,
 	search: cmdSearch,
 	reviews: cmdReviews,
 	basket: cmdBasket,
@@ -51,7 +53,7 @@ const COMMANDS: Record<string, Handler> = {
 export const COMMAND_NAMES = [...Object.keys(COMMANDS), "help"]
 
 /** Команды, которые начинаются с шага «артикул → бренд» и умеют спросить бренд. */
-const BRAND_COMMANDS = new Set(["part", "reviews", "info", "analogs"])
+const BRAND_COMMANDS = new Set(["part", "reviews", "info", "analogs", "fits"])
 
 export type RunResult = { stdout: string; stderr: string; code: number }
 

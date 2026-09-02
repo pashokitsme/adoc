@@ -2,7 +2,7 @@
 // пропущенный offers или reviews при capability "reviews" — ошибка компиляции.
 
 import type {
-	Basket, BrandsResult, Capability, CarsResult, Display, InfoResult,
+	Basket, BrandsResult, Capability, CarsResult, Display, FitsResult, InfoResult,
 	OffersResult, OrdersResult, Reviews, SearchResult,
 } from "./contract.ts"
 import type { Flags } from "./cli.ts"
@@ -61,6 +61,12 @@ export type ProviderBase<A> = {
 	/** Только аналоги, без точных совпадений. Не умеет — пустой список и ctx.warn. */
 	analogs(ctx: Ctx<A>, article: string, brand: string): Promise<OffersResult>
 
+	/**
+	 * Применимость к машине: `car` — ref из `garage export` этого же сайта,
+	 * как его отдал сам сайт. Провайдер, который применимости не знает, эту
+	 * команду не объявляет вовсе — притворяться «не подходит» ему нечем.
+	 */
+	fits?(ctx: Ctx<A>, article: string, brand: string, opts: { car: Record<string, unknown> }): Promise<FitsResult>
 	reviews?(ctx: Ctx<A>, article: string, brand: string): Promise<Reviews>
 	garageExport?(ctx: Ctx<A>): Promise<CarsResult>
 	orders?(ctx: Ctx<A>): Promise<OrdersResult>
@@ -74,6 +80,7 @@ type Requires<A, C extends Capability> =
 	("reviews" extends C ? { reviews: NonNullable<ProviderBase<A>["reviews"]> } : {}) &
 	("garage" extends C ? { garageExport: NonNullable<ProviderBase<A>["garageExport"]> } : {}) &
 	("orders" extends C ? { orders: NonNullable<ProviderBase<A>["orders"]> } : {}) &
+	("fits" extends C ? { fits: NonNullable<ProviderBase<A>["fits"]> } : {}) &
 	("basket" extends C ? { basket: BasketOps<A> } : {})
 
 export type ProviderSpec<A> = ProviderBase<A> & { capabilities: Capability[] }
@@ -86,6 +93,7 @@ export function defineProvider<A, const C extends readonly Capability[]>(
 		const has = cap === "reviews" ? !!spec.reviews
 			: cap === "garage" ? !!spec.garageExport
 			: cap === "orders" ? !!spec.orders
+			: cap === "fits" ? !!spec.fits
 			: cap === "basket" ? !!spec.basket
 			: true
 		if (!has) throw new Error(`провайдер ${spec.id} объявил capability ${cap}, но не реализовал её`)

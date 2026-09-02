@@ -336,6 +336,19 @@ export function toBrandHits(rows: RawArticle[]): BrandHit[] {
 }
 
 /**
+ * Имя детали → запросы для подсказки категорий, от длинного к короткому.
+ * Сайт кладёт в имя ещё и применимость («болт амортизатора пер. · Audi A3
+ * …»), а подсказка на такую строку отвечает пустотой — проверено вживую:
+ * целиком она не даёт ни одной категории, «болт амортизатора» даёт «Болты и
+ * винты автомобильные». Поэтому пробуем по очереди: всё до «·», три слова, два.
+ */
+export function categoryQueries(name: string): string[] {
+	const head = (name.split("·")[0] ?? name).trim()
+	const words = head.split(/\s+/).filter(Boolean)
+	const tries = [head, words.slice(0, 3).join(" "), words.slice(0, 2).join(" ")]
+	return [...new Set(tries.filter(q => q.length > 2))]
+}
+/**
  * Предложения. Одна строка выдачи разворачивается в столько Offer, сколько у
  * неё SUGGESTIONS: они отличаются складом, ценой и сроком.
  *

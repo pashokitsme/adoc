@@ -154,6 +154,7 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 | `brands <артикул>` | `{items}` | `BrandsResult` |
 | `offers <артикул> --brand <имя> [--analogs]` | `{items}` | `OffersResult` |
 | `info <артикул> --brand <имя>` | `{info, offers?}` | `InfoResult` |
+| `fits <артикул> --brand <имя> --car <json>` | `{fits, reason?, url?}` | `FitsResult` (capability `fits`) |
 | `analogs <артикул> --brand <имя>` | `{items}` | `OffersResult` |
 
 `login` обычно ведёт диалог через терминал (логин, пароль без эха). Если
@@ -195,6 +196,13 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 «сколько стоит» не отвечает. Поле необязательное, и данные для него лучше
 брать из того же места, откуда их берёт команда `offers`, — второе правило
 «что считать предложением» провайдеру не нужно.
+
+`fits` — применимость к машине: `--car` тот же ref из `garage export`, что и у
+`search`. Три состояния, и третье обязательно: `true`, `false` и `null` — «сайт
+не знает». Молчаливое `false` там, где данных нет, дороже честного незнания: по
+нему деталь не купят. `reason` — короткая причина для человека, `url` —
+страница, где применимость видно глазами. Команда необязательная: объявляется
+capability `fits`, и без неё агрегатор сайт не спрашивает.
 
 `analogs` — **только аналоги**, без точных совпадений: каждая строка идёт с
 `analog: true`. Провайдер может собрать её из своего `offers --analogs`,
@@ -455,6 +463,7 @@ export type BrandsResult = { items: BrandHit[] }
 export type OffersResult = { items: Offer[]; total?: number }
 export type CarsResult = { cars: Car[] }
 export type InfoResult = { info: Info; offers?: Offer[] }
+export type FitsResult = { fits: boolean | null; reason?: string; url?: string }
 export type OrdersResult = { items: Order[] }
 ```
 

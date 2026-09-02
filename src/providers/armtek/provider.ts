@@ -10,9 +10,15 @@ import { accessToken, decodeClaims, login, publicRead, whoami, type Account } fr
 import * as brand from "./brand.ts"
 import { commands } from "./commands.ts"
 import {
-	bestCategory, carTarget, isRef, productUrl, refOfCartItem, toBasket, toBrandHits, toCars, toInfo,
+	bestCategory, carTarget, categoryQueries, isRef, productUrl, refOfCartItem, toBasket, toBrandHits, toCars, toInfo,
 	toOffers, toOrders, toProducts, toReviews, writeItem, type ArmtekRef,
 } from "./map.ts"
+
+/**
+ * Сколько страниц категории пролистать, проверяя применимость. Три — это ~108
+ * позиций: дальше вопрос стоит дороже ответа, а темп сайт считает по аккаунту.
+ */
+const FIT_PAGES = 3
 
 /** Точка выдачи и организация аккаунта; без входа — умолчания фронта. */
 const place = (ctx: Ctx<Account>): brand.Place => ({
@@ -29,11 +35,11 @@ async function cart(ctx: Ctx<Account>): Promise<{ token: string; vkorg: string; 
 	return { token, ...p, raw }
 }
 
-export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "basket", "orders"]>({
+export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "basket", "orders", "fits"]>({
 	id: "armtek",
 	name: "Armtek",
 	site: "https://armtek.ru",
-	capabilities: ["reviews", "garage", "analogs", "basket", "orders"],
+	capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits"],
 	valueFlags: ["body"],
 	mapError: mapHttpError,
 
@@ -130,6 +136,55 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 			.then(({ row }) => toOffers([row], { article, brand: row.BRAND }, p.vstel))
 			.catch(() => [] as Offer[])
 		return { info: toInfo(rows, stats[0]), offers: offers.sort((a, b) => a.price - b.price) }
+	}),
+
+	/**
+	 * Применимость. Прямого ответа у сайта нет, но `search/by-category` —
+	 * единственная его ручка с фильтром по машине (`linkingTargetId`), и
+	 * вопрос сводится к «есть ли артикул в своей категории под эту машину».
+	 *
+	 * Категорию берём по названию детали через ту же подсказку, что и поиск:
+	 * своего поля категории в строке артикула у armtek нет. Не нашлась —
+	 * отвечаем «не знаю»: выдумывать «не подходит» нельзя.
+	 */
+	fits: async (ctx, article, brandName, { car }) => await publicRead(ctx, async token => {
+		const p = place(ctx)
+		const target = carTarget(car)
+		const { row } = await brand.resolve(article, brandName, token, p, ctx.warn)
+		const url = productUrl(row.ARTICLE_ALIAS, row.ARTID)
+		if (!target) return { fits: null, reason: "в ref машины нет идентификатора модификации TecDoc", url }
+		// Подсказка не понимает длинное имя целиком, поэтому пробуем его же
+		// короче: лишний запрос уходит только когда предыдущий ничего не нашёл.
+		let cat: api.SuggestCategory | undefined
+		for (const q of categoryQueries(row.NAME ?? "")) {
+			const suggest = await api.autocomplete(q, token).catch(() => null)
+			cat = bestCategory(suggest?.category ?? [], q)
+			if (cat) break
+		}
+		if (!cat) return { fits: null, reason: "категория детали не нашлась — применимость не проверить", url }
+		const want = articleKey(article)
+		const wantBrand = brandKey(row.BRAND)
+		// Категория отдаётся страницами по 36. Листаем не больше FIT_PAGES: сайт
+		// считает темп по аккаунту, и «не знаю» дешевле, чем 429 на весь запуск.
+		let seen = 0
+		let pageCount = 1
+		let total: number | undefined
+		for (let page = 1; page <= FIT_PAGES; page++) {
+			const r = await api.searchByCategory({ categoryAlias: cat.ALIAS, page, ...p, ...target }, token)
+			const rows = r.articlesData ?? []
+			seen += rows.length
+			pageCount = r.pagination?.pageCount ?? 1
+			total = r.pagination?.totalCount
+			if (rows.some(a => articleKey(a.PIN) === want && brandKey(a.BRAND) === wantBrand)) {
+				return { fits: true, reason: `есть в «${cat.NAME}» под эту машину`, url }
+			}
+			if (page >= pageCount) break
+		}
+		// Просмотрели не всё — это «не знаю», а не «не подходит».
+		if (pageCount > FIT_PAGES) {
+			return { fits: null, reason: `в «${cat.NAME}» под эту машину ${total ?? "?"} позиций на ${pageCount} страницах, просмотрены первые ${FIT_PAGES}`, url }
+		}
+		return { fits: false, reason: `нет в «${cat.NAME}» под эту машину (${total ?? seen} позиций)`, url }
 	}),
 
 	// Только аналоги: точные строки отдаёт offers, и повторять их здесь значит

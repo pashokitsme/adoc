@@ -1,7 +1,7 @@
 // provider.ts — autodoc.ru как провайдер контракта. Вся сайтоспецифика — в
 // api.ts/auth.ts/map.ts; здесь только склейка вызовов и свои команды.
 
-import { ProviderError, defineProvider, positiveInt, type Display, type Offer } from "../../sdk/index.ts"
+import { ProviderError, articleKey, brandKey, defineProvider, positiveInt, type Display, type Offer } from "../../sdk/index.ts"
 import * as api from "./api.ts"
 import { ApiError } from "./api.ts"
 import * as auth from "./auth.ts"
@@ -10,7 +10,7 @@ import { resolveBrand } from "./brand.ts"
 import type { Brand } from "./brand.ts"
 import { commands } from "./commands.ts"
 import {
-	SITE, basketAddBody, bestCategory, carQuery, categoryIds, reviewsUrl, toBasket, toBrandHits, toCars,
+	SITE, basketAddBody, bestCategory, carQuery, cardUrl, categoryIds, reviewsUrl, toBasket, toBrandHits, toCars,
 	toInfo, toOffers, toOrders, toProducts, toReviews, type AutodocRef,
 } from "./map.ts"
 
@@ -64,9 +64,9 @@ async function offerRows(article: string, b: Brand, name: string, withAnalogs: b
 	return items
 }
 
-export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "basket", "orders"]>({
+export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "basket", "orders", "fits"]>({
 	id: "autodoc", name: "Autodoc", site: SITE,
-	capabilities: ["reviews", "garage", "analogs", "basket", "orders"],
+	capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits"],
 	valueFlags: ["sort"],
 	mapError: e => {
 		if (e instanceof ApiError) return new ProviderError(e.status === 401 ? "auth" : e.status === 404 ? "notfound" : "http", e.message)
@@ -160,6 +160,39 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		])
 		// по цене: карточка отвечает на «сколько стоит», и первым читается дешёвое
 		return { info: toInfo(inf, price), offers: offers.sort((a, b) => a.price - b.price) }
+	},
+
+	/**
+	 * Применимость: сайт не отвечает на неё прямо, но отвечает косвенно —
+	 * каталог категории умеет фильтр по машине. Значит, вопрос сводится к
+	 * «есть ли наш артикул в своей категории, отфильтрованной этой машиной».
+	 *
+	 * Три исхода, и третий обязателен: без полного ref машины и без категории
+	 * у артикула сказать нечего, и молчаливое «не подходит» тут было бы
+	 * враньём — по нему деталь не купят.
+	 */
+	fits: async (_ctx, article, brandName, { car }) => {
+		const b = await resolveBrand(article, brandName)
+		const url = cardUrl(b.id, article)
+		const q = carQuery(car)
+		if (!q) return { fits: null, reason: "в ref машины нет brandName/modelId/modificationId", url }
+		const info = await api.goodsInfo(article, b.id).catch(() => null)
+		if (!info?.categoryId) return { fits: null, reason: "у артикула нет категории — подбор по машине не проверить", url }
+		// Одной страницы хватает почти всегда: категория под конкретную
+		// модификацию — это десятки строк, а не тысячи.
+		const r = await api.categoryGoods(info.categoryId, { ...q, MaxResultCount: 200 })
+		const items = r.items ?? []
+		const want = articleKey(article)
+		const wantBrand = brandKey(b.name || brandName)
+		const where = r.categoryName ?? "категория"
+		if (items.some(g => articleKey(g.article) === want && brandKey(g.manufacturer?.name ?? "") === wantBrand)) {
+			return { fits: true, reason: `есть в «${where}» под эту машину`, url }
+		}
+		// Не нашли, но и увидели не всё — это «не знаю», а не «не подходит».
+		if ((r.totalCount ?? 0) > items.length) {
+			return { fits: null, reason: `в «${where}» под эту машину ${r.totalCount} позиций, просмотрены первые ${items.length}`, url }
+		}
+		return { fits: false, reason: `нет в «${where}» под эту машину (${r.totalCount ?? items.length} позиций)`, url }
 	},
 
 	// Только аналоги: ровно те строки `offers --analogs`, у которых analog:true.

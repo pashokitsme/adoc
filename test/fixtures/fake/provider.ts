@@ -92,9 +92,9 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		url: page(r.article), ref: { line: `${id}-${n}` },
 	})
 
-	const spec = defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket", "orders"]>({
+	const spec = defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket", "orders", "fits"]>({
 		id, name: `Fake ${id}`, site,
-		capabilities: ["reviews", "garage", "analogs", "basket", "orders"],
+		capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits"],
 
 		login: async ctx => {
 			const user = knob(id, "LOGIN") ?? await ctx.prompt("Логин > ")
@@ -168,6 +168,17 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 				// провайдер берёт их оттуда же, и обёртке они приезжают так же.
 				offers: [toOffer(hit, 1), { ...toOffer(hit, 2), price: hit.price + 30, seller: "второй продавец" }],
 			}
+		},
+
+		// Применимость: подходит всё, кроме артикулов на NOFIT-, а под ручкой
+		// UNKNOWNFIT сайт честно не знает — три состояния контракта.
+		fits: async (_ctx, article, brand, { car }) => {
+			await gate("FITS")
+			const target = car.carId ?? car.linkingTargetId ?? car.modificationId
+			if (!target) return { fits: null, reason: `${id}: в ref машины нет идентификатора` }
+			if (knob(id, "UNKNOWNFIT")) return { fits: null, reason: `${id}: нет данных о машине ${String(target)}`, url: page(article) }
+			const ok = !article.toUpperCase().startsWith("NOFIT")
+			return { fits: ok, reason: `${id}: ${brand} ${ok ? "есть" : "нет"} в подборе машины ${String(target)}`, url: page(article) }
 		},
 
 		analogs: async (_ctx, article, brand) => {

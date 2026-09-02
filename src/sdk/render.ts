@@ -2,7 +2,7 @@
 // чтобы `adoc ... | grep` не ловил escape-последовательности.
 
 import { noWarn } from "./config.ts"
-import type { Basket, BasketItem, BrandHit, Car, Display, Info, Offer, Order, Product, Reviews } from "./contract.ts"
+import type { Basket, BasketItem, BrandHit, Car, Display, FitsResult, Info, Offer, Order, Product, Reviews } from "./contract.ts"
 
 // Решение принимается на каждый вызов, а не один раз при импорте: модуль
 // грузится раньше, чем становится известно, куда пойдёт вывод, и запомненное
@@ -364,6 +364,18 @@ export function renderInfo(i: Info, offers: Offer[] = []): string {
  * весь список) уходит в заголовок блока и у строк не повторяется.
  */
 const ORDER_HEAD = ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "КОЛ", "ЦЕНА", "СУММА"]
+
+/**
+ * Применимость одной строкой. Три состояния и три цвета: зелёное «подходит»,
+ * красное «не подходит» и серое «не знает» — последнее не ошибка, а честный
+ * ответ сайта, у которого нет данных по этой машине.
+ */
+export function renderFits(r: FitsResult, who?: string): string {
+	const verdict = r.fits === true ? green("подходит") : r.fits === false ? red("не подходит") : dim("не знает")
+	const head = who ? `${bold(who)}: ${verdict}` : verdict
+	const page = link(r.url, "страница детали")
+	return `${head}${r.reason ? ` ${dim(`— ${r.reason}`)}` : ""}${page ? `  ${page}` : ""}`
+}
 
 export function renderOrders(items: Order[]): string {
 	if (!items.length) return "заказов нет"

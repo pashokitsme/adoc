@@ -4,9 +4,9 @@
 // провайдера: виноват он, а не пользователь.
 
 import { CONTRACT_VERSION, ProviderError } from "../sdk/index.ts"
-import type { Basket, BasketItem, BrandHit, Capability, Car, Command, Describe, Display, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/index.ts"
+import type { Basket, BasketItem, BrandHit, Capability, Car, Command, Describe, Display, FitsResult, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/index.ts"
 
-const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket", "orders"]
+const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"]
 
 const fail = (who: string, what: string): never => {
 	throw new ProviderError("internal", `${who}: ${what}`)
@@ -254,6 +254,21 @@ export function parseInfo(v: unknown, who: string): { info: Info; offers: Offer[
 		...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
 	}
 	return { info, offers }
+}
+
+/**
+ * Применимость. Три состояния, и `null` — полноценный ответ: сайт, который не
+ * знает про эту машину, обязан так и сказать. Чужое `undefined` или мусор в
+ * поле — тоже «не знает»: выдумывать за сайт «подходит» нельзя.
+ */
+export function parseFits(v: unknown, who: string): FitsResult {
+	const o = obj(v, who, "ответ fits")
+	const fits = typeof o.fits === "boolean" ? o.fits : null
+	return {
+		fits,
+		...(optStr(o, "reason") ? { reason: optStr(o, "reason") } : {}),
+		...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
+	}
 }
 
 /** Заказы сайта. Позиции необязательны: их отдают не все. */

@@ -4,7 +4,7 @@
 
 export const CONTRACT_VERSION = 1 as const
 
-export type Capability = "reviews" | "garage" | "analogs" | "basket" | "orders"
+export type Capability = "reviews" | "garage" | "analogs" | "basket" | "orders" | "fits" | "crosses"
 
 export type Rating = { average: number; count: number }
 
@@ -176,4 +176,15 @@ export type CarsResult = { cars: Car[] }
  * провайдер, которому они не даются, отдаёт одну карточку.
  */
 export type InfoResult = { info: Info; offers?: Offer[] }
+
+/**
+ * Подходит ли деталь машине. Третье состояние обязательно: сайт, у которого
+ * нет данных о применимости этой детали к этой модификации, обязан сказать
+ * «не знаю» (`null`), а не «не подходит» — по «не подходит» деталь не купят,
+ * и молчаливое `false` дороже честного незнания.
+ *
+ * `reason` — короткая причина ответа для человека; `url` — страница, где ту же
+ * применимость видно глазами.
+ */
+export type FitsResult = { fits: boolean | null; reason?: string; url?: string }
 export type OrdersResult = { items: Order[] }

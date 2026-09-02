@@ -60,7 +60,7 @@ const guestReply = () => envelope({ accessToken: jwt({ exp: now() + 3600 }) })
 
 describe("объявление провайдера", () => {
 	test("умеет ровно то, что реализовано", () => {
-		expect([...armtek.capabilities].sort()).toEqual(["analogs", "basket", "garage", "orders", "reviews"])
+		expect([...armtek.capabilities].sort()).toEqual(["analogs", "basket", "fits", "garage", "orders", "reviews"])
 		expect(armtek.id).toBe("armtek")
 	})
 })
