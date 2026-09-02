@@ -74,7 +74,7 @@ describe("adoc-autodoc", () => {
 		expect(r.json.items[0]).toMatchObject({ id: "555", quantity: 2 })
 	})
 	test("whoami с токеном показывает поля как их отдаёт сайт", async () => {
-		const payload = Buffer.from(JSON.stringify({ unique_name: "user1", email: "pavel@example.com", phone_number: "+79990001234" })).toString("base64url")
+		const payload = Buffer.from(JSON.stringify({ unique_name: "user1", email: "pavel@example.com", displayEmail: "pa***@example.com", phone_number: "+79990001234" })).toString("base64url")
 		await accountStore("autodoc").save({ access_token: `h.${payload}.s`, expires_at: Math.floor(Date.now() / 1000) + 3600 })
 		const r = await run(["whoami"])
 		expect(r.json).toEqual({ ok: true, display: { name: "user1", email: "pavel@example.com", phone: "+79990001234" } })
