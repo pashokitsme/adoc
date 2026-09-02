@@ -2,7 +2,7 @@
 // пропущенный offers или reviews при capability "reviews" — ошибка компиляции.
 
 import type {
-	Basket, BrandsResult, Capability, CarsResult, Display, FitsResult, InfoResult,
+	Basket, BrandsResult, Capability, CarsResult, CrossesResult, Display, FitsResult, InfoResult,
 	OffersResult, OrdersResult, Reviews, SearchResult,
 } from "./contract.ts"
 import type { Flags } from "./cli.ts"
@@ -67,6 +67,8 @@ export type ProviderBase<A> = {
 	 * команду не объявляет вовсе — притворяться «не подходит» ему нечем.
 	 */
 	fits?(ctx: Ctx<A>, article: string, brand: string, opts: { car: Record<string, unknown> }): Promise<FitsResult>
+	/** Кросс-ссылки: оригинальные номера, неоригинальные замены, состав узла. */
+	crosses?(ctx: Ctx<A>, article: string, brand: string): Promise<CrossesResult>
 	reviews?(ctx: Ctx<A>, article: string, brand: string): Promise<Reviews>
 	garageExport?(ctx: Ctx<A>): Promise<CarsResult>
 	orders?(ctx: Ctx<A>): Promise<OrdersResult>
@@ -81,6 +83,7 @@ type Requires<A, C extends Capability> =
 	("garage" extends C ? { garageExport: NonNullable<ProviderBase<A>["garageExport"]> } : {}) &
 	("orders" extends C ? { orders: NonNullable<ProviderBase<A>["orders"]> } : {}) &
 	("fits" extends C ? { fits: NonNullable<ProviderBase<A>["fits"]> } : {}) &
+	("crosses" extends C ? { crosses: NonNullable<ProviderBase<A>["crosses"]> } : {}) &
 	("basket" extends C ? { basket: BasketOps<A> } : {})
 
 export type ProviderSpec<A> = ProviderBase<A> & { capabilities: Capability[] }
@@ -94,6 +97,7 @@ export function defineProvider<A, const C extends readonly Capability[]>(
 			: cap === "garage" ? !!spec.garageExport
 			: cap === "orders" ? !!spec.orders
 			: cap === "fits" ? !!spec.fits
+			: cap === "crosses" ? !!spec.crosses
 			: cap === "basket" ? !!spec.basket
 			: true
 		if (!has) throw new Error(`провайдер ${spec.id} объявил capability ${cap}, но не реализовал её`)

@@ -3,7 +3,7 @@
 // правил в проекте быть не должно, иначе part и search разъедутся.
 
 import { articleKey, brandKey } from "../sdk/index.ts"
-import type { BrandHit, Offer, Product, Rating } from "../sdk/index.ts"
+import type { BrandHit, CrossItem, Offer, Product, Rating } from "../sdk/index.ts"
 
 export type Per<T> = { provider: string; items: T[] }
 
@@ -98,6 +98,39 @@ export function splitOffers(article: string, per: Per<Offer>[]): { offers: Offer
 	// между запусками только потому, что кто-то ответил быстрее.
 	const byPrice = (a: OfferRow, b: OfferRow): number => a.price - b.price || a.provider.localeCompare(b.provider)
 	return { offers: offers.sort(byPrice), analogs: analogs.sort(byPrice) }
+}
+
+/**
+ * Кросс-ссылка, склеенная по сайтам: один и тот же номер знают оба, и строка у
+ * него должна быть одна — с колонкой «где» и адресом каждого сайта.
+ */
+export type MergedCross = CrossItem & { providers: string[]; urls: Record<string, string> }
+
+export function mergeCrosses(per: Per<CrossItem>[]): MergedCross[] {
+	const by = new Map<string, MergedCross>()
+	for (const { provider, items } of per) {
+		for (const c of items) {
+			const key = `${articleKey(c.article)}|${brandKey(c.brand)}`
+			const cur = by.get(key)
+			if (!cur) {
+				by.set(key, { ...c, providers: [provider], urls: c.url ? { [provider]: c.url } : {} })
+				continue
+			}
+			if (!cur.providers.includes(provider)) cur.providers.push(provider)
+			if (c.url) {
+				cur.urls[provider] ??= c.url
+				cur.url ??= c.url
+			}
+			if (!cur.name && c.name) cur.name = c.name
+			// Вид знает не всякий сайт: armtek зовёт заменой всё подряд, а
+			// autodoc отличает состав узла — знание вытесняет незнание.
+			if (cur.kind === "aftermarket" && c.kind !== "aftermarket") cur.kind = c.kind
+		}
+	}
+	// Сначала то, что знают все сайты, дальше по виду и номеру: порядок не
+	// должен зависеть от того, кто ответил быстрее.
+	return [...by.values()].sort((a, b) =>
+		b.providers.length - a.providers.length || a.kind.localeCompare(b.kind) || a.article.localeCompare(b.article))
 }
 
 export function mergeProducts(per: Per<Product>[]): MergedProduct[] {

@@ -2,7 +2,7 @@
 // docs/autodoc-api.md и test/fixtures/autodoc/http/*.json.
 
 import { articleKey, brandKey, render } from "../../sdk/index.ts"
-import type { Basket, BasketItem, BrandHit, Car, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews } from "../../sdk/index.ts"
+import type { Basket, BasketItem, BrandHit, Car, CrossItem, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews } from "../../sdk/index.ts"
 
 import type { Car as ApiCar, CatalogGood, GoodsInfo, GoodsPrice, OrderRow, Reviews as ApiReviews, SearchHit, Suggestion } from "./api.ts"
 
@@ -65,6 +65,38 @@ export function toBrandHits(hits: SearchHit[], infos: Map<number, GoodsInfo | nu
 			extra: { manufacturerId: h.manufacturer.id },
 		}
 	})
+}
+
+/**
+ * Группы `price-list/analogs` → вид кросс-ссылки. Идентификаторы сняты с живого
+ * ответа: 3 — «Неофициальные замены», 6 — «Входит в состав узла». Незнакомую
+ * группу отдаём её же названием: придумывать ей вид нельзя, а показать можно.
+ */
+const CROSS_KIND: Record<string, CrossItem["kind"]> = { "3": "aftermarket", "6": "part-of" }
+
+/**
+ * Кросс-ссылки из того же ответа, что и аналоги. Исходный артикул в список не
+ * попадает: он не ссылка на себя. Строка без предложений тоже годится — это
+ * справочник номеров, а не выдача.
+ */
+export function toCrosses(r: Originals, article: string, brand: string): CrossItem[] {
+	const wantArticle = articleKey(article)
+	const wantBrand = brandKey(brand)
+	const out: CrossItem[] = []
+	for (const group of r.items ?? []) {
+		for (const g of group.goods ?? []) {
+			if (articleKey(g.article) === wantArticle && brandKey(g.manufacturer.name) === wantBrand) continue
+			out.push({
+				article: g.displayArticle || g.article,
+				brand: g.manufacturer.name,
+				kind: g.isOriginal ? "oe" : CROSS_KIND[group.id] ?? group.title,
+				...(g.name ? { name: g.name } : {}),
+				url: cardUrl(g.manufacturer.id, g.article),
+				extra: { manufacturerId: g.manufacturer.id, group: group.title },
+			})
+		}
+	}
+	return out
 }
 
 export function toOffers(r: Originals, article: string, brand: string, forceAnalog = false): Offer[] {

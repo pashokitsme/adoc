@@ -4,7 +4,7 @@
 // провайдера: виноват он, а не пользователь.
 
 import { CONTRACT_VERSION, ProviderError } from "../sdk/index.ts"
-import type { Basket, BasketItem, BrandHit, Capability, Car, Command, Describe, Display, FitsResult, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/index.ts"
+import type { Basket, BasketItem, BrandHit, Capability, Car, Command, CrossItem, Describe, Display, FitsResult, Info, Offer, Order, OrderItem, Product, Rating, Review, Reviews, WhoamiResult } from "../sdk/index.ts"
 
 const CAPABILITIES: Capability[] = ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"]
 
@@ -254,6 +254,22 @@ export function parseInfo(v: unknown, who: string): { info: Info; offers: Offer[
 		...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
 	}
 	return { info, offers }
+}
+
+/** Кросс-ссылки сайта: номер, бренд и чем он приходится исходному артикулу. */
+export function parseCrosses(v: unknown, who: string): CrossItem[] {
+	return arr(obj(v, who, "ответ crosses").items, who, "items").map(x => {
+		const o = obj(x, who, "кросс-ссылка")
+		return {
+			article: str(o, "article", who), brand: str(o, "brand", who),
+			// Вид открыт: незнакомое слово сайта показываем как есть, а пустое
+			// становится «заменой» — это самый безобидный из трёх смыслов.
+			kind: optStr(o, "kind") || "aftermarket",
+			...(optStr(o, "name") ? { name: optStr(o, "name") } : {}),
+			...(optStr(o, "url") ? { url: optStr(o, "url") } : {}),
+			...(optObj(o, "extra") ? { extra: optObj(o, "extra") } : {}),
+		}
+	})
 }
 
 /**

@@ -155,6 +155,7 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 | `offers <артикул> --brand <имя> [--analogs]` | `{items}` | `OffersResult` |
 | `info <артикул> --brand <имя>` | `{info, offers?}` | `InfoResult` |
 | `fits <артикул> --brand <имя> --car <json>` | `{fits, reason?, url?}` | `FitsResult` (capability `fits`) |
+| `crosses <артикул> --brand <имя>` | `{items}` | `CrossesResult` (capability `crosses`) |
 | `analogs <артикул> --brand <имя>` | `{items}` | `OffersResult` |
 
 `login` обычно ведёт диалог через терминал (логин, пароль без эха). Если
@@ -203,6 +204,13 @@ adoc-<id> <команда> [аргументы] [флаги] --json
 нему деталь не купят. `reason` — короткая причина для человека, `url` —
 страница, где применимость видно глазами. Команда необязательная: объявляется
 capability `fits`, и без неё агрегатор сайт не спрашивает.
+
+`crosses` — справочник номеров: чем ещё называется тот же узел. От `analogs`
+отличается тем, что это не выдача: цены и наличия здесь нет, а есть номер,
+бренд и `kind` — `oe` (оригинальный номер), `aftermarket` (неоригинальная
+замена), `part-of` (входит в состав узла). Список видов открыт: сайт со своим
+названием группы кладёт его как есть, обёртка покажет его словом. Исходный
+артикул в список не попадает — он не ссылка на себя.
 
 `analogs` — **только аналоги**, без точных совпадений: каждая строка идёт с
 `analog: true`. Провайдер может собрать её из своего `offers --analogs`,
@@ -464,6 +472,8 @@ export type OffersResult = { items: Offer[]; total?: number }
 export type CarsResult = { cars: Car[] }
 export type InfoResult = { info: Info; offers?: Offer[] }
 export type FitsResult = { fits: boolean | null; reason?: string; url?: string }
+export type CrossItem = { article: string; brand: string; kind: "oe" | "aftermarket" | "part-of" | string; name?: string; url?: string; extra?: object }
+export type CrossesResult = { items: CrossItem[] }
 export type OrdersResult = { items: Order[] }
 ```
 

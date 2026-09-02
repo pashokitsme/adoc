@@ -35,11 +35,11 @@ async function cart(ctx: Ctx<Account>): Promise<{ token: string; vkorg: string; 
 	return { token, ...p, raw }
 }
 
-export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "basket", "orders", "fits"]>({
+export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"]>({
 	id: "armtek",
 	name: "Armtek",
 	site: "https://armtek.ru",
-	capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits"],
+	capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"],
 	valueFlags: ["body"],
 	mapError: mapHttpError,
 
@@ -185,6 +185,31 @@ export const armtek = defineProvider<Account, ["reviews", "garage", "analogs", "
 			return { fits: null, reason: `в «${cat.NAME}» под эту машину ${total ?? "?"} позиций на ${pageCount} страницах, просмотрены первые ${FIT_PAGES}`, url }
 		}
 		return { fits: false, reason: `нет в «${cat.NAME}» под эту машину (${total ?? seen} позиций)`, url }
+	}),
+
+	/**
+	 * Кросс-ссылки. Своего справочника номеров у armtek нет: он отдаёт замены
+	 * той же выдачей поиска (queryType 1), где точная строка идёт вместе с
+	 * ними. Вид у всех один — `aftermarket`: чем именно строка приходится
+	 * исходной, сайт не говорит, и придумывать за него нельзя.
+	 */
+	crosses: async (ctx, article, brandName) => await publicRead(ctx, async token => {
+		const p = place(ctx)
+		const { row } = await brand.resolve(article, brandName, token, p, ctx.warn)
+		const all = await api.search({ query: article, queryType: 1, page: ctx.page, typeView: "list", ...p }, token)
+		const want = articleKey(article)
+		const wantBrand = brandKey(row.BRAND)
+		const items = (all.articlesData ?? [])
+			.filter(a => articleKey(a.PIN) !== want || brandKey(a.BRAND) !== wantBrand)
+			.map(a => ({
+				article: a.PIN,
+				brand: a.BRAND,
+				kind: "aftermarket" as const,
+				...(a.NAME ? { name: a.NAME } : {}),
+				url: productUrl(a.ARTICLE_ALIAS, a.ARTID),
+				extra: { artid: a.ARTID },
+			}))
+		return { items }
 	}),
 
 	// Только аналоги: точные строки отдаёт offers, и повторять их здесь значит

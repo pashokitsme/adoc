@@ -92,9 +92,9 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		url: page(r.article), ref: { line: `${id}-${n}` },
 	})
 
-	const spec = defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket", "orders", "fits"]>({
+	const spec = defineProvider<FakeAccount, ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"]>({
 		id, name: `Fake ${id}`, site,
-		capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits"],
+		capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"],
 
 		login: async ctx => {
 			const user = knob(id, "LOGIN") ?? await ctx.prompt("Логин > ")
@@ -168,6 +168,17 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 				// провайдер берёт их оттуда же, и обёртке они приезжают так же.
 				offers: [toOffer(hit, 1), { ...toOffer(hit, 2), price: hit.price + 30, seller: "второй продавец" }],
 			}
+		},
+
+		// Кросс-ссылки: у фейка их две — замена и «в составе узла», причём
+		// первая одна и та же у обоих сайтов: на ней проверяется склейка.
+		crosses: async (_ctx, article, brand) => {
+			await gate("CROSSES")
+			if (knob(id, "EMPTY_CROSSES")) return { items: [] }
+			return { items: [
+				{ article: "CROSS-1", brand: "OEM", kind: "aftermarket" as const, name: `замена ${article}`, url: page("CROSS-1") },
+				{ article: `${id.toUpperCase()}-KIT`, brand, kind: "part-of" as const, name: "узел целиком", url: page(`${id.toUpperCase()}-KIT`) },
+			] }
 		},
 
 		// Применимость: подходит всё, кроме артикулов на NOFIT-, а под ручкой

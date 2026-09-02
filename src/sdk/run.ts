@@ -8,7 +8,7 @@ import type { Ctx, ProviderSpec } from "./define.ts"
 import { ProviderError, errorBody, exitCode, type ErrorMapper } from "./errors.ts"
 import { HttpError } from "./http.ts"
 import { emit, warnSink } from "./out.ts"
-import { bold, dim, fields, linksHint, red, renderBasket, renderBrands, renderCars, renderDisplay, renderFits, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews } from "./render.ts"
+import { bold, dim, fields, linksHint, red, renderBasket, renderBrands, renderCars, renderCrosses, renderDisplay, renderFits, renderInfo, renderOffers, renderOrders, renderProducts, renderReviews } from "./render.ts"
 import { NO_WARN_ENV, TOOL } from "./config.ts"
 
 const CONTRACT_VALUE_FLAGS = ["brand", "page", "limit", "qty", "ref", "car"]
@@ -46,6 +46,7 @@ function contractCommands<A>(spec: ProviderSpec<A>): Command[] {
 	]
 	if (spec.orders) c.push({ name: "orders", usage: "orders", about: "заказы на сайте", auth: true })
 	if (spec.fits) c.push({ name: "fits", usage: "fits <артикул> --brand <имя> --car <json>", about: "подходит ли деталь машине; --car — ref из `garage export`", auth: false })
+	if (spec.crosses) c.push({ name: "crosses", usage: "crosses <артикул> --brand <имя>", about: "кросс-ссылки: оригиналы, замены, состав узла", auth: false })
 	if (spec.reviews) c.push({ name: "reviews", usage: "reviews <артикул> --brand <имя> [--page <n>] [--limit <n>]", about: "оценки и отзывы", auth: false })
 	if (spec.garageExport) c.push({ name: "garage export", usage: "garage export", about: "машины из гаража сайта", auth: true })
 	if (spec.basket) c.push(
@@ -134,6 +135,11 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 			const car = parseRef(ctx.flags.car, "car", "`garage export`")
 			const r = await spec.fits(ctx, need(rest[0], "артикул"), brandFlag(), { car })
 			return { json: r, render: () => renderFits(r) }
+		}
+		case "crosses": {
+			if (!spec.crosses) break
+			const r = await spec.crosses(ctx, need(rest[0], "артикул"), brandFlag())
+			return { json: r, render: () => renderCrosses(r.items) }
 		}
 		case "orders": {
 			if (!spec.orders) break

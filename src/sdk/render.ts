@@ -2,7 +2,7 @@
 // чтобы `adoc ... | grep` не ловил escape-последовательности.
 
 import { noWarn } from "./config.ts"
-import type { Basket, BasketItem, BrandHit, Car, Display, FitsResult, Info, Offer, Order, Product, Reviews } from "./contract.ts"
+import type { Basket, BasketItem, BrandHit, Car, CrossItem, Display, FitsResult, Info, Offer, Order, Product, Reviews } from "./contract.ts"
 
 // Решение принимается на каждый вызов, а не один раз при импорте: модуль
 // грузится раньше, чем становится известно, куда пойдёт вывод, и запомненное
@@ -364,6 +364,26 @@ export function renderInfo(i: Info, offers: Offer[] = []): string {
  * весь список) уходит в заголовок блока и у строк не повторяется.
  */
 const ORDER_HEAD = ["#", "АРТИКУЛ", "БРЕНД", "НАЗВАНИЕ", "КОЛ", "ЦЕНА", "СУММА"]
+
+/** Вид кросс-ссылки словом: коды контракта человеку ничего не говорят. */
+const KIND_WORD: Record<string, string> = {
+	oe: "оригинал",
+	aftermarket: "замена",
+	"part-of": "в составе узла",
+}
+
+/**
+ * Кросс-ссылки таблицей. Цены здесь нет нарочно: это справочник номеров, а не
+ * выдача — по найденному номеру идут в `part`, где цена и срок.
+ */
+export function renderCrosses<T extends CrossItem>(items: T[], cols: Col<T>[] = []): string {
+	if (!items.length) return "кросс-ссылок нет"
+	return table(items.map((c, i) => cellsNum(cols, c, i + 1, [
+		cellLink(c.url, cyan(c.article)), bold(c.brand), dim(KIND_WORD[c.kind] ?? c.kind),
+		cellLink(c.url, (c.name ?? "").slice(0, 40)),
+	], c.url)), headsNum(cols, ["АРТИКУЛ", "БРЕНД", "ЧТО ЭТО", "НАЗВАНИЕ"]))
+		+ urlList(items)
+}
 
 /**
  * Применимость одной строкой. Три состояния и три цвета: зелёное «подходит»,

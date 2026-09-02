@@ -187,4 +187,21 @@ export type InfoResult = { info: Info; offers?: Offer[] }
  * применимость видно глазами.
  */
 export type FitsResult = { fits: boolean | null; reason?: string; url?: string }
+
+/**
+ * Кросс-ссылка: тот же узел под другим номером. `kind` — чем строка приходится
+ * исходному артикулу: `oe` — оригинальный номер, `aftermarket` — неоригинальная
+ * замена, `part-of` — деталь входит в состав этого узла. Список открыт: сайт со
+ * своим названием группы кладёт его как есть, и обёртка покажет его словом.
+ */
+export type CrossItem = {
+	article: string
+	brand: string
+	kind: "oe" | "aftermarket" | "part-of" | (string & {})
+	name?: string
+	url?: string
+	extra?: Record<string, unknown>
+}
+
+export type CrossesResult = { items: CrossItem[] }
 export type OrdersResult = { items: Order[] }

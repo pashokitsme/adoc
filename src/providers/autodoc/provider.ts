@@ -10,7 +10,7 @@ import { resolveBrand } from "./brand.ts"
 import type { Brand } from "./brand.ts"
 import { commands } from "./commands.ts"
 import {
-	SITE, basketAddBody, bestCategory, carQuery, cardUrl, categoryIds, reviewsUrl, toBasket, toBrandHits, toCars,
+	SITE, basketAddBody, bestCategory, carQuery, cardUrl, categoryIds, reviewsUrl, toBasket, toBrandHits, toCars, toCrosses,
 	toInfo, toOffers, toOrders, toProducts, toReviews, type AutodocRef,
 } from "./map.ts"
 
@@ -64,9 +64,9 @@ async function offerRows(article: string, b: Brand, name: string, withAnalogs: b
 	return items
 }
 
-export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "basket", "orders", "fits"]>({
+export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"]>({
 	id: "autodoc", name: "Autodoc", site: SITE,
-	capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits"],
+	capabilities: ["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"],
 	valueFlags: ["sort"],
 	mapError: e => {
 		if (e instanceof ApiError) return new ProviderError(e.status === 401 ? "auth" : e.status === 404 ? "notfound" : "http", e.message)
@@ -193,6 +193,18 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 			return { fits: null, reason: `в «${where}» под эту машину ${r.totalCount} позиций, просмотрены первые ${items.length}`, url }
 		}
 		return { fits: false, reason: `нет в «${where}» под эту машину (${r.totalCount ?? items.length} позиций)`, url }
+	},
+
+	/**
+	 * Кросс-ссылки: та же ручка `price-list/analogs`, но читается не как
+	 * предложения, а как справочник — группами. Группа «Неофициальные замены»
+	 * (id 3) — это aftermarket, «Входит в состав узла» (id 6) — part-of;
+	 * незнакомая группа приходит своим названием, врать про её смысл незачем.
+	 */
+	crosses: async (_ctx, article, brandName) => {
+		const b = await resolveBrand(article, brandName)
+		const r = await api.analogs(article, b.id).catch(noAnalogs)
+		return { items: r ? toCrosses(r, article, brandLabel(b, brandName)) : [] }
 	},
 
 	// Только аналоги: ровно те строки `offers --analogs`, у которых analog:true.

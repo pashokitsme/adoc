@@ -26,7 +26,7 @@ describe("adoc-autodoc", () => {
 	test("describe", async () => {
 		const r = await run(["describe"])
 		expect(r.json.id).toBe("autodoc")
-		expect(r.json.capabilities).toEqual(["reviews", "garage", "analogs", "basket", "orders", "fits"])
+		expect(r.json.capabilities).toEqual(["reviews", "garage", "analogs", "basket", "orders", "fits", "crosses"])
 	})
 	test("brands", async () => {
 		const r = await run(["brands", "n90954802"])
