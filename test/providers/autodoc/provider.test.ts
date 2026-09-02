@@ -79,4 +79,12 @@ describe("adoc-autodoc", () => {
 		const r = await run(["whoami"])
 		expect(r.json).toEqual({ ok: true, display: { name: "user1", email: "pavel@example.com", phone: "+79990001234" } })
 	})
+	test("whoami с протухшим токеном — ok:false, файл аккаунта не трогаем", async () => {
+		const expired = { access_token: "a.b.c", refresh_token: "r", expires_at: Math.floor(Date.now() / 1000) - 3600 }
+		await accountStore("autodoc").save(expired)
+		const r = await run(["whoami"])
+		expect(r.code).toBe(0)
+		expect(r.json).toEqual({ ok: false })
+		expect(await accountStore("autodoc").load()).toEqual(expired)
+	})
 })

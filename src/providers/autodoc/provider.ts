@@ -65,7 +65,15 @@ export const autodoc = defineProvider<Tokens, ["reviews", "garage", "analogs", "
 		return { account: tokens, display: display(tokens) }
 	},
 
-	whoami: async ctx => (ctx.account ? display(ctx.account) : null),
+	// Файл аккаунта — ещё не рабочий вход: access мог протухнуть. currentToken
+	// молча обновит, когда может (в фикстурном режиме сети нет — протухший
+	// считается негодным сразу); вернул null — показывать нечего. Сам файл
+	// whoami не трогает: удалять аккаунт — дело logout.
+	whoami: async ctx => {
+		if (!ctx.account) return null
+		const access = await auth.currentToken()
+		return access ? display({ ...ctx.account, access_token: access }) : null
+	},
 
 	search: async (ctx, text) => {
 		const s = await api.suggest(text)
