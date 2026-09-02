@@ -14,6 +14,8 @@
 //   NOGARAGE=1     в describe нет capability garage (метод при этом есть)
 //   NOORDERS=1     в describe нет capability orders (метод при этом есть)
 //   NOCAR=1        поиск игнорирует --car и предупреждает об этом
+//   MORE=<n>       search говорит «нашлось n», отдавая свою обычную страницу:
+//                  так ведёт себя сайт, у которого выдача не влезла в страницу
 //   SAME_WARN=1    каждая команда пишет одну и ту же заметку в stderr: так
 //                  ведёт себя armtek, когда сайт ограничил аккаунт, — `part`
 //                  ловит её и на шаге брендов, и на шаге предложений
@@ -113,6 +115,10 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 			// говорит об этом вслух и ищет без машины.
 			if (car && knob(id, "NOCAR")) ctx.warn(`${id}: поиск по машине не поддерживается`)
 			const carId = car && !knob(id, "NOCAR") ? String(car.carId ?? car.linkingTargetId ?? "?") : undefined
+			const more = Number(knob(id, "MORE")) || 0
+			// Страница за концом выдачи: сайт отвечает пустым списком, но итог
+			// свой называет — на нём и держится подсказка про --page.
+			if (ctx.page > 1) return { items: [], ...(more ? { total: more } : {}) }
 			if (text !== "болт" || knob(id, "EMPTY_SEARCH")) return { items: [] }
 			return {
 				items: [
@@ -120,7 +126,7 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 					{ article: `${id.toUpperCase()}-ONLY`, brand: "OWN", name: `Своё у ${id}`, price: 100, url: page(`${id.toUpperCase()}-ONLY`) },
 					...(carId ? [{ article: `${id.toUpperCase()}-CAR`, brand: "OEM", name: `под машину ${carId}`, price: 50, url: page("car") }] : []),
 				],
-				total: carId ? 3 : 2,
+				total: more || (carId ? 3 : 2),
 			}
 		},
 

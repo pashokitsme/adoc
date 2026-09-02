@@ -39,6 +39,7 @@ afterEach(async () => {
 	delete process.env.FAKE_BETA_FAIL
 	delete process.env.FAKE_ALPHA_NOCAR
 	delete process.env.FAKE_BETA_EMPTY_SEARCH
+	delete process.env.FAKE_ALPHA_MORE
 	restore()
 	await rm(dir, { recursive: true, force: true })
 })
@@ -114,11 +115,32 @@ describe("adoc search", () => {
 		expect(r.stdout.replace(/\x1b\]8;;[^\x07\x1b]*(\x1b\\|\x07)/g, "")).not.toContain("https://")
 	})
 
-	test("итог сайтов попадает в строку под таблицей, когда он больше склейки", async () => {
-		// Оба фейка говорят «нашлось 2», склейка сводит одинаковый товар в одну
-		// строку — значит, у сайтов строк больше, и об этом надо сказать.
+	test("всё показанное — без строки об остатке: остатка нет", async () => {
+		// Оба фейка отдали всё, что у них есть, склейка свела одинаковый товар
+		// в одну строку — прятать нечего, и подпись была бы шумом.
 		const r = await run(["search", "болт"])
-		expect(r.stdout).toContain("а всего у сайтов 4")
+		expect(r.stdout).not.toContain("всего у сайтов")
+	})
+
+	test("у сайта строк больше, чем он отдал — подпись об этом есть", async () => {
+		process.env.FAKE_ALPHA_MORE = "20"
+		const r = await run(["search", "болт"])
+		expect(r.stdout).toContain("всего у сайтов 22")
+		expect(r.stdout).toContain("--page <n>")
+	})
+
+	test("страница за концом выдачи говорит, сколько всего и где искать", async () => {
+		process.env.FAKE_ALPHA_MORE = "20"
+		const r = await run(["search", "болт", "--page", "9"])
+		expect(r.code).toBe(0)
+		expect(r.stdout).toContain("страница 9 пуста: всего 20")
+		expect(r.stdout).toContain("--limit 30")
+		expect(r.stdout).not.toContain("ничего не найдено")
+	})
+
+	test("страница за концом, а итога сайты не назвали — честное «кончилась»", async () => {
+		const r = await run(["search", "болт", "--page", "9"])
+		expect(r.stdout).toContain("на первой странице выдача кончилась")
 	})
 
 	test("адреса обоих сайтов лежат в JSON одной строкой выдачи", async () => {

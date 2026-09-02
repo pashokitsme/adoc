@@ -97,11 +97,14 @@ export const whereCol = <T extends Linked & { providers: string[] }>(): Col<T> =
  * нечего. Список, а не строка, — чтобы вызывающий не проверял пустоту.
  */
 export function cut(shown: number, total: number, site?: number): string[] {
+	// Обрезала обёртка (--limit) и обрезали сайты (страница) — разные новости,
+	// и советы у них разные: в первом случае поможет --limit, во втором --page.
 	const more = total > shown
-	const siteMore = site !== undefined && site > total
+	const siteMore = site !== undefined && site > shown
 	if (!more && !siteMore) return []
-	const head = `показано ${shown} из ${total}`
-	return [hint(siteMore ? `${head}, а всего у сайтов ${site} — --limit <n> и --page <n>` : `${head} — --limit <n>`)]
+	if (more && siteMore) return [hint(`показано ${shown} из ${total}, а всего у сайтов ${site} — --limit <n> и --page <n>`)]
+	if (more) return [hint(`показано ${shown} из ${total} — --limit <n>`)]
+	return [hint(`показано ${shown}, всего у сайтов ${site} — --page <n>`)]
 }
 
 /** ★ — основная машина; «СВЯЗИ» — сайты, откуда машина импортирована. */

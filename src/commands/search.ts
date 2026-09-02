@@ -101,6 +101,17 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 	if (silent.length && merged.length) ctx.warn(dim(`ничего не нашли: ${silent.join(", ")}`))
 	const code = report(f, [], ctx.warn)
 
+	// Страница за концом выдачи: сайты ответили, но на этой странице у них
+	// пусто. Сказать «сколько всего» здесь важнее всего — по этому числу и
+	// видно, куда идти дальше и надо ли вообще.
+	const emptyPage = page > 1 && !items.length
+	const pages = site !== undefined ? Math.max(1, Math.ceil(site / limit)) : undefined
+	const emptyPageLine = site === undefined
+		? `страница ${page} пуста: на первой странице выдача кончилась`
+		: pages === 1
+			? `страница ${page} пуста: всего ${site}, страница 1 с --limit ${limit} показывает всё`
+			: `страница ${page} пуста: всего ${site}, страниц по --limit ${limit} — ${pages}`
+
 	return {
 		json: {
 			query,
@@ -118,11 +129,15 @@ export async function cmdSearch(ctx: Ctx): Promise<Output> {
 			...(car && used.length
 				? [`${dim("машина:")} ${carLabel(car)} ${dim(`· ${used.map(id => (borrowed.includes(id) ? `${id} (через ${shared!.from})` : id)).join(", ")}`)}`, ""]
 				: []),
-			renderProducts(items, [whereCol<MergedProduct>()]),
+			// Пустая страница за концом выдачи — не «ничего не найдено»: строки
+			// есть, просто они кончились раньше. Иначе человек читает это как
+			// «такого не существует» и уходит ни с чем.
+			...(emptyPage ? [emptyPageLine] : [renderProducts(items, [whereCol<MergedProduct>()])]),
 			// «Показано X из Y» — подпись к таблице и её списку адресов, поэтому
 			// стоит вплотную к ним; блок с адресами вторых сайтов идёт после,
-			// отделённый пустой строкой.
-			...cut(items.length, merged.length, site),
+			// отделённый пустой строкой. Под пустой страницей она бы повторяла
+			// уже сказанное.
+			...(emptyPage ? [] : cut(items.length, merged.length, site)),
 			...extraLinks(items),
 			// Подсказки идут одним блоком: пустая строка между ними разносит
 			// короткий совет на пол-экрана. Подсказка про `part` под пустой
