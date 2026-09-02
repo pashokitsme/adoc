@@ -8,7 +8,7 @@ import type { Basket } from "../sdk/index.ts"
 import { one, qtyOf } from "../core/args.ts"
 import { invoke, passNoise, type InvokeResult } from "../core/invoke.ts"
 import { lineOf } from "../core/lastpart.ts"
-import { fanout, report } from "../core/partial.ts"
+import { failureText, fanout, report } from "../core/partial.ts"
 import { hint } from "../core/render.ts"
 import { parseBasket } from "../core/validate.ts"
 import type { Ctx, Output } from "../core/ctx.ts"
@@ -34,7 +34,12 @@ export async function cmdBasket(ctx: Ctx): Promise<Output> {
 }
 
 async function listBaskets(ctx: Ctx): Promise<Output> {
+	const all = await ctx.pick()
 	const providers = await ctx.pick("basket")
+	// Сайт без корзины не спрашивается вовсе, но промолчать о нём нельзя:
+	// иначе «корзины всех сайтов» тихо оказались бы корзинами половины.
+	const skipped = all.filter(p => !providers.some(x => x.id === p.id))
+	if (skipped.length) ctx.warn(dim(`без корзины, не спрашиваем: ${skipped.map(p => p.id).join(", ")}`))
 	// id — чтобы наши собственные отказы («не ответил за 30000 мс») называли
 	// провайдера, а не `bun`, которым он случайно запускается.
 	const f = await fanout(providers, p => invoke(p.bin, ["basket"], { id: p.id }), parseBasket, ctx.warn)
@@ -94,7 +99,9 @@ async function removeItem(ctx: Ctx): Promise<Output> {
  */
 function afterChange(ctx: Ctx, id: string, r: InvokeResult): Output {
 	passNoise(id, r, ctx.warn)
-	if (!r.ok) throw new ProviderError(r.error.code, `${id}: ${r.error.message}`)
+	// Подпись та же, что у жёлтых строк списка: имя виноватого один раз и
+	// подсказка про вход, если сайт просит логин.
+	if (!r.ok) throw new ProviderError(r.error.code, failureText({ provider: id, code: r.error.code, message: r.error.message }))
 	const basket: Basket = parseBasket(r.json, id)
 	return { json: { provider: id, basket }, render: () => `${title(id, basket)}\n${renderBasket(basket)}` }
 }

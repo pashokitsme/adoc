@@ -65,9 +65,15 @@ export function blame(provider: string, message: string): string {
  * Строка отказа всегда начинается с имени провайдера. Подсказка про login
  * собирается уже после имени: «adoc login armtek» здесь — команда, которую
  * набирают руками, а не упоминание виноватого, и на дубль имени не тянет.
+ * Текст отделён от цвета: адресные команды (`basket add alpha …`) падают
+ * ошибкой, а не жёлтой строкой, но подписывать виноватого обязаны так же —
+ * правило подписи в обёртке одно, и escape-последовательности в теле --json
+ * ему не нужны.
  */
-export const failureLine = (f: Failure): string =>
-	yellow(f.code === "auth" ? `${f.provider}: нужен вход — ${TOOL} login ${f.provider}` : blame(f.provider, f.message))
+export const failureText = (f: Failure): string =>
+	f.code === "auth" ? `${f.provider}: нужен вход — ${TOOL} login ${f.provider}` : blame(f.provider, f.message)
+
+export const failureLine = (f: Failure): string => yellow(failureText(f))
 
 /** Не ответил никто из тех, кого спрашивали. Спрашивать было некого — не отказ. */
 export const allFailed = (f: Fanout<unknown>): boolean => f.asked > 0 && f.got.length === 0

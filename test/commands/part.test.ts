@@ -201,11 +201,23 @@ describe("adoc part", () => {
 		expect(saved!.lines.map(l => l.provider)).toEqual(["beta"])
 	})
 
-	test("пустая таблица — ни кэша, ни подсказки про basket add", async () => {
+	test("пустая таблица — без подсказки про basket add, кэш пустой", async () => {
 		const r = await run(["part", "НЕТ-ТАКОГО"])
 		expect(r.code).toBe(0)
 		expect(r.stdout).not.toContain("basket add")
-		expect(await readJson(LAST_PART_FILE)).toBeNull()
+		const saved = await readJson<{ article: string; lines: unknown[] }>(LAST_PART_FILE)
+		expect(saved!.article).toBe("НЕТ-ТАКОГО")
+		expect(saved!.lines).toEqual([])
+	})
+
+	test("артикула нет ни у кого — кэш прошлого артикула не переживает запуск", async () => {
+		await run(["part", "n90954802"])
+		const r = await run(["part", "НЕТ-ТАКОГО"])
+		expect(r.code).toBe(0)
+		// Иначе `basket add 1` положил бы строку совсем другого артикула.
+		const add = await run(["basket", "add", "1", "--json"])
+		expect(add.code).toBe(1)
+		expect((JSON.parse(add.stdout) as { error: { message: string } }).error.message).toContain("0 строк")
 	})
 
 	test("бренд есть, а предложений нет — кэш обнуляется по текущему артикулу", async () => {

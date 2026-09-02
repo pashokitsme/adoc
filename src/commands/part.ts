@@ -24,7 +24,14 @@ export async function cmdPart(ctx: Ctx): Promise<Output> {
 	const resolved = await resolveBrand(providers, article, wanted, ctx.warn)
 	const { brand, all, failures } = resolved
 
-	if (!brand) return emptyResult(article, resolved, { brands: [], offers: [], analogs: [] }, ctx.warn)
+	if (!brand) {
+		const empty = emptyResult(article, resolved, { brands: [], offers: [], analogs: [] }, ctx.warn)
+		// «Ни у кого не нашлось» — тоже ответ по этому артикулу: кэш строк
+		// обнуляется, иначе `basket add 1` положил бы строку прошлого артикула.
+		// Бренда у такого запуска нет — пишем тот, что просили, или пустой.
+		if (empty.code === 0) await saveLastPart(article, wanted ?? "", [])
+		return empty
+	}
 
 	const brandsJson = all.map(b => ({
 		brand: b.brand, article: b.article,

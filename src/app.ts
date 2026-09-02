@@ -47,7 +47,10 @@ const HELP = `adoc — поиск запчастей сразу по неско�
   part <артикул> [бренд]     предложения всех сайтов одной таблицей
   search <текст>             поиск по названию
   reviews <артикул> [бренд]  оценки и отзывы
-  basket [add|set|rm]        корзины всех сайтов
+  basket                     корзины всех сайтов одним списком
+  basket add <#> | basket add <provider> --ref <json> [--qty <n>]
+  basket set <provider> <id>|--id <id> --qty <n>
+  basket rm <provider> <id>|--id <id>
   garage [add|rm|main]       свой гараж, живёт локально
   login|logout <provider>    вход и выход у сайта
   accounts | whoami          кто авторизован

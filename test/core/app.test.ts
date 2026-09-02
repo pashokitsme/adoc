@@ -28,6 +28,10 @@ describe("run", () => {
 		expect(r.code).toBe(0)
 		expect(r.stdout).toContain("part")
 		expect(r.stdout).toContain("providers")
+		// Из этой же справки задача 15 собирает документацию: обе формы itemId
+		// должны быть в ней, иначе про --id узнать неоткуда.
+		expect(r.stdout).toContain("basket set <provider> <id>|--id <id>")
+		expect(r.stdout).toContain("basket rm")
 	})
 
 	test("без аргументов — та же справка", async () => {

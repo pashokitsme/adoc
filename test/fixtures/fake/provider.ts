@@ -7,11 +7,12 @@
 //   EMPTY_OFFERS=1 offers отвечает пустым списком, а brands — как обычно
 //   AMBIGUOUS=1    brands возвращает ambiguous (exit 2) вместо списка
 //   NOREVIEWS=1    в describe нет capability reviews (метод при этом есть)
+//   NOBASKET=1     в describe нет capability basket (метод при этом есть)
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { ProviderError, articleKey, brandKey, configDir, defineProvider } from "../../../src/sdk/index.ts"
-import type { Basket, ErrorCode, Offer, ProviderSpec } from "../../../src/sdk/index.ts"
+import type { Basket, Capability, ErrorCode, Offer, ProviderSpec } from "../../../src/sdk/index.ts"
 
 export type FakeAccount = { token: string; user: string }
 export type FakeData = { article: string; brand: string; price: number; seller: string }
@@ -152,8 +153,12 @@ export function makeFake(id: string, data: FakeData): ProviderSpec<FakeAccount> 
 		},
 	})
 
-	// Сайт без отзывов: capability снимается уже с готовой спеки, потому что
-	// defineProvider обязан видеть реализацию рядом с объявлением. Обёртка
-	// смотрит только в describe — этого хватает, чтобы её не спросили.
-	return knob(id, "NOREVIEWS") ? { ...spec, capabilities: spec.capabilities.filter(c => c !== "reviews") } : spec
+	// Сайт без отзывов или без корзины: capability снимается уже с готовой
+	// спеки, потому что defineProvider обязан видеть реализацию рядом с
+	// объявлением. Обёртка смотрит только в describe — этого хватает, чтобы её
+	// не спросили, и на этом проверяется отказ «не умеет <cap>».
+	const off = new Set<Capability>()
+	if (knob(id, "NOREVIEWS")) off.add("reviews")
+	if (knob(id, "NOBASKET")) off.add("basket")
+	return off.size ? { ...spec, capabilities: spec.capabilities.filter(c => !off.has(c)) } : spec
 }

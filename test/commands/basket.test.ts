@@ -27,6 +27,7 @@ beforeEach(async () => {
 afterEach(async () => {
 	delete process.env[CONFIG_DIR_ENV]
 	delete process.env[PROVIDERS_DIR_ENV]
+	delete process.env.FAKE_ALPHA_NOBASKET
 	if (color === undefined) delete process.env.NO_COLOR
 	else process.env.NO_COLOR = color
 	await rm(dir, { recursive: true, force: true })
@@ -110,6 +111,27 @@ describe("adoc basket", () => {
 		const j = JSON.parse(r.stdout) as ListJson
 		expect(Object.keys(j.providers)).toEqual(["beta"])
 		expect(j.errors[0]).toMatchObject({ provider: "alpha", code: "auth" })
+	})
+
+	test("отказ записи подписан один раз и зовёт login", async () => {
+		await accountStore("alpha").clear()
+		const r = await run(["basket", "add", "alpha", "--ref", JSON.stringify({ line: "alpha-1" })])
+		expect(r.code).toBe(1)
+		// Правило подписи одно на всю обёртку: имя провайдера ровно один раз и
+		// подсказка про вход — та же строка, что у отказов в списке.
+		expect(r.stderr.split("alpha: нужен вход — adoc login alpha")).toHaveLength(2)
+		expect(r.stderr).not.toContain("alpha: alpha:")
+	})
+
+	test("сайт без корзины: адресная команда — bad_args, список его пропускает", async () => {
+		process.env.FAKE_ALPHA_NOBASKET = "1"
+		const e = JSON.parse((await run(["basket", "add", "alpha", "--ref", "{}", "--json"])).stdout) as { error: { code: string; message: string } }
+		expect(e.error.code).toBe("bad_args")
+		expect(e.error.message).toContain("basket")
+		const r = await run(["basket", "--json"])
+		expect(r.code).toBe(0)
+		expect(r.stderr).toContain("без корзины, не спрашиваем: alpha")
+		expect(Object.keys((JSON.parse(r.stdout) as ListJson).providers)).toEqual(["beta"])
 	})
 
 	test("не вошёл никуда — exit 1", async () => {
