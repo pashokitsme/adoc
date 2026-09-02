@@ -1,0 +1,92 @@
+{
+	"data": {
+		"typeView": "list",
+		"cacheKey": "<cacheKey>",
+		"searchByVin": true,
+		"searchLiquids": true,
+		"articlesData": [
+			{
+				"ARTID": 55469,
+				"RSTP": "0",
+				"ID": "",
+				"AN_ID": 0,
+				"CHARG": "",
+				"MATERIAL_ID": "0",
+				"SUGGESTIONS": [
+					{
+						"ARTID": 55469,
+						"PARNR": "0",
+						"PRICES1": "592.00",
+						"PRICER1": "592.00",
+						"PRICEW1": "592.00",
+						"PRICEREC": "0.00",
+						"NUMZAK": "1",
+						"PROPS": 135,
+						"RVALUE": ">20",
+						"COLOR": 1,
+						"DLVDT": "20260902040000",
+						"ORDDT": "20260902023000",
+						"RDPRF": "",
+						"AUTH_DEALER": "",
+						"SCALES": "",
+						"WAERS": "RUB",
+						"XSPEC": "",
+						"KEYZAK": "MOV0000019",
+						"VENSL": 100,
+						"MINBM": 0,
+						"TYPE": "BEST",
+						"PRICEP": "624.00",
+						"NAME": "фильтр масляный!\\ Mazda 626, Mitsubishi Galant 1.8-2.5i 91>",
+						"PROMO_PLKEY": "",
+						"WRNTDT": "",
+						"CHARG": "",
+						"GSORT": 10,
+						"KWMENG": 0,
+						"POSNR": 0,
+						"STOCKS": [],
+						"PROMO": []
+					}
+				],
+				"PIN": "0 986 452 041",
+				"BRAND": "BOSCH",
+				"PHOTO": [
+					"https://img.armtek.ru/img/article/554/55469/230x230/55469_0.webp",
+					"https://img.armtek.ru/img/article/554/55469/230x230/55469_1.webp",
+					"https://img.armtek.ru/img/article/554/55469/230x230/55469_2.webp",
+					"https://img.armtek.ru/img/article/554/55469/230x230/55469_3.webp",
+					"https://img.armtek.ru/img/article/554/55469/230x230/55469_4.webp"
+				],
+				"NAME": "Фильтр масляный BOSCH 0 986 452 041 Mazda 626, Mitsubishi Galant 1.8-2.5i 91>",
+				"BRAND_ICON": "https://img.armtek.ru/img/uploader/assortment/7e1/c3945cb272381ec4cc62d38ac4b617e1/images/bosch_301810001692362762.webp",
+				"BRAND_ALIAS": "bosch-934",
+				"BRAND_ID": 934,
+				"ARTICLE_ALIAS": "filtr-maslyanyy-bosch-0-986-452-041-mazda-626-mitsubishi-galant-18-25i-91-55469",
+				"FAV_ID": null,
+				"REC": false,
+				"REVIEW_COUNT": 2,
+				"RATING": "5",
+				"GARANT": "",
+				"FAV": false,
+				"REL": {
+					"VZ": false
+				},
+				"REL_AP": [],
+				"MJT_DATA": [],
+				"PROPS": 135
+			}
+		],
+		"pagination": {
+			"currentPage": 1,
+			"perPage": 36,
+			"totalCount": 280,
+			"pageCount": 8
+		},
+		"executionTime": 0.4
+	},
+	"arr_messages": [],
+	"execution_time": {
+		"seconds": 0.4,
+		"milliseconds": 400
+	},
+	"_note": "Синтетический вариант точной выдачи: страниц больше потолка в brand.ts, чтобы проверить предупреждение."
+}

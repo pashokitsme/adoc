@@ -1,0 +1,17 @@
+{
+	"data": null,
+	"arr_messages": [
+		{
+			"batch_key": "<batchKey>",
+			"project_key": "cart_microservice_v1",
+			"login": "<login>",
+			"ip": "<ip>",
+			"date": "2026-09-02 02:30:19",
+			"timezone": 3,
+			"timestamp": 1788305419,
+			"type": "E",
+			"text": "[vkorg]: Значение не должно быть пустым."
+		}
+	],
+	"execution_time": { "seconds": 0.03, "milliseconds": 30 }
+}

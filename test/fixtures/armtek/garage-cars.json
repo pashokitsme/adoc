@@ -1,0 +1,37 @@
+{
+	"_note": "Синтетическая фикстура: у тестового аккаунта гараж пуст, форма собрана из бандла фронта (prepareGarageCarListToCarModelList).",
+	"data": {
+		"garageTypes": [],
+		"transportList": [
+			{
+				"transportId": 111,
+				"active": "1",
+				"brand": { "value": "SKODA" },
+				"model_name": { "value": "OCTAVIA" },
+				"manufacture_year": { "value": "2012" },
+				"modification": { "value": "1.8 TSI" },
+				"vin": { "value": "<vin>" },
+				"vin_verified": "1",
+				"license_plate_number": "<plate>",
+				"options": [
+					{ "key": "engine_capacity", "value": "1798" },
+					{ "key": "engine_type", "value": "бензин" },
+					{ "key": "mileage", "value": "184000" }
+				],
+				"additional": { "garage_type_id": "1", "garage_type_title": "Легковой автомобиль" },
+				"images": []
+			},
+			{
+				"transportId": 112,
+				"active": "0",
+				"brand": { "value": "LADA" },
+				"model_name": { "value": "GRANTA" },
+				"manufacture_year": { "value": "2019" },
+				"options": []
+			}
+		],
+		"collectionList": { "data": [] }
+	},
+	"arr_messages": [],
+	"execution_time": { "seconds": 0.04, "milliseconds": 40 }
+}

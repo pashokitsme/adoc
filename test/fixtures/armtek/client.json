@@ -1,0 +1,40 @@
+{
+	"data": {
+		"CLIENT_ID": "<clientId>",
+		"CLIENT_SAP_ID": 100000000,
+		"CLIENT_CRM_ID": 100000000,
+		"FIRST_NAME": "Иван",
+		"MIDDLE_NAME": "Иванович",
+		"LAST_NAME": "Иванов",
+		"NOTIFICATION": true,
+		"BIRTHDAY": null,
+		"ADDRESSES": [],
+		"EMAILS": [
+			{ "ID": 1, "EMAIL": "ivanov@example.com", "VKORG": null, "NOTIFICATION": false, "MAIN": true, "VERIFY": true, "EMAIL_USE": true }
+		],
+		"PHONES": [
+			{ "ID": 1, "PHONE_TYPE": 3, "PHONE_COUNRTY_CODE": "RU", "PHONE_NUMBER_CODE": "7", "PHONE_NUMBER": "9990000000", "PHONE_NUMBER_FULL": "79990000000", "MAIN": true, "VERIFY": true, "NOTIFICATION": true }
+		],
+		"ONE_C_CLIENTS": [],
+		"VSTEL": "ME86",
+		"VSTEL_DATA": {
+			"vstel": "ME86",
+			"vkorg": "4000",
+			"vstxt": "РЦРС Москва 86",
+			"adress": "141031, Московская обл., МКАД 86-ой км",
+			"phone": "+74957814555",
+			"email": "info@armtek.ru"
+		},
+		"VSBED": { "VSBED": "06", "VTEXT": "Бесплатная доставка" },
+		"ADDITIONAL": {
+			"CLIENT_TYPE": "R",
+			"IS_CLIENT_INDIVIDUAL": true,
+			"CREDIT_MANAGEMENT_TYPE": "C",
+			"CLIENT_SEGMENT": "51",
+			"CLIENT_CATEGORY": "KR"
+		},
+		"CLIENT_STATUS": { "STATUS": "05", "TEXT": "Новичок" }
+	},
+	"arr_messages": [],
+	"execution_time": { "seconds": 0.05, "milliseconds": 50 }
+}
