@@ -18,6 +18,15 @@ const CONTRACT_VALUE_FLAGS = ["brand", "page", "limit", "qty", "ref"]
 const withHttp = (own?: ErrorMapper): ErrorMapper => e =>
 	own?.(e) ?? (e instanceof HttpError ? new ProviderError("http", e.message) : null)
 
+// Терминал нужен не команде login, а самому вопросу: провайдер, который берёт
+// логин и пароль из окружения или файла, обязан входить и без tty. Поэтому
+// проверка сидит на ctx.prompt/ctx.secret — спросить без терминала нельзя,
+// а войти молча можно.
+const needTTY = (read: (q: string) => Promise<string>) => async (q: string): Promise<string> => {
+	if (!hasTTY()) throw new ProviderError("tty", "login нужен терминал: запусти без пайпа")
+	return await read(q)
+}
+
 function num(name: string, v: string | true | undefined, def: number): number {
 	if (v === undefined) return def
 	if (v === true || v === "") throw new ProviderError("bad_args", `--${name}: нужно значение`)
@@ -29,7 +38,7 @@ function num(name: string, v: string | true | undefined, def: number): number {
 function contractCommands<A>(spec: ProviderSpec<A>): Command[] {
 	const c: Command[] = [
 		{ name: "describe", usage: "describe", about: "что умеет провайдер", auth: false },
-		{ name: "login", usage: "login", about: "войти (диалог в терминале)", auth: false },
+		{ name: "login", usage: "login", about: "войти (диалог в терминале, если провайдер не берёт данные иначе)", auth: false },
 		{ name: "logout", usage: "logout", about: "забыть аккаунт", auth: false },
 		{ name: "whoami", usage: "whoami", about: "кто авторизован", auth: false },
 		{ name: "search", usage: "search <текст> [--page <n>] [--limit <n>]", about: "поиск по названию", auth: false },
@@ -106,7 +115,6 @@ async function dispatch<A>(spec: ProviderSpec<A>, ctx: Ctx<A>, args: string[]): 
 			return { json: d, render: () => fields([["id", d.id], ["сайт", d.site], ["контракт", String(d.contract)], ["умеет", d.capabilities.join(", ") || "—"]]) }
 		}
 		case "login": {
-			if (!hasTTY()) throw new ProviderError("tty", "login нужен терминал: запусти без пайпа")
 			const r = await spec.login(ctx)
 			await ctx.saveAccount(r.account)
 			return { json: { account: r.account, display: r.display }, render: () => renderDisplay(r.display) }
@@ -198,8 +206,8 @@ export async function runProvider<A>(spec: ProviderSpec<A>, argv: string[] = pro
 		flags,
 		page: 1,
 		limit: 10,
-		prompt: readLine,
-		secret: readSecret,
+		prompt: needTTY(readLine),
+		secret: needTTY(readSecret),
 		warn: m => process.stderr.write(`${m}\n`),
 	}
 

@@ -12,9 +12,12 @@ export const fake = defineProvider<Account, ["reviews", "garage", "basket"]>({
 	capabilities: ["reviews", "garage", "basket"],
 	valueFlags: ["echo"],
 
+	// FAKE_LOGIN/FAKE_PASSWORD — вход без терминала: так живут провайдеры,
+	// которые берут учётку из окружения (armtek), и так проверяется, что
+	// tty требуется вопросу, а не команде login.
 	login: async ctx => {
-		const user = await ctx.prompt("Логин > ")
-		const password = await ctx.secret("Пароль > ")
+		const user = process.env.FAKE_LOGIN ?? await ctx.prompt("Логин > ")
+		const password = process.env.FAKE_PASSWORD ?? await ctx.secret("Пароль > ")
 		if (password !== "pw") throw new ProviderError("auth", "Логин или пароль не подошли")
 		return { account: { token: "t-" + user, user }, display: { name: user } }
 	},

@@ -10,9 +10,9 @@ let dir: string
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), "adoc-run-")); process.env[CONFIG_DIR_ENV] = dir })
 afterEach(async () => { delete process.env[CONFIG_DIR_ENV]; await rm(dir, { recursive: true, force: true }) })
 
-async function run(args: string[]) {
+async function run(args: string[], env: Record<string, string> = {}) {
 	const proc = Bun.spawn(["bun", BIN, ...args], {
-		env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1" },
+		env: { ...process.env, [CONFIG_DIR_ENV]: dir, NO_COLOR: "1", ...env },
 		stdin: "ignore", stdout: "pipe", stderr: "pipe",
 	})
 	const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -81,6 +81,13 @@ describe("runProvider", () => {
 		const r = await run(["login", "--json"])
 		expect(r.code).toBe(1)
 		expect(r.json().error.code).toBe("tty")
+	})
+
+	test("login без tty проходит, когда провайдер берёт данные из окружения", async () => {
+		const r = await run(["login", "--json"], { FAKE_LOGIN: "pavel", FAKE_PASSWORD: "pw" })
+		expect(r.code).toBe(0)
+		expect(r.json()).toEqual({ account: { token: "t-pavel", user: "pavel" }, display: { name: "pavel" } })
+		expect(await accountStore("fake").load()).toEqual({ token: "t-pavel", user: "pavel" })
 	})
 
 	test("whoami: ok=false без аккаунта, ok=true с ним", async () => {
