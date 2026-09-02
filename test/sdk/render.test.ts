@@ -199,7 +199,7 @@ describe("renderOrders", () => {
 		expect(lines[1]).toContain("№ 1")
 		expect(lines[1]).toContain("2026-09-01")
 		expect(lines[2]).toContain("Болт")
-		expect(lines[3]).toBe("1  https://x/1")
+		expect(lines[3]).toBe("  1  https://x/1")
 	})
 
 	test("у каждого заказа свой адрес — он остаётся в шапке заказа", () => {

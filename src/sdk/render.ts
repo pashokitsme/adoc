@@ -254,7 +254,9 @@ export function renderOrders(items: Order[]): string {
 				`  ${i + 1}`, cyan(it.article), bold(it.brand), it.name.slice(0, 40),
 				`${it.qty} шт`, money(it.price), money(it.sum ?? it.price * it.qty),
 			])))
-			out.push(urlList(o.items).replace(/^\n/, ""))
+			// отступ тот же, что у номеров позиций: номер и адрес читаются парой
+			const list = urlList(o.items).replace(/^\n/, "")
+			if (list) out.push(list.split("\n").map(l => `  ${l}`).join("\n"))
 		}
 	}
 	return out.filter(Boolean).join("\n")
