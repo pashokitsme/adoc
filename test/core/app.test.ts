@@ -4,16 +4,18 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { run } from "../../src/app.ts"
 import { CONFIG_DIR_ENV } from "../../src/sdk/index.ts"
-
-const PROVIDERS_DIR_ENV = "ADOC_PROVIDERS_DIR"
+import { PROVIDERS_DIR_ENV } from "../../src/core/registry.ts"
 
 let dir: string
 let env: Record<string, string>
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "adoc-app-"))
-	// Пустой каталог провайдеров: задача 3 заведёт фикстуры, до тех пор набор
-	// должен быть пустым, но своим — не настоящим.
-	env = { [CONFIG_DIR_ENV]: dir, [PROVIDERS_DIR_ENV]: join(dir, "providers") }
+	// Набор провайдеров — фикстуры: справка снимает describe, и без своих
+	// сайтов тест дотянулся бы до настоящих.
+	env = {
+		[CONFIG_DIR_ENV]: dir,
+		[PROVIDERS_DIR_ENV]: join(import.meta.dir, "..", "fixtures", "providers"),
+	}
 	Object.assign(process.env, env)
 })
 afterEach(async () => {
@@ -32,6 +34,12 @@ describe("run", () => {
 		// должны быть в ней, иначе про --id узнать неоткуда.
 		expect(r.stdout).toContain("basket set <provider> <id>|--id <id>")
 		expect(r.stdout).toContain("basket rm")
+	})
+
+	test("справка перечисляет найденные сайты", async () => {
+		const r = await run(["--help"])
+		expect(r.stdout).toContain("alpha")
+		expect(r.stdout).toContain("beta")
 	})
 
 	test("без аргументов — та же справка", async () => {

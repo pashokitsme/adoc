@@ -15,17 +15,11 @@ import { cmdReviews } from "./commands/reviews.ts"
 import { cmdSearch } from "./commands/search.ts"
 import type { Ctx, Output } from "./core/ctx.ts"
 import { Ambiguous } from "./core/errors.ts"
+import { VALUE_FLAGS, helpText } from "./core/help.ts"
 import type { MergedBrand } from "./core/merge.ts"
 import { blame, failureLine } from "./core/partial.ts"
 import { discover, load, select, type Loaded } from "./core/registry.ts"
 import { hint, whereCol } from "./core/render.ts"
-
-// Флаги обёртки, которые берут значение. Булевы (--json, --analogs) сюда не
-// входят: parseArgv развернёт их сам.
-const VALUE_FLAGS = [
-	"only", "providers", "skip", "limit", "page", "qty", "ref", "id",
-	"brand", "model", "modification", "year", "engine", "vin", "odometer",
-]
 
 type Handler = (ctx: Ctx) => Promise<Output>
 
@@ -44,27 +38,11 @@ const COMMANDS: Record<string, Handler> = {
 	logout: cmdLogout,
 }
 
-/** Имена команд обёртки: их не отдаёт провайдеру проброс. */
-export const COMMAND_NAMES = Object.keys(COMMANDS)
-
-const HELP = `adoc — поиск запчастей сразу по нескольким магазинам
-
-  part <артикул> [бренд]     предложения всех сайтов одной таблицей
-  search <текст>             поиск по названию
-  reviews <артикул> [бренд]  оценки и отзывы
-  basket                     корзины всех сайтов одним списком
-  basket add <#> | basket add <provider> --ref <json> [--qty <n>]
-  basket set <provider> <id>|--id <id> --qty <n>
-  basket rm <provider> <id>|--id <id>
-  garage [add|rm|main]       свой гараж, живёт локально
-  garage import <provider>   забрать машины из аккаунта на сайте
-  login|logout <provider>    вход и выход у сайта
-  accounts | whoami          кто авторизован
-  providers                  какие сайты подключены
-  <provider> <команда> …     команда самого сайта как есть
-
-  --json  --only a,b  --skip a,b  --limit <n>  --page <n>  --analogs
-`
+/**
+ * Имена команд обёртки: их не отдаёт провайдеру проброс. `help` — такая же
+ * команда, только её обрабатывает сам run(): это второе написание `--help`.
+ */
+export const COMMAND_NAMES = [...Object.keys(COMMANDS), "help"]
 
 export type RunResult = { stdout: string; stderr: string; code: number }
 
@@ -78,14 +56,30 @@ export async function run(argv: string[]): Promise<RunResult> {
 	try {
 		const { args, flags } = parseArgv(argv, VALUE_FLAGS)
 		const [name, ...rest] = args
-		if (!name || flags.help) {
+		const ctx = makeCtx(rest, flags, json, warn)
+
+		// `help` — то же слово без дефисов: проброс его провайдеру и так не
+		// отдаёт, так что печатаем ту же справку, а не «неизвестную команду».
+		const wantsHelp = flags.help === true || name === "help"
+		if (!name || wantsHelp) {
 			// Машинному вызову справка бесполезна: он ждёт JSON и споткнулся бы
-			// на разборе таблицы вместо внятной ошибки.
+			// на разборе таблицы вместо внятной ошибки. Список команд и сайтов
+			// для машины даёт providers --json.
 			if (json) {
-				const why = flags.help ? "--help не отдаётся в JSON: список сайтов — providers --json" : "нужна команда: смотри --help"
+				const why = wantsHelp
+					? `--help не отдаётся в JSON: список команд и сайтов — ${TOOL} providers --json`
+					: `нужна команда: смотри ${TOOL} --help или ${TOOL} providers --json`
 				throw new ProviderError("bad_args", why)
 			}
-			return { stdout: HELP, stderr, code: 0 }
+			// Реестр может упасть на битом PATH или на провайдере, который не
+			// отвечает: справка про свои команды важнее его беды.
+			let loaded: Loaded | null = null
+			try {
+				loaded = await ctx.load()
+			} catch {
+				// Ничего: без списка сайтов справка всё равно печатается.
+			}
+			return { stdout: `${helpText(loaded)}\n`, stderr, code: 0 }
 		}
 		// Только собственные ключи: `adoc toString` иначе доставал бы из
 		// прототипа объекта функцию и печатал бы «undefined» с кодом 0.
@@ -98,7 +92,7 @@ export async function run(argv: string[]): Promise<RunResult> {
 			throw new ProviderError("bad_args", `неизвестная команда: ${name} — команды: ${COMMAND_NAMES.join(", ")}; сайты: ${ids.join(", ") || "ни одного"}`)
 		}
 
-		const out = await handler(makeCtx(rest, flags, json, warn))
+		const out = await handler(ctx)
 		return { stdout: `${json ? JSON.stringify(out.json) : out.render()}\n`, stderr, code: out.code ?? 0 }
 	} catch (e) {
 		// Список вариантов, собранный из половины сайтов, — неполный список:

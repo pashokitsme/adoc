@@ -9,7 +9,7 @@ import { discover } from "../core/registry.ts"
 import { ID_RE } from "../core/store.ts"
 
 /** Имена, которые провайдеру не отдаются ни при каких обстоятельствах. */
-const RESERVED = new Set([...COMMAND_NAMES, "help"])
+const RESERVED = new Set(COMMAND_NAMES)
 
 /** Код возврата провайдера или null, если первым словом стоит не его id. */
 export async function passthrough(argv: string[]): Promise<number | null> {

@@ -6,6 +6,7 @@
 import { ProviderError, TOOL, basketTotal, bold, dim, money, need, parseRef, renderBasket } from "../sdk/index.ts"
 import type { Basket } from "../sdk/index.ts"
 import { one, qtyOf } from "../core/args.ts"
+import { BASKET_RM, BASKET_SET } from "../core/help.ts"
 import { invoke, passNoise, type InvokeResult } from "../core/invoke.ts"
 import { lineOf } from "../core/lastpart.ts"
 import { failureText, fanout, report } from "../core/partial.ts"
@@ -53,7 +54,9 @@ async function listBaskets(ctx: Ctx): Promise<Output> {
 		render: () => [
 			...f.got.map(g => `${title(g.provider, g.value)}\n${renderBasket(g.value)}`),
 			`${dim("всего по всем сайтам")}  ${bold(money(total))}`,
-			hint(`${TOOL} basket set <provider> <ID> --qty <n> · ${TOOL} basket rm <provider> <ID>`),
+			// Формы команд — из таблицы справки: подсказка под таблицей и `--help`
+			// расходиться не должны.
+			hint(`${TOOL} ${BASKET_SET} · ${TOOL} ${BASKET_RM}`),
 		].join("\n\n"),
 	}
 }
